@@ -102,7 +102,7 @@ export default function Login() {
         <div className="flex-1 flex flex-col justify-center px-12 text-white">
           <div className="text-[10px] uppercase tracking-[0.3em] text-orange-500 mb-3">Building Solutions</div>
           <h2 className="font-heading text-4xl font-black tracking-tight leading-tight max-w-md">
-            From first call to closed roof. One operating system.
+            SealTech CRM and Operations.
           </h2>
         </div>
       </div>
