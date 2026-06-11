@@ -1,0 +1,98 @@
+{
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "emotional_tone": "Utilitarian, authoritative, and robust. It should feel like a reliable digital command center for a commercial roofing operation—no fluff, just data and action.",
+  "colors": {
+    "background": "#F4F4F5",
+    "surface": "#FFFFFF",
+    "primary": "#EA580C",
+    "primary_hover": "#C2410C",
+    "secondary": "#09090B",
+    "text_main": "#09090B",
+    "text_muted": "#71717A",
+    "border": "#E4E4E7",
+    "sidebar_bg": "#09090B",
+    "sidebar_text": "#FAFAFA",
+    "sidebar_active": "#EA580C",
+    "status": {
+      "won": {"bg": "#09090B", "text": "#FFFFFF"},
+      "lost": {"bg": "#FEE2E2", "text": "#991B1B"},
+      "lead": {"bg": "#E4E4E7", "text": "#18181B"},
+      "proposal_sent": {"bg": "#FFEDD5", "text": "#C2410C"}
+    }
+  },
+  "typography": {
+    "heading_font": "Chivo",
+    "body_font": "Public Sans",
+    "scales": {
+      "h1": "text-3xl sm:text-4xl font-black tracking-tight leading-none",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3": "text-xl sm:text-2xl font-bold tracking-tight",
+      "h4": "text-lg font-semibold",
+      "body": "text-sm sm:text-base leading-relaxed",
+      "label": "text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground",
+      "kpi_value": "text-4xl sm:text-5xl font-black tracking-tighter"
+    }
+  },
+  "layout_spacing": {
+    "container_padding": "p-6 sm:p-8",
+    "section_gap": "gap-8 sm:gap-12",
+    "card_padding": "p-6",
+    "radius": "rounded-sm",
+    "grid_strategy": "Control Room Grid. Base grid-cols-1 md:grid-cols-4. Gap-6. KPIs span 1 col, main tables span full width.",
+    "borders": "border border-zinc-200"
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-orange-600 text-white hover:bg-orange-700 hover:text-white rounded-sm font-bold shadow-none transition-colors",
+      "secondary": "bg-zinc-950 text-white hover:bg-zinc-800 hover:text-white rounded-sm font-bold shadow-none transition-colors",
+      "outline": "border-2 border-zinc-200 text-zinc-950 hover:border-zinc-950 hover:bg-zinc-50 rounded-sm font-bold transition-all"
+    },
+    "cards": {
+      "style": "bg-white border border-zinc-200 rounded-sm shadow-sm",
+      "header": "border-b border-zinc-100 pb-4 mb-4"
+    },
+    "inputs": {
+      "style": "border-zinc-300 rounded-sm focus-visible:ring-2 focus-visible:ring-orange-600 focus-visible:ring-offset-1 bg-white"
+    },
+    "tables": {
+      "style": "w-full text-sm",
+      "header": "border-b-2 border-zinc-950 text-zinc-950 font-bold uppercase tracking-wider text-xs pb-3 text-left",
+      "row": "border-b border-zinc-100 hover:bg-zinc-50 transition-colors py-3"
+    }
+  },
+  "motion": {
+    "hover": "transition-all duration-200 ease-in-out",
+    "active": "active:scale-[0.98]",
+    "page_load": "animate-in fade-in slide-in-from-bottom-4 duration-500"
+  },
+  "media": {
+    "images": {
+      "login_background": {
+        "url": "https://images.pexels.com/photos/4458205/pexels-photo-4458205.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "High-resolution close-up of an architectural floor plan for the auth screen background. Apply a dark overlay (bg-black/60) to ensure login form readability."
+      },
+      "user_avatar": {
+        "url": "https://images.unsplash.com/photo-1672748341520-6a839e6c05bb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwxfHxtYWxlJTIwY29uc3RydWN0aW9uJTIwd29ya2VyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzgxMjA5NDgwfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Portrait of a male construction worker with a red hard hat, used as the user avatar in the top right of the dashboard."
+      },
+      "dashboard_banner": {
+        "url": "https://images.unsplash.com/photo-1615406020658-6c4b805f1f30?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBjb21tZXJjaWFsJTIwYnVpbGRpbmclMjByb29mJTIwYXJjaGl0ZWN0dXJlfGVufDB8fHx8MTc4MTIwOTQ2NHww&ixlib=rb-4.1.0&q=85",
+        "description": "Modern commercial building architecture. Can be used for empty states or a welcome banner in the dashboard."
+      }
+    },
+    "icons_library": "lucide-react"
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the Archetype 4 (Swiss & High-Contrast) design rules. This means minimal colors, using structural grays and blacks for hierarchy, and saving the primary color (Safety Orange #EA580C) only for vital CTAs and active states.",
+    "BANNED FONTS: Do not use Inter, Roboto, or Open Sans. Use 'Chivo' for headings and 'Public Sans' for body text. Add these via Google Fonts in index.html.",
+    "Do not use generic Shadcn soft shadows. Override Shadcn rounded-md to rounded-sm, and remove box-shadows in favor of crisp 1px borders (border-zinc-200).",
+    "The layout must feature a fixed dark sidebar (bg-zinc-950) and a light main content area (bg-zinc-50).",
+    "Implement the 'Control Room' grid for the dashboard KPIs: 4 columns on desktop, tight gap-6, 1px solid borders on KPI cards.",
+    "Forms for Contacts, Properties, and Deals should use pure HTML/Tailwind for structural layout but Shadcn for interactive logic (Select, Datepicker, Input).",
+    "For the P&L section within Deals, auto-calculate the Profit based on Proposal Chosen Amount minus (Materials + Labor + Subcontractors + Other Expenses).",
+    "Ensure all interactive elements have data-testid attributes (e.g., data-testid='deal-submit-button').",
+    "Apply 'tracking-tight' to all Headings, and 'uppercase tracking-[0.1em]' to labels and table headers.",
+    "For the login page, use a split-screen design: Left side is the auth form with a white background, right side is the login_background image covered with a black/40 overlay."
+  ]
+}
