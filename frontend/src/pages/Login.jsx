@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { formatApiError } from "@/lib/api";
 
-const BG = "/login-building.jpeg";
+const BG = "/login-building.jpeg?v=2";
 
 export default function Login() {
   const { login } = useAuth();
