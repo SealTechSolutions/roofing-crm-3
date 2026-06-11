@@ -218,6 +218,12 @@ class VendorIn(BaseModel):
     category: str = "Other"
     phone: str = ""
     email: str = ""
+    tin_ein: str = ""
+    address: str = ""
+    address_line2: str = ""
+    city: str = ""
+    state: str = ""
+    zip_code: str = ""
     notes: str = ""
 
 

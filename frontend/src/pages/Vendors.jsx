@@ -6,7 +6,7 @@ import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 
 export default function Vendors({ kind = "Vendor" }) {
   const isSub = kind === "Subcontractor";
-  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", phone: "", email: "", notes: "" };
+  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", phone: "", email: "", tin_ein: "", address: "", address_line2: "", city: "", state: "", zip_code: "", notes: "" };
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -124,7 +124,33 @@ export default function Vendors({ kind = "Vendor" }) {
               <Field label="Email">
                 <Input data-testid={`${kind.toLowerCase()}-email`} type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
               </Field>
+              <Field label="TIN / EIN">
+                <Input data-testid={`${kind.toLowerCase()}-tin`} value={form.tin_ein} onChange={(v) => setForm({ ...form, tin_ein: v })} placeholder="XX-XXXXXXX" />
+              </Field>
             </Grid2>
+            <Field label="Address Line 1">
+              <Input data-testid={`${kind.toLowerCase()}-address`} value={form.address} onChange={(v) => setForm({ ...form, address: v })} />
+            </Field>
+            <Field label="Address Line 2">
+              <Input data-testid={`${kind.toLowerCase()}-address2`} value={form.address_line2} onChange={(v) => setForm({ ...form, address_line2: v })} />
+            </Field>
+            <div className="grid grid-cols-1 sm:grid-cols-6 gap-4">
+              <div className="sm:col-span-3">
+                <Field label="City">
+                  <Input data-testid={`${kind.toLowerCase()}-city`} value={form.city} onChange={(v) => setForm({ ...form, city: v })} />
+                </Field>
+              </div>
+              <div className="sm:col-span-1">
+                <Field label="State">
+                  <Input data-testid={`${kind.toLowerCase()}-state`} value={form.state} onChange={(v) => setForm({ ...form, state: v })} maxLength={2} />
+                </Field>
+              </div>
+              <div className="sm:col-span-2">
+                <Field label="ZIP">
+                  <Input data-testid={`${kind.toLowerCase()}-zip`} value={form.zip_code} onChange={(v) => setForm({ ...form, zip_code: v })} />
+                </Field>
+              </div>
+            </div>
             <Field label="Notes">
               <textarea
                 data-testid={`${kind.toLowerCase()}-notes`}
