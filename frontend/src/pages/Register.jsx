@@ -29,10 +29,8 @@ export default function Register() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 p-8">
       <div className="w-full max-w-md">
-        <div className="mb-12 flex justify-center">
-          <div className="bg-zinc-950 p-4 rounded-sm">
-            <img src="/sealtech-logo.png" alt="SealTech Building Solutions" className="h-14 w-auto" />
-          </div>
+        <div className="mb-10 flex justify-center">
+          <img src="/sealtech-logo.png" alt="SealTech Building Solutions" className="h-20 w-auto" />
         </div>
 
         <h1 className="font-heading text-3xl font-black tracking-tight mb-2">Create account.</h1>

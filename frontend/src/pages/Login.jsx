@@ -31,8 +31,8 @@ export default function Login() {
     <div className="min-h-screen grid lg:grid-cols-2 bg-zinc-50">
       <div className="flex items-center justify-center p-8 lg:p-16 order-2 lg:order-1">
         <div className="w-full max-w-md">
-          <div className="mb-12 bg-zinc-950 p-4 rounded-sm inline-block">
-            <img src="/sealtech-logo.png" alt="SealTech Building Solutions" className="h-14 w-auto" />
+          <div className="mb-12 inline-block">
+            <img src="/sealtech-logo.png" alt="SealTech Building Solutions" className="h-20 w-auto" />
           </div>
 
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight leading-none mb-2">

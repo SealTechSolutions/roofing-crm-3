@@ -16,8 +16,8 @@ export default function Layout() {
     <div className="min-h-screen flex bg-zinc-100">
       {/* Sidebar */}
       <aside className="w-64 bg-zinc-950 text-zinc-50 flex flex-col" data-testid="sidebar">
-        <div className="p-6 border-b border-zinc-800">
-          <img src="/sealtech-logo.png" alt="SealTech Building Solutions" className="w-full h-auto max-h-20 object-contain" />
+        <div className="p-4 bg-white border-b border-zinc-800">
+          <img src="/sealtech-logo.png" alt="SealTech Building Solutions" className="w-full h-auto max-h-24 object-contain" />
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {NAV.map((item) => (
