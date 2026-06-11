@@ -174,7 +174,7 @@ export default function DealDetail() {
                       <CellInput value={m.label} onCommit={(v) => updateMilestone(i, { label: v })} placeholder="Deposit / Mid-Job / Completion" data-testid={`milestone-label-${i}`} />
                     </td>
                     <td className="py-2 pr-3 text-right">
-                      <CellInput type="number" value={m.percent} onCommit={(v) => updateMilestone(i, { percent: parseFloat(v || 0) })} className="text-right" data-testid={`milestone-percent-${i}`} />
+                      <CellInput type="number" step="5" min="0" max="100" value={m.percent} onCommit={(v) => updateMilestone(i, { percent: parseFloat(v || 0) })} className="text-right" data-testid={`milestone-percent-${i}`} />
                     </td>
                     <td className="py-2 pr-3 text-right font-mono">{formatCurrency(m.amount)}</td>
                     <td className="py-2 pr-3">
