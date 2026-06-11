@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { api, formatApiError } from "@/lib/api";
-import { Plus, Pencil, Trash2, Truck, HardHat } from "lucide-react";
+import { Plus, Pencil, Trash2, Truck, HardHat, FolderOpen } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
+import { ExportButtons, ImportButton } from "@/components/ExportImport";
+import Documents from "@/components/Documents";
 
 export default function Vendors({ kind = "Vendor" }) {
   const isSub = kind === "Subcontractor";
-  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", phone: "", email: "", tin_ein: "", address: "", address_line2: "", city: "", state: "", zip_code: "", notes: "" };
+  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", phone: "", work_phone: "", mobile_phone: "", fax: "", email: "", tin_ein: "", address: "", address_line2: "", city: "", state: "", zip_code: "", notes: "" };
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -14,6 +16,7 @@ export default function Vendors({ kind = "Vendor" }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(false);
+  const [docsFor, setDocsFor] = useState(null);
 
   const load = () => api.get(`/vendors?kind=${encodeURIComponent(kind)}`).then((r) => setItems(r.data));
   useEffect(() => {
@@ -61,18 +64,22 @@ export default function Vendors({ kind = "Vendor" }) {
 
   return (
     <div className="p-6 sm:p-8 animate-in fade-in duration-500" data-testid={`${kind.toLowerCase()}s-page`}>
-      <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200">
+      <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200 gap-4 flex-wrap">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-2">{eyebrow}</div>
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight">{subtitle}</h1>
         </div>
-        <button
-          data-testid={`new-${kind.toLowerCase()}-button`}
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" /> New {kind}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <ExportButtons category={isSub ? "subcontractors" : "vendors"} />
+          <ImportButton category={isSub ? "subcontractors" : "vendors"} onImported={load} />
+          <button
+            data-testid={`new-${kind.toLowerCase()}-button`}
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" /> New {kind}
+          </button>
+        </div>
       </div>
 
       <div className="bg-white border border-zinc-200 rounded-sm overflow-x-auto">
@@ -93,10 +100,11 @@ export default function Vendors({ kind = "Vendor" }) {
                 <tr key={v.id} className="border-b border-zinc-100 hover:bg-zinc-50" data-testid={`${kind.toLowerCase()}-row-${v.id}`}>
                   <td className="px-6 py-3 font-bold text-zinc-950">{v.name}</td>
                   <td className="px-6 py-3 text-zinc-700 text-xs uppercase tracking-wider">{v.category}</td>
-                  <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{v.phone}</td>
+                  <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{v.mobile_phone || v.work_phone || v.phone}</td>
                   <td className="px-6 py-3 text-zinc-600 text-xs">{v.email}</td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1">
+                      <button data-testid={`docs-${kind.toLowerCase()}-${v.id}`} onClick={() => setDocsFor(v)} title="Documents" className="p-1.5 hover:bg-zinc-200 rounded-sm"><FolderOpen className="w-3.5 h-3.5" /></button>
                       <button data-testid={`edit-${kind.toLowerCase()}-${v.id}`} onClick={() => openEdit(v)} className="p-1.5 hover:bg-zinc-200 rounded-sm"><Pencil className="w-3.5 h-3.5" /></button>
                       <button data-testid={`delete-${kind.toLowerCase()}-${v.id}`} onClick={() => remove(v.id)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
@@ -118,7 +126,16 @@ export default function Vendors({ kind = "Vendor" }) {
               <Field label="Category">
                 <Select data-testid={`${kind.toLowerCase()}-category`} value={form.category} onChange={(v) => setForm({ ...form, category: v })} options={categories.length ? categories : ["Other"]} />
               </Field>
-              <Field label="Phone">
+              <Field label="Work Phone">
+                <Input data-testid={`${kind.toLowerCase()}-work-phone`} value={form.work_phone} onChange={(v) => setForm({ ...form, work_phone: v })} />
+              </Field>
+              <Field label="Mobile Phone">
+                <Input data-testid={`${kind.toLowerCase()}-mobile-phone`} value={form.mobile_phone} onChange={(v) => setForm({ ...form, mobile_phone: v })} />
+              </Field>
+              <Field label="Fax">
+                <Input data-testid={`${kind.toLowerCase()}-fax`} value={form.fax} onChange={(v) => setForm({ ...form, fax: v })} />
+              </Field>
+              <Field label="Other / Primary Phone">
                 <Input data-testid={`${kind.toLowerCase()}-phone`} value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
               </Field>
               <Field label="Email">
@@ -165,6 +182,12 @@ export default function Vendors({ kind = "Vendor" }) {
               <button type="submit" disabled={loading} data-testid={`${kind.toLowerCase()}-save`} className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm disabled:opacity-50">{loading ? "Saving..." : "Save"}</button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {docsFor && (
+        <Modal wide title={`Documents — ${docsFor.name}`} onClose={() => setDocsFor(null)}>
+          <Documents parentType={isSub ? "subcontractor" : "vendor"} parentId={docsFor.id} title="Files" />
         </Modal>
       )}
     </div>

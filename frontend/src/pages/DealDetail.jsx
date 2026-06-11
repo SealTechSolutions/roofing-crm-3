@@ -4,6 +4,7 @@ import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { ArrowLeft, Plus, Trash2, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
+import Documents from "@/components/Documents";
 
 export default function DealDetail() {
   const { id } = useParams();
@@ -306,6 +307,9 @@ export default function DealDetail() {
           {deal.chosen_date && <Row label="Chosen Date" value={deal.chosen_date} />}
         </Card>
       </div>
+
+      {/* Documents */}
+      <Documents parentType="project" parentId={id} title="Documents — Measurement Reports, Assessments, Scopes, Invoices, Photos" />
 
       {/* Contact + Property */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">

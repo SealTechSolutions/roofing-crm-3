@@ -12,10 +12,17 @@ from typing import List, Optional, Literal
 
 import bcrypt
 import jwt
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, status
+import csv
+import io
+from openpyxl import load_workbook
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Form, Query, Header
+from fastapi.responses import Response, StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
+
+from storage import init_storage, put_object, get_object, APP_NAME
+from exports import to_excel, to_pdf, CATEGORIES as EXPORT_CATEGORIES
 
 
 # ----- DB -----
@@ -118,6 +125,11 @@ VENDOR_CATEGORIES = ["Material Supplier", "Labor", "Subcontractor", "Other"]
 COST_CATEGORIES = ["Materials", "Labor", "Subcontractor", "Other"]
 MILESTONE_STATUSES = ["Pending", "Invoiced", "Paid"]
 COST_ITEM_STATUSES = ["Pending", "Paid"]
+CONTACT_TYPES = ["Owner", "Property Manager", "Tenant", "Other"]
+DOCUMENT_CATEGORIES = ["Measurement Report", "Assessment", "Scope", "Proposal", "Invoice", "Photo", "Insurance/COI", "W-9", "Other"]
+PARENT_TYPES = ["project", "vendor", "subcontractor", "contact", "property"]
+IMPORT_CATEGORIES = ["contacts", "properties", "projects", "vendors", "subcontractors"]
+DUPLICATE_MODES = ["skip", "update", "create"]
 
 
 class RegisterReq(BaseModel):
@@ -148,7 +160,11 @@ class ContactIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     contact_name: str
     company_name: str = ""
+    contact_type: str = "Owner"  # Owner | Property Manager | Tenant | Other
     phone: str = ""
+    work_phone: str = ""
+    mobile_phone: str = ""
+    fax: str = ""
     email: str = ""
     address: str = ""
     address_line2: str = ""
@@ -217,6 +233,9 @@ class VendorIn(BaseModel):
     kind: str = "Vendor"  # Vendor | Subcontractor
     category: str = "Other"
     phone: str = ""
+    work_phone: str = ""
+    mobile_phone: str = ""
+    fax: str = ""
     email: str = ""
     tin_ein: str = ""
     address: str = ""
@@ -237,6 +256,8 @@ class DealIn(BaseModel):
     title: str
     deal_type: str = "Scope"  # Assessment | Scope
     contact_id: Optional[str] = None
+    customer_contact_id: Optional[str] = None
+    owner_contact_id: Optional[str] = None
     property_id: Optional[str] = None
     lead_source: str = "Personal"
     referral_source: str = ""
@@ -317,6 +338,10 @@ async def options(current=Depends(get_current_user)):
         "cost_categories": COST_CATEGORIES,
         "milestone_statuses": MILESTONE_STATUSES,
         "cost_item_statuses": COST_ITEM_STATUSES,
+        "contact_types": CONTACT_TYPES,
+        "document_categories": DOCUMENT_CATEGORIES,
+        "import_categories": IMPORT_CATEGORIES,
+        "duplicate_modes": DUPLICATE_MODES,
         "milestone_templates": {
             "50/50": [{"label": "Deposit", "percent": 50}, {"label": "Completion", "percent": 50}],
             "50/25/25": [{"label": "Deposit", "percent": 50}, {"label": "Mid-Job", "percent": 25}, {"label": "Completion", "percent": 25}],
@@ -548,6 +573,307 @@ async def delete_vendor(vendor_id: str, current=Depends(get_current_user)):
     return {"ok": True}
 
 
+# ----- Files (Documents) -----
+@api_router.post("/files/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    parent_type: str = Form(...),
+    parent_id: str = Form(...),
+    category: str = Form("Other"),
+    current=Depends(get_current_user),
+):
+    if parent_type not in PARENT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid parent_type")
+    if category not in DOCUMENT_CATEGORIES:
+        category = "Other"
+    ext = (file.filename.rsplit(".", 1)[-1] if "." in file.filename else "bin").lower()
+    file_id = str(uuid.uuid4())
+    storage_path = f"{APP_NAME}/uploads/{parent_type}/{parent_id}/{file_id}.{ext}"
+    data = await file.read()
+    if len(data) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+    try:
+        result = put_object(storage_path, data, file.content_type or "application/octet-stream")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+    doc = {
+        "id": file_id,
+        "parent_type": parent_type,
+        "parent_id": parent_id,
+        "category": category,
+        "storage_path": result["path"],
+        "original_filename": file.filename,
+        "content_type": file.content_type or "application/octet-stream",
+        "size": len(data),
+        "is_deleted": False,
+        "uploaded_by": current["id"],
+        "created_at": now_iso(),
+    }
+    await db.files.insert_one(doc.copy())
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/files")
+async def list_files(
+    parent_type: str = Query(...),
+    parent_id: str = Query(...),
+    current=Depends(get_current_user),
+):
+    cursor = db.files.find(
+        {"parent_type": parent_type, "parent_id": parent_id, "is_deleted": False},
+        {"_id": 0},
+    ).sort("created_at", -1)
+    return await cursor.to_list(1000)
+
+
+@api_router.get("/files/{file_id}/download")
+async def download_file(
+    file_id: str,
+    token: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    # Auth check - support either Bearer header or token query (for browser links)
+    raw = None
+    if authorization and authorization.startswith("Bearer "):
+        raw = authorization[7:]
+    elif token:
+        raw = token
+    if not raw:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(raw, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["sub"]})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    rec = await db.files.find_one({"id": file_id, "is_deleted": False})
+    if not rec:
+        raise HTTPException(status_code=404, detail="File not found")
+    try:
+        data, content_type = get_object(rec["storage_path"])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Download failed: {e}")
+    return Response(
+        content=data,
+        media_type=rec.get("content_type") or content_type,
+        headers={"Content-Disposition": f'attachment; filename="{rec["original_filename"]}"'},
+    )
+
+
+@api_router.delete("/files/{file_id}")
+async def delete_file(file_id: str, current=Depends(get_current_user)):
+    result = await db.files.update_one({"id": file_id}, {"$set": {"is_deleted": True, "deleted_at": now_iso()}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"ok": True}
+
+
+# ----- Export -----
+async def _records_for(category: str) -> list:
+    if category == "contacts":
+        return await db.contacts.find({}, {"_id": 0}).sort("contact_name", 1).to_list(5000)
+    if category == "properties":
+        return await db.properties.find({}, {"_id": 0}).sort("property_name", 1).to_list(5000)
+    if category == "projects":
+        return await db.deals.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    if category == "vendors":
+        return await db.vendors.find({"kind": "Vendor"}, {"_id": 0}).sort("name", 1).to_list(5000)
+    if category == "subcontractors":
+        return await db.vendors.find({"kind": "Subcontractor"}, {"_id": 0}).sort("name", 1).to_list(5000)
+    raise HTTPException(status_code=400, detail="Unknown category")
+
+
+@api_router.get("/export/{category}.{fmt}")
+async def export_category(category: str, fmt: str, current=Depends(get_current_user)):
+    if category == "all":
+        sections = [(c, await _records_for(c)) for c in IMPORT_CATEGORIES]
+    else:
+        if category not in IMPORT_CATEGORIES:
+            raise HTTPException(status_code=400, detail="Unknown category")
+        sections = [(category, await _records_for(category))]
+    if fmt == "xlsx":
+        data = to_excel(sections)
+        return Response(
+            content=data,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="sealtech-{category}.xlsx"'},
+        )
+    if fmt == "pdf":
+        data = to_pdf(sections)
+        return Response(
+            content=data,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="sealtech-{category}.pdf"'},
+        )
+    raise HTTPException(status_code=400, detail="Unsupported format (use xlsx or pdf)")
+
+
+@api_router.get("/export/template/{category}.xlsx")
+async def export_template(category: str, current=Depends(get_current_user)):
+    if category not in IMPORT_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Unknown category")
+    sections = [(category, [])]
+    data = to_excel(sections)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="sealtech-{category}-template.xlsx"'},
+    )
+
+
+# ----- Import -----
+def _parse_rows(data: bytes, filename: str):
+    name = (filename or "").lower()
+    if name.endswith(".csv"):
+        text = data.decode("utf-8-sig", errors="replace")
+        reader = csv.DictReader(io.StringIO(text))
+        return [dict(r) for r in reader]
+    # default to xlsx
+    wb = load_workbook(io.BytesIO(data), data_only=True)
+    ws = wb.active
+    headers = [str(c.value).strip() if c.value is not None else "" for c in ws[1]]
+    rows = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if all(v in (None, "") for v in row):
+            continue
+        rec = {}
+        for i, h in enumerate(headers):
+            if not h:
+                continue
+            v = row[i] if i < len(row) else None
+            rec[h] = "" if v is None else v
+        rows.append(rec)
+    return rows
+
+
+def _normalize_row(category: str, raw: dict) -> dict:
+    """Map exported headers back to model field keys."""
+    cfg = EXPORT_CATEGORIES[
+        "vendors" if category == "vendors" else "subcontractors" if category == "subcontractors" else category
+    ]
+    header_to_key = dict(zip(cfg["headers"], cfg["keys"]))
+    out = {}
+    for h, v in raw.items():
+        key = header_to_key.get(h.strip()) if isinstance(h, str) else None
+        if not key or key.startswith("_"):
+            continue
+        out[key] = v if isinstance(v, str) else ("" if v is None else v)
+    return out
+
+
+async def _find_existing(category: str, rec: dict):
+    if category == "contacts":
+        q = []
+        if rec.get("email"):
+            q.append({"email": str(rec["email"]).lower()})
+        if rec.get("company_name") and rec.get("contact_name"):
+            q.append({"company_name": rec["company_name"], "contact_name": rec["contact_name"]})
+        if not q:
+            return None
+        return await db.contacts.find_one({"$or": q})
+    if category == "properties":
+        if rec.get("property_address") and rec.get("property_city"):
+            return await db.properties.find_one({
+                "property_address": rec["property_address"],
+                "property_city": rec["property_city"],
+            })
+        return None
+    if category == "projects":
+        if rec.get("title"):
+            return await db.deals.find_one({"title": rec["title"]})
+        return None
+    if category in ("vendors", "subcontractors"):
+        kind = "Vendor" if category == "vendors" else "Subcontractor"
+        q = {"kind": kind, "name": rec.get("name", "")}
+        if rec.get("tin_ein"):
+            q["tin_ein"] = rec["tin_ein"]
+        return await db.vendors.find_one(q) if rec.get("name") else None
+    return None
+
+
+@api_router.post("/import/{category}")
+async def import_category(
+    category: str,
+    file: UploadFile = File(...),
+    duplicate_mode: str = Form("skip"),
+    current=Depends(get_current_user),
+):
+    if category not in IMPORT_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Unknown category")
+    if duplicate_mode not in DUPLICATE_MODES:
+        duplicate_mode = "skip"
+
+    raw_bytes = await file.read()
+    try:
+        rows = _parse_rows(raw_bytes, file.filename)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse file: {e}")
+
+    imported = 0
+    updated = 0
+    skipped = 0
+    errors = []
+
+    for idx, raw in enumerate(rows, start=2):  # row index in spreadsheet (header is row 1)
+        try:
+            rec = _normalize_row(category, raw)
+            if not rec:
+                continue
+            # category-specific seeding
+            if category == "vendors":
+                rec["kind"] = "Vendor"
+            elif category == "subcontractors":
+                rec["kind"] = "Subcontractor"
+            # Coerce numeric for projects
+            if category == "projects":
+                for nk in ["proposal_option_1", "proposal_option_2", "proposal_option_3", "chosen_amount"]:
+                    try:
+                        rec[nk] = float(rec.get(nk) or 0)
+                    except (TypeError, ValueError):
+                        rec[nk] = 0.0
+            # Required field check
+            required = {
+                "contacts": "contact_name",
+                "properties": "property_name",
+                "projects": "title",
+                "vendors": "name",
+                "subcontractors": "name",
+            }[category]
+            if not rec.get(required):
+                skipped += 1
+                errors.append({"row": idx, "error": f"Missing required field: {required}"})
+                continue
+
+            existing = await _find_existing(category, rec)
+
+            if existing and duplicate_mode == "skip":
+                skipped += 1
+                continue
+            if existing and duplicate_mode == "update":
+                coll = "deals" if category == "projects" else ("vendors" if category in ("vendors", "subcontractors") else category)
+                await db[coll].update_one({"id": existing["id"]}, {"$set": rec})
+                updated += 1
+                continue
+            # create
+            rec["id"] = str(uuid.uuid4())
+            rec["created_at"] = now_iso()
+            coll = "deals" if category == "projects" else ("vendors" if category in ("vendors", "subcontractors") else category)
+            await db[coll].insert_one(rec.copy())
+            imported += 1
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)})
+
+    return {
+        "imported": imported,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+        "total": len(rows),
+    }
+
+
 # ----- Dashboard -----
 @api_router.get("/dashboard/summary")
 async def dashboard_summary(current=Depends(get_current_user)):
@@ -604,9 +930,18 @@ async def on_startup():
     await db.properties.create_index("id", unique=True)
     await db.deals.create_index("id", unique=True)
     await db.vendors.create_index("id", unique=True)
+    await db.files.create_index("id", unique=True)
+    await db.files.create_index([("parent_type", 1), ("parent_id", 1)])
 
     # Migrate deprecated status "Proposal Sent" → "Sent"
     await db.deals.update_many({"status": "Proposal Sent"}, {"$set": {"status": "Sent"}})
+
+    # Init object storage (non-fatal)
+    try:
+        init_storage()
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.warning(f"Storage init failed (uploads will not work): {e}")
 
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@roofingcrm.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")

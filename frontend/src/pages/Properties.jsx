@@ -3,6 +3,7 @@ import { api, formatApiError } from "@/lib/api";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
+import { ExportButtons, ImportButton } from "@/components/ExportImport";
 
 const empty = {
   property_name: "",
@@ -72,18 +73,22 @@ export default function Properties() {
 
   return (
     <div className="p-6 sm:p-8 animate-in fade-in duration-500" data-testid="properties-page">
-      <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200">
+      <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200 gap-4 flex-wrap">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-2">Properties</div>
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight">Sites &amp; Buildings</h1>
         </div>
-        <button
-          data-testid="new-property-button"
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" /> New Property
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <ExportButtons category="properties" />
+          <ImportButton category="properties" onImported={load} />
+          <button
+            data-testid="new-property-button"
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" /> New Property
+          </button>
+        </div>
       </div>
 
       <div className="bg-white border border-zinc-200 rounded-sm overflow-x-auto">

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api, formatCurrency } from "@/lib/api";
 import { Link } from "react-router-dom";
 import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy } from "lucide-react";
+import { ExportButtons } from "@/components/ExportImport";
 
 const KPI = ({ label, value, hint, icon: Icon, testId }) => (
   <div className="bg-white border border-zinc-200 p-6 rounded-sm" data-testid={testId}>
@@ -31,18 +32,24 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 sm:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500" data-testid="dashboard-page">
-      <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200">
+      <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200 gap-4 flex-wrap">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-2">Overview</div>
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight leading-none">Command Center</h1>
         </div>
-        <Link
-          to="/projects"
-          data-testid="dashboard-new-deal"
-          className="hidden sm:inline-flex items-center gap-2 bg-zinc-950 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-zinc-800 rounded-sm transition-colors"
-        >
-          View Pipeline →
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="hidden sm:flex flex-col items-end">
+            <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500 mb-1">Export Everything</div>
+            <ExportButtons category="all" />
+          </div>
+          <Link
+            to="/projects"
+            data-testid="dashboard-new-deal"
+            className="inline-flex items-center gap-2 bg-zinc-950 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-zinc-800 rounded-sm transition-colors"
+          >
+            View Pipeline →
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

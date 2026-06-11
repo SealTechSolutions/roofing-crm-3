@@ -5,11 +5,14 @@ import { Plus, Pencil, Trash2, ArrowUpRight, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { StatusPill } from "@/pages/Dashboard";
+import { ExportButtons, ImportButton } from "@/components/ExportImport";
 
 const empty = {
   title: "",
   deal_type: "Scope",
   contact_id: "",
+  customer_contact_id: "",
+  owner_contact_id: "",
   property_id: "",
   lead_source: "Personal",
   referral_source: "",
@@ -53,7 +56,7 @@ export default function Deals() {
   }, []);
 
   const openCreate = () => { setEditing(null); setForm(empty); setOpen(true); };
-  const openEdit = (d) => { setEditing(d); setForm({ ...empty, ...d, contact_id: d.contact_id || "", property_id: d.property_id || "" }); setOpen(true); };
+  const openEdit = (d) => { setEditing(d); setForm({ ...empty, ...d, contact_id: d.contact_id || "", customer_contact_id: d.customer_contact_id || "", owner_contact_id: d.owner_contact_id || "", property_id: d.property_id || "" }); setOpen(true); };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -61,6 +64,8 @@ export default function Deals() {
     try {
       const payload = { ...form };
       if (!payload.contact_id) payload.contact_id = null;
+      if (!payload.customer_contact_id) payload.customer_contact_id = null;
+      if (!payload.owner_contact_id) payload.owner_contact_id = null;
       if (!payload.property_id) payload.property_id = null;
       if (editing) {
         await api.put(`/deals/${editing.id}`, payload);
@@ -108,18 +113,22 @@ export default function Deals() {
 
   return (
     <div className="p-6 sm:p-8 animate-in fade-in duration-500" data-testid="deals-page">
-      <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200">
+      <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200 gap-4 flex-wrap">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-2">Pipeline</div>
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight">Projects</h1>
         </div>
-        <button
-          data-testid="new-deal-button"
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" /> New Project
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <ExportButtons category="projects" />
+          <ImportButton category="projects" onImported={load} />
+          <button
+            data-testid="new-deal-button"
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" /> New Project
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-6">
@@ -206,7 +215,13 @@ export default function Deals() {
             </Grid2>
 
             <Grid2>
-              <Field label="Contact">
+              <Field label="Customer / Billed-To (e.g., Property Manager)">
+                <Select data-testid="deal-customer-contact" value={form.customer_contact_id || ""} onChange={(v) => setForm({ ...form, customer_contact_id: v })} options={contactOpts} />
+              </Field>
+              <Field label="Property Owner (if different)">
+                <Select data-testid="deal-owner-contact" value={form.owner_contact_id || ""} onChange={(v) => setForm({ ...form, owner_contact_id: v })} options={contactOpts} />
+              </Field>
+              <Field label="Primary Contact">
                 <Select data-testid="deal-contact" value={form.contact_id || ""} onChange={(v) => setForm({ ...form, contact_id: v })} options={contactOpts} />
               </Field>
               <Field label="Property">
