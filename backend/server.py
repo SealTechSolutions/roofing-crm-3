@@ -95,11 +95,25 @@ def strip_id(doc: dict) -> dict:
 
 
 # ----- Models -----
-LEAD_SOURCES = ["Referral", "Website", "Cold Call", "Door Knock", "Social Media", "Repeat Customer", "Other"]
-PROJECT_TYPES = ["Repair", "Re-roof", "New Construction", "Maintenance", "Inspection"]
-ROOF_TYPES = ["TPO", "EPDM", "PVC", "Modified Bitumen", "Built-Up (BUR)", "Metal", "Shingle", "Tile"]
-DEAL_STATUSES = ["Lead", "Sent", "Won", "Lost"]
+LEAD_SOURCES = ["Referral", "Marketing", "Website", "Email Campaign", "Personal"]
+PROJECT_TYPES = ["Repair", "Restoration", "Replacement"]
+ROOF_TYPES = [
+    "TPO",
+    "PVC",
+    "EPDM",
+    "EPDM w/ Ballast",
+    "ModBit",
+    "BUR (Built-Up)",
+    "Metal",
+    "Shingle",
+    "Tile",
+    "Silicone",
+    "Silicone w/ Granules",
+    "FARM (Fluid Applied Reinforced Membrane)",
+]
+DEAL_STATUSES = ["Lead", "Sent", "Won", "Lost", "Past Lead"]
 DEAL_TYPES = ["Assessment", "Scope"]
+VENDOR_KINDS = ["Vendor", "Subcontractor"]
 VENDOR_CATEGORIES = ["Material Supplier", "Labor", "Subcontractor", "Other"]
 COST_CATEGORIES = ["Materials", "Labor", "Subcontractor", "Other"]
 MILESTONE_STATUSES = ["Pending", "Invoiced", "Paid"]
@@ -137,8 +151,16 @@ class ContactIn(BaseModel):
     phone: str = ""
     email: str = ""
     address: str = ""
+    address_line2: str = ""
+    city: str = ""
+    state: str = ""
+    zip_code: str = ""
     billing_same_as_address: bool = True
     billing_address: str = ""
+    billing_address_line2: str = ""
+    billing_city: str = ""
+    billing_state: str = ""
+    billing_zip: str = ""
 
 
 class Contact(ContactIn):
@@ -150,6 +172,10 @@ class PropertyIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     property_name: str
     property_address: str = ""
+    property_address_line2: str = ""
+    property_city: str = ""
+    property_state: str = ""
+    property_zip: str = ""
     property_contact_id: Optional[str] = None
     property_contact_name: str = ""
     property_contact_phone: str = ""
@@ -188,7 +214,8 @@ class CostItem(BaseModel):
 class VendorIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     name: str
-    category: str = "Other"  # Material Supplier | Labor | Subcontractor | Other
+    kind: str = "Vendor"  # Vendor | Subcontractor
+    category: str = "Other"
     phone: str = ""
     email: str = ""
     notes: str = ""
@@ -205,7 +232,8 @@ class DealIn(BaseModel):
     deal_type: str = "Scope"  # Assessment | Scope
     contact_id: Optional[str] = None
     property_id: Optional[str] = None
-    lead_source: str = "Other"
+    lead_source: str = "Personal"
+    referral_source: str = ""
     project_type: str = "Repair"
     current_roof_type: str = "TPO"
     proposed_roof_type: str = "TPO"
@@ -213,6 +241,8 @@ class DealIn(BaseModel):
     proposal_option_2: float = 0.0
     proposal_option_3: float = 0.0
     chosen_amount: float = 0.0
+    chosen_date: str = ""
+    date_sent: str = ""
     status: str = "Lead"
     materials_cost: float = 0.0
     labor_cost: float = 0.0
@@ -276,6 +306,7 @@ async def options(current=Depends(get_current_user)):
         "roof_types": ROOF_TYPES,
         "deal_statuses": DEAL_STATUSES,
         "deal_types": DEAL_TYPES,
+        "vendor_kinds": VENDOR_KINDS,
         "vendor_categories": VENDOR_CATEGORIES,
         "cost_categories": COST_CATEGORIES,
         "milestone_statuses": MILESTONE_STATUSES,
@@ -299,6 +330,10 @@ async def create_contact(body: ContactIn, current=Depends(get_current_user)):
     data = body.model_dump()
     if data["billing_same_as_address"]:
         data["billing_address"] = data["address"]
+        data["billing_address_line2"] = data["address_line2"]
+        data["billing_city"] = data["city"]
+        data["billing_state"] = data["state"]
+        data["billing_zip"] = data["zip_code"]
     data["id"] = str(uuid.uuid4())
     data["created_at"] = now_iso()
     await db.contacts.insert_one(data.copy())
@@ -318,6 +353,10 @@ async def update_contact(contact_id: str, body: ContactIn, current=Depends(get_c
     data = body.model_dump()
     if data["billing_same_as_address"]:
         data["billing_address"] = data["address"]
+        data["billing_address_line2"] = data["address_line2"]
+        data["billing_city"] = data["city"]
+        data["billing_state"] = data["state"]
+        data["billing_zip"] = data["zip_code"]
     result = await db.contacts.update_one({"id": contact_id}, {"$set": data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -460,8 +499,11 @@ async def delete_deal(deal_id: str, current=Depends(get_current_user)):
 
 # ----- Vendors -----
 @api_router.get("/vendors", response_model=List[Vendor])
-async def list_vendors(current=Depends(get_current_user)):
-    cursor = db.vendors.find({}, {"_id": 0}).sort("name", 1)
+async def list_vendors(kind: Optional[str] = None, current=Depends(get_current_user)):
+    query = {}
+    if kind:
+        query["kind"] = kind
+    cursor = db.vendors.find(query, {"_id": 0}).sort("name", 1)
     return await cursor.to_list(1000)
 
 

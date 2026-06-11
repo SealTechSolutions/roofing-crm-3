@@ -37,7 +37,7 @@ export default function Dashboard() {
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight leading-none">Command Center</h1>
         </div>
         <Link
-          to="/deals"
+          to="/projects"
           data-testid="dashboard-new-deal"
           className="hidden sm:inline-flex items-center gap-2 bg-zinc-950 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-zinc-800 rounded-sm transition-colors"
         >
@@ -61,14 +61,14 @@ export default function Dashboard() {
 
       <div className="bg-white border border-zinc-200 rounded-sm">
         <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
-          <h2 className="font-heading text-lg font-bold tracking-tight">Recent Deals</h2>
-          <Link to="/deals" data-testid="see-all-deals" className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 hover:underline">
+          <h2 className="font-heading text-lg font-bold tracking-tight">Recent Projects</h2>
+          <Link to="/projects" data-testid="see-all-deals" className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 hover:underline">
             See All →
           </Link>
         </div>
         {recent.length === 0 ? (
           <div className="p-12 text-center">
-            <div className="text-sm text-zinc-500 mb-4">No deals yet. Start your pipeline.</div>
+            <div className="text-sm text-zinc-500 mb-4">No projects yet. Start your pipeline.</div>
             <Link
               to="/deals"
               data-testid="empty-create-deal"
@@ -91,7 +91,7 @@ export default function Dashboard() {
               {recent.map((d) => (
                 <tr key={d.id} className="border-b border-zinc-100 hover:bg-zinc-50">
                   <td className="px-6 py-3">
-                    <Link to={`/deals/${d.id}`} className="font-bold text-zinc-950 hover:text-blue-700">{d.title}</Link>
+                    <Link to={`/projects/${d.id}`} className="font-bold text-zinc-950 hover:text-blue-700">{d.title}</Link>
                   </td>
                   <td className="px-6 py-3"><StatusPill status={d.status} /></td>
                   <td className="px-6 py-3 text-zinc-600">{d.project_type}</td>

@@ -7,6 +7,10 @@ import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 const empty = {
   property_name: "",
   property_address: "",
+  property_address_line2: "",
+  property_city: "",
+  property_state: "",
+  property_zip: "",
   property_contact_id: "",
   property_contact_name: "",
   property_contact_phone: "",
@@ -96,7 +100,9 @@ export default function Properties() {
               {items.map((p) => (
                 <tr key={p.id} className="border-b border-zinc-100 hover:bg-zinc-50" data-testid={`property-row-${p.id}`}>
                   <td className="px-6 py-3 font-bold text-zinc-950">{p.property_name}</td>
-                  <td className="px-6 py-3 text-zinc-600 text-xs max-w-xs truncate">{p.property_address}</td>
+                  <td className="px-6 py-3 text-zinc-600 text-xs">
+                    {[p.property_address, [p.property_city, p.property_state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}
+                  </td>
                   <td className="px-6 py-3 text-zinc-700">{p.property_contact_name}</td>
                   <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{p.property_contact_phone}</td>
                   <td className="px-6 py-3">
@@ -118,9 +124,29 @@ export default function Properties() {
             <Field label="Property Name *">
               <Input data-testid="property-name" required value={form.property_name} onChange={(v) => setForm({ ...form, property_name: v })} />
             </Field>
-            <Field label="Property Address">
+            <Field label="Address Line 1">
               <Input data-testid="property-address" value={form.property_address} onChange={(v) => setForm({ ...form, property_address: v })} />
             </Field>
+            <Field label="Address Line 2">
+              <Input data-testid="property-address2" value={form.property_address_line2} onChange={(v) => setForm({ ...form, property_address_line2: v })} />
+            </Field>
+            <div className="grid grid-cols-1 sm:grid-cols-6 gap-4">
+              <div className="sm:col-span-3">
+                <Field label="City">
+                  <Input data-testid="property-city" value={form.property_city} onChange={(v) => setForm({ ...form, property_city: v })} />
+                </Field>
+              </div>
+              <div className="sm:col-span-1">
+                <Field label="State">
+                  <Input data-testid="property-state" value={form.property_state} onChange={(v) => setForm({ ...form, property_state: v })} maxLength={2} />
+                </Field>
+              </div>
+              <div className="sm:col-span-2">
+                <Field label="ZIP">
+                  <Input data-testid="property-zip" value={form.property_zip} onChange={(v) => setForm({ ...form, property_zip: v })} />
+                </Field>
+              </div>
+            </div>
             <Grid2>
               <Field label="Link to Contact">
                 <Select data-testid="property-contact-id" value={form.property_contact_id || ""} onChange={(v) => setForm({ ...form, property_contact_id: v })} options={contactOpts} />

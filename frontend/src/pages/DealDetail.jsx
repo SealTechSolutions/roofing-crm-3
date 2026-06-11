@@ -27,7 +27,7 @@ export default function DealDetail() {
   };
 
   useEffect(() => {
-    reload().catch(() => nav("/deals"));
+    reload().catch(() => nav("/projects"));
     api.get("/vendors").then((r) => setVendors(r.data));
     api.get("/options").then((r) => setOptions(r.data));
   }, [id]);
@@ -114,8 +114,8 @@ export default function DealDetail() {
 
   return (
     <div className="p-6 sm:p-8 animate-in fade-in duration-500" data-testid="deal-detail-page">
-      <Link to="/deals" className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 hover:text-blue-700 mb-4" data-testid="back-to-deals">
-        <ArrowLeft className="w-3 h-3" /> Back to Deals
+      <Link to="/projects" className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 hover:text-blue-700 mb-4" data-testid="back-to-deals">
+        <ArrowLeft className="w-3 h-3" /> Back to Projects
       </Link>
 
       <div className="flex items-start justify-between mb-8 pb-6 border-b border-zinc-200 gap-4 flex-wrap">
@@ -299,6 +299,11 @@ export default function DealDetail() {
           <Row label="Proposed Roof" value={deal.proposed_roof_type} bold />
           <Row label="Project Type" value={deal.project_type} />
           <Row label="Lead Source" value={deal.lead_source} />
+          {deal.lead_source === "Referral" && deal.referral_source && (
+            <Row label="Referred By" value={deal.referral_source} />
+          )}
+          {deal.date_sent && <Row label="Date Sent" value={deal.date_sent} />}
+          {deal.chosen_date && <Row label="Chosen Date" value={deal.chosen_date} />}
         </Card>
       </div>
 

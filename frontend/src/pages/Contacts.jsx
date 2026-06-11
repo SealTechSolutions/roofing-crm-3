@@ -9,8 +9,16 @@ const empty = {
   phone: "",
   email: "",
   address: "",
+  address_line2: "",
+  city: "",
+  state: "",
+  zip_code: "",
   billing_same_as_address: true,
   billing_address: "",
+  billing_address_line2: "",
+  billing_city: "",
+  billing_state: "",
+  billing_zip: "",
 };
 
 export default function Contacts() {
@@ -80,7 +88,7 @@ export default function Contacts() {
           <table className="w-full text-sm" data-testid="contacts-table">
             <thead>
               <tr className="border-b-2 border-zinc-950 text-left">
-                <Th>Contact</Th><Th>Company</Th><Th>Phone</Th><Th>Email</Th><Th>Address</Th><Th>Actions</Th>
+                <Th>Contact</Th><Th>Company</Th><Th>Phone</Th><Th>Email</Th><Th>City, State</Th><Th>Actions</Th>
               </tr>
             </thead>
             <tbody>
@@ -90,7 +98,7 @@ export default function Contacts() {
                   <td className="px-6 py-3 text-zinc-700">{c.company_name}</td>
                   <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{c.phone}</td>
                   <td className="px-6 py-3 text-zinc-600 text-xs">{c.email}</td>
-                  <td className="px-6 py-3 text-zinc-600 text-xs max-w-xs truncate">{c.address}</td>
+                  <td className="px-6 py-3 text-zinc-600 text-xs">{[c.city, c.state].filter(Boolean).join(", ")}</td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1">
                       <button data-testid={`edit-contact-${c.id}`} onClick={() => openEdit(c)} className="p-1.5 hover:bg-zinc-200 rounded-sm"><Pencil className="w-3.5 h-3.5" /></button>
@@ -121,9 +129,29 @@ export default function Contacts() {
                 <Input data-testid="contact-email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
               </Field>
             </Grid2>
-            <Field label="Address">
+            <Field label="Address Line 1">
               <Input data-testid="contact-address" value={form.address} onChange={(v) => setForm({ ...form, address: v })} />
             </Field>
+            <Field label="Address Line 2">
+              <Input data-testid="contact-address2" value={form.address_line2} onChange={(v) => setForm({ ...form, address_line2: v })} />
+            </Field>
+            <div className="grid grid-cols-1 sm:grid-cols-6 gap-4">
+              <div className="sm:col-span-3">
+                <Field label="City">
+                  <Input data-testid="contact-city" value={form.city} onChange={(v) => setForm({ ...form, city: v })} />
+                </Field>
+              </div>
+              <div className="sm:col-span-1">
+                <Field label="State">
+                  <Input data-testid="contact-state" value={form.state} onChange={(v) => setForm({ ...form, state: v })} maxLength={2} />
+                </Field>
+              </div>
+              <div className="sm:col-span-2">
+                <Field label="ZIP">
+                  <Input data-testid="contact-zip" value={form.zip_code} onChange={(v) => setForm({ ...form, zip_code: v })} />
+                </Field>
+              </div>
+            </div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -135,9 +163,31 @@ export default function Contacts() {
               <span className="text-xs uppercase tracking-wider font-bold text-zinc-700">Billing address same as address</span>
             </label>
             {!form.billing_same_as_address && (
-              <Field label="Billing Address">
-                <Input data-testid="contact-billing-address" value={form.billing_address} onChange={(v) => setForm({ ...form, billing_address: v })} />
-              </Field>
+              <div className="space-y-4 pl-3 border-l-2 border-blue-700">
+                <Field label="Billing Address Line 1">
+                  <Input data-testid="contact-billing-address" value={form.billing_address} onChange={(v) => setForm({ ...form, billing_address: v })} />
+                </Field>
+                <Field label="Billing Address Line 2">
+                  <Input data-testid="contact-billing-address2" value={form.billing_address_line2} onChange={(v) => setForm({ ...form, billing_address_line2: v })} />
+                </Field>
+                <div className="grid grid-cols-1 sm:grid-cols-6 gap-4">
+                  <div className="sm:col-span-3">
+                    <Field label="Billing City">
+                      <Input data-testid="contact-billing-city" value={form.billing_city} onChange={(v) => setForm({ ...form, billing_city: v })} />
+                    </Field>
+                  </div>
+                  <div className="sm:col-span-1">
+                    <Field label="State">
+                      <Input data-testid="contact-billing-state" value={form.billing_state} onChange={(v) => setForm({ ...form, billing_state: v })} maxLength={2} />
+                    </Field>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Field label="ZIP">
+                      <Input data-testid="contact-billing-zip" value={form.billing_zip} onChange={(v) => setForm({ ...form, billing_zip: v })} />
+                    </Field>
+                  </div>
+                </div>
+              </div>
             )}
             <div className="flex justify-end gap-2 pt-4 border-t border-zinc-200">
               <button type="button" onClick={() => setOpen(false)} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50">Cancel</button>
