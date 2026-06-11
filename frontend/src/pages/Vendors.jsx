@@ -5,10 +5,11 @@ import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import Documents from "@/components/Documents";
+import { US_STATES, DEFAULT_STATE } from "@/constants/states";
 
 export default function Vendors({ kind = "Vendor" }) {
   const isSub = kind === "Subcontractor";
-  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", phone: "", work_phone: "", mobile_phone: "", fax: "", email: "", tin_ein: "", address: "", address_line2: "", city: "", state: "", zip_code: "", notes: "" };
+  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", phone: "", work_phone: "", mobile_phone: "", fax: "", email: "", tin_ein: "", address: "", address_line2: "", city: "", state: DEFAULT_STATE, zip_code: "", notes: "" };
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -159,7 +160,7 @@ export default function Vendors({ kind = "Vendor" }) {
               </div>
               <div className="sm:col-span-1">
                 <Field label="State">
-                  <Input data-testid={`${kind.toLowerCase()}-state`} value={form.state} onChange={(v) => setForm({ ...form, state: v })} maxLength={2} />
+                  <Select data-testid={`${kind.toLowerCase()}-state`} value={form.state || DEFAULT_STATE} onChange={(v) => setForm({ ...form, state: v })} options={US_STATES} />
                 </Field>
               </div>
               <div className="sm:col-span-2">

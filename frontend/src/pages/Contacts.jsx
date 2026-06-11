@@ -3,6 +3,8 @@ import { api, formatApiError } from "@/lib/api";
 import { Plus, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { US_STATES, DEFAULT_STATE } from "@/constants/states";
 
 const CONTACT_TYPES = ["Owner", "Property Manager", "Tenant", "Other"];
 
@@ -18,13 +20,13 @@ const empty = {
   address: "",
   address_line2: "",
   city: "",
-  state: "",
+  state: DEFAULT_STATE,
   zip_code: "",
   billing_same_as_address: true,
   billing_address: "",
   billing_address_line2: "",
   billing_city: "",
-  billing_state: "",
+  billing_state: DEFAULT_STATE,
   billing_zip: "",
 };
 
@@ -35,6 +37,7 @@ export default function Contacts() {
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(false);
   const [typeFilter, setTypeFilter] = useState("All");
+  const [confirmTarget, setConfirmTarget] = useState(null);
 
   const load = () => api.get("/contacts").then((r) => setItems(r.data));
   useEffect(() => { load(); }, []);
@@ -66,11 +69,17 @@ export default function Contacts() {
     }
   };
 
-  const remove = async (id) => {
-    if (!window.confirm("Delete this contact?")) return;
-    await api.delete(`/contacts/${id}`);
-    toast.success("Contact deleted");
-    load();
+  const remove = async () => {
+    if (!confirmTarget) return;
+    try {
+      await api.delete(`/contacts/${confirmTarget.id}`);
+      toast.success("Contact deleted");
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setConfirmTarget(null);
+    }
   };
 
   return (
@@ -132,7 +141,7 @@ export default function Contacts() {
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1">
                       <button data-testid={`edit-contact-${c.id}`} onClick={() => openEdit(c)} className="p-1.5 hover:bg-zinc-200 rounded-sm"><Pencil className="w-3.5 h-3.5" /></button>
-                      <button data-testid={`delete-contact-${c.id}`} onClick={() => remove(c.id)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button data-testid={`delete-contact-${c.id}`} onClick={() => setConfirmTarget(c)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </td>
                 </tr>
@@ -185,7 +194,7 @@ export default function Contacts() {
               </div>
               <div className="sm:col-span-1">
                 <Field label="State">
-                  <Input data-testid="contact-state" value={form.state} onChange={(v) => setForm({ ...form, state: v })} maxLength={2} />
+                  <Select data-testid="contact-state" value={form.state || DEFAULT_STATE} onChange={(v) => setForm({ ...form, state: v })} options={US_STATES} />
                 </Field>
               </div>
               <div className="sm:col-span-2">
@@ -220,7 +229,7 @@ export default function Contacts() {
                   </div>
                   <div className="sm:col-span-1">
                     <Field label="State">
-                      <Input data-testid="contact-billing-state" value={form.billing_state} onChange={(v) => setForm({ ...form, billing_state: v })} maxLength={2} />
+                      <Select data-testid="contact-billing-state" value={form.billing_state || DEFAULT_STATE} onChange={(v) => setForm({ ...form, billing_state: v })} options={US_STATES} />
                     </Field>
                   </div>
                   <div className="sm:col-span-2">
@@ -238,6 +247,14 @@ export default function Contacts() {
           </form>
         </Modal>
       )}
+
+      <ConfirmDialog
+        open={!!confirmTarget}
+        title="Delete Contact?"
+        message={`This will permanently delete ${confirmTarget?.contact_name || "this contact"}${confirmTarget?.company_name ? " · " + confirmTarget.company_name : ""}. This action cannot be undone.`}
+        onConfirm={remove}
+        onClose={() => setConfirmTarget(null)}
+      />
     </div>
   );
 }

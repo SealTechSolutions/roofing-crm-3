@@ -4,13 +4,14 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
+import { US_STATES, DEFAULT_STATE } from "@/constants/states";
 
 const empty = {
   property_name: "",
   property_address: "",
   property_address_line2: "",
   property_city: "",
-  property_state: "",
+  property_state: DEFAULT_STATE,
   property_zip: "",
   property_contact_id: "",
   property_contact_name: "",
@@ -143,7 +144,7 @@ export default function Properties() {
               </div>
               <div className="sm:col-span-1">
                 <Field label="State">
-                  <Input data-testid="property-state" value={form.property_state} onChange={(v) => setForm({ ...form, property_state: v })} maxLength={2} />
+                  <Select data-testid="property-state" value={form.property_state || DEFAULT_STATE} onChange={(v) => setForm({ ...form, property_state: v })} options={US_STATES} />
                 </Field>
               </div>
               <div className="sm:col-span-2">
