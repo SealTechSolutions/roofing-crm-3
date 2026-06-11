@@ -6,6 +6,7 @@ import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import Documents from "@/components/Documents";
 import { US_STATES, DEFAULT_STATE } from "@/constants/states";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 export default function Vendors({ kind = "Vendor" }) {
   const isSub = kind === "Subcontractor";
@@ -18,6 +19,7 @@ export default function Vendors({ kind = "Vendor" }) {
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(false);
   const [docsFor, setDocsFor] = useState(null);
+  const [confirmTarget, setConfirmTarget] = useState(null);
 
   const load = () => api.get(`/vendors?kind=${encodeURIComponent(kind)}`).then((r) => setItems(r.data));
   useEffect(() => {
@@ -51,11 +53,19 @@ export default function Vendors({ kind = "Vendor" }) {
     }
   };
 
-  const remove = async (id) => {
-    if (!window.confirm(`Delete this ${kind.toLowerCase()}?`)) return;
-    await api.delete(`/vendors/${id}`);
-    toast.success(`${kind} deleted`);
-    load();
+  const remove = (v) => setConfirmTarget(v);
+
+  const removeConfirmed = async () => {
+    if (!confirmTarget) return;
+    try {
+      await api.delete(`/vendors/${confirmTarget.id}`);
+      toast.success(`${kind} deleted`);
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setConfirmTarget(null);
+    }
   };
 
   const Icon = isSub ? HardHat : Truck;
@@ -107,7 +117,7 @@ export default function Vendors({ kind = "Vendor" }) {
                     <div className="flex items-center gap-1">
                       <button data-testid={`docs-${kind.toLowerCase()}-${v.id}`} onClick={() => setDocsFor(v)} title="Documents" className="p-1.5 hover:bg-zinc-200 rounded-sm"><FolderOpen className="w-3.5 h-3.5" /></button>
                       <button data-testid={`edit-${kind.toLowerCase()}-${v.id}`} onClick={() => openEdit(v)} className="p-1.5 hover:bg-zinc-200 rounded-sm"><Pencil className="w-3.5 h-3.5" /></button>
-                      <button data-testid={`delete-${kind.toLowerCase()}-${v.id}`} onClick={() => remove(v.id)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button data-testid={`delete-${kind.toLowerCase()}-${v.id}`} onClick={() => remove(v)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </td>
                 </tr>

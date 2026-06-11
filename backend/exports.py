@@ -22,8 +22,8 @@ CATEGORIES = {
     },
     "projects": {
         "title": "Projects",
-        "headers": ["Title", "Type", "Status", "Lead Source", "Referral", "Project Type", "Current Roof", "Proposed Roof", "Option A", "Option B", "Option C", "Chosen Amount", "Chosen Date", "Date Sent", "Materials", "Labor", "Subcontractor", "Other", "Profit"],
-        "keys": ["title", "deal_type", "status", "lead_source", "referral_source", "project_type", "current_roof_type", "proposed_roof_type", "proposal_option_1", "proposal_option_2", "proposal_option_3", "chosen_amount", "chosen_date", "date_sent", "materials_cost", "labor_cost", "subcontractor_cost", "other_expenses", "_profit"],
+        "headers": ["Title", "Type", "Status", "Lead Source", "Referral", "Project Type", "Current Roof", "Proposed Roof", "Property SqFt", "Perimeter LnFt", "Avg Parapet Ht (ft)", "Total SqFt", "Option A", "Option B", "Option C", "Chosen Amount", "Chosen Date", "Date Sent", "Materials", "Labor", "Subcontractor", "Other", "Profit"],
+        "keys": ["title", "deal_type", "status", "lead_source", "referral_source", "project_type", "current_roof_type", "proposed_roof_type", "property_sqft", "perimeter_lnft", "avg_parapet_height", "total_sqft", "proposal_option_1", "proposal_option_2", "proposal_option_3", "chosen_amount", "chosen_date", "date_sent", "materials_cost", "labor_cost", "subcontractor_cost", "other_expenses", "_profit"],
     },
     "vendors": {
         "title": "Vendors",

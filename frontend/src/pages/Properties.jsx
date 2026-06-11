@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import { US_STATES, DEFAULT_STATE } from "@/constants/states";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 const empty = {
   property_name: "",
@@ -26,8 +27,20 @@ export default function Properties() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState(null);
 
-  const load = () => api.get("/properties").then((r) => setItems(r.data));
+  const removeConfirmed = async () => {
+    if (!confirmTarget) return;
+    try {
+      await api.delete(`/properties/${confirmTarget.id}`);
+      toast.success("Property deleted");
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setConfirmTarget(null);
+    }
+  };
   useEffect(() => {
     load();
     api.get("/contacts").then((r) => setContacts(r.data));
@@ -63,12 +76,7 @@ export default function Properties() {
     }
   };
 
-  const remove = async (id) => {
-    if (!window.confirm("Delete this property?")) return;
-    await api.delete(`/properties/${id}`);
-    toast.success("Property deleted");
-    load();
-  };
+  const remove = (p) => setConfirmTarget(p);
 
   const contactOpts = [{ value: "", label: "— None —" }, ...contacts.map((c) => ({ value: c.id, label: `${c.contact_name}${c.company_name ? " · " + c.company_name : ""}` }))];
 
@@ -114,7 +122,7 @@ export default function Properties() {
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1">
                       <button data-testid={`edit-property-${p.id}`} onClick={() => openEdit(p)} className="p-1.5 hover:bg-zinc-200 rounded-sm"><Pencil className="w-3.5 h-3.5" /></button>
-                      <button data-testid={`delete-property-${p.id}`} onClick={() => remove(p.id)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button data-testid={`delete-property-${p.id}`} onClick={() => remove(p)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </td>
                 </tr>
@@ -180,6 +188,14 @@ export default function Properties() {
           </form>
         </Modal>
       )}
+
+      <ConfirmDialog
+        open={!!confirmTarget}
+        title="Delete Property?"
+        message={`This will permanently delete ${confirmTarget?.property_name || "this property"}. This action cannot be undone.`}
+        onConfirm={removeConfirmed}
+        onClose={() => setConfirmTarget(null)}
+      />
     </div>
   );
 }

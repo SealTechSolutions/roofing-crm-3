@@ -264,6 +264,10 @@ class DealIn(BaseModel):
     project_type: str = "Repair"
     current_roof_type: str = "TPO"
     proposed_roof_type: str = "TPO"
+    property_sqft: float = 0.0
+    perimeter_lnft: float = 0.0
+    avg_parapet_height: float = 0.0
+    total_sqft: float = 0.0
     proposal_option_1: float = 0.0
     proposal_option_2: float = 0.0
     proposal_option_3: float = 0.0
@@ -448,6 +452,18 @@ async def delete_property(property_id: str, current=Depends(get_current_user)):
 def normalize_deal(data: dict) -> dict:
     """Auto-fill cost line item ids, milestone ids/amounts, and roll up aggregate cost buckets."""
     chosen = float(data.get("chosen_amount") or 0)
+
+    # Measurements: auto-compute total_sqft = property_sqft + (perimeter_lnft * avg_parapet_height)
+    try:
+        psqft = float(data.get("property_sqft") or 0)
+        plnft = float(data.get("perimeter_lnft") or 0)
+        pht = float(data.get("avg_parapet_height") or 0)
+    except (TypeError, ValueError):
+        psqft = plnft = pht = 0.0
+    data["property_sqft"] = round(psqft, 2)
+    data["perimeter_lnft"] = round(plnft, 2)
+    data["avg_parapet_height"] = round(pht, 2)
+    data["total_sqft"] = round(psqft + (plnft * pht), 2)
 
     # Milestones: ensure id, recompute amount from percent * chosen
     milestones = data.get("payment_milestones") or []

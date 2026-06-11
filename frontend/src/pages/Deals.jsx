@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { StatusPill } from "@/pages/Dashboard";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 const empty = {
   title: "",
@@ -19,6 +20,10 @@ const empty = {
   project_type: "Repair",
   current_roof_type: "TPO",
   proposed_roof_type: "TPO",
+  property_sqft: 0,
+  perimeter_lnft: 0,
+  avg_parapet_height: 0,
+  total_sqft: 0,
   proposal_option_1: 0,
   proposal_option_2: 0,
   proposal_option_3: 0,
@@ -45,6 +50,8 @@ export default function Deals() {
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("All");
+  const [confirmTarget, setConfirmTarget] = useState(null);
+  const [archiveTarget, setArchiveTarget] = useState(null);
 
   const load = () => api.get("/deals").then((r) => setItems(r.data));
 
@@ -83,21 +90,33 @@ export default function Deals() {
     }
   };
 
-  const remove = async (id) => {
-    if (!window.confirm("Delete this project?")) return;
-    await api.delete(`/deals/${id}`);
-    toast.success("Project deleted");
-    load();
+  const remove = (d) => setConfirmTarget(d);
+
+  const removeConfirmed = async () => {
+    if (!confirmTarget) return;
+    try {
+      await api.delete(`/deals/${confirmTarget.id}`);
+      toast.success("Project deleted");
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setConfirmTarget(null);
+    }
   };
 
-  const archive = async (deal) => {
-    if (!window.confirm("Move this lead to Past Lead Prospects?")) return;
+  const archive = (deal) => setArchiveTarget(deal);
+
+  const archiveConfirmed = async () => {
+    if (!archiveTarget) return;
     try {
-      await api.put(`/deals/${deal.id}`, { ...deal, status: "Past Lead" });
+      await api.put(`/deals/${archiveTarget.id}`, { ...archiveTarget, status: "Past Lead" });
       toast.success("Moved to Past Lead Prospects");
       load();
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setArchiveTarget(null);
     }
   };
 
@@ -186,7 +205,7 @@ export default function Deals() {
                         {isOpen && (
                           <button data-testid={`archive-deal-${d.id}`} onClick={() => archive(d)} title="Move to Past Leads" className="p-1.5 hover:bg-zinc-200 rounded-sm text-zinc-600"><Archive className="w-3.5 h-3.5" /></button>
                         )}
-                        <button data-testid={`delete-deal-${d.id}`} onClick={() => remove(d.id)} title="Delete" className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <button data-testid={`delete-deal-${d.id}`} onClick={() => remove(d)} title="Delete" className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </td>
                   </tr>
@@ -256,6 +275,27 @@ export default function Deals() {
             </Grid2>
 
             <div className="pt-4 border-t border-zinc-200">
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">Measurements</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <Field label="Property SqFt">
+                  <Input data-testid="deal-property-sqft" type="number" min="0" step="1" value={form.property_sqft} onChange={(v) => setForm({ ...form, property_sqft: v })} />
+                </Field>
+                <Field label="Perimeter LnFt">
+                  <Input data-testid="deal-perimeter-lnft" type="number" min="0" step="1" value={form.perimeter_lnft} onChange={(v) => setForm({ ...form, perimeter_lnft: v })} />
+                </Field>
+                <Field label="Avg Parapet Ht (ft)">
+                  <Input data-testid="deal-parapet-height" type="number" min="0" step="0.5" value={form.avg_parapet_height} onChange={(v) => setForm({ ...form, avg_parapet_height: v })} />
+                </Field>
+                <Field label="Total SqFt (auto)">
+                  <div className="h-10 flex items-center px-3 border border-zinc-200 bg-zinc-50 rounded-sm text-sm font-mono font-bold text-zinc-950" data-testid="deal-total-sqft">
+                    {((parseFloat(form.property_sqft || 0)) + (parseFloat(form.perimeter_lnft || 0) * parseFloat(form.avg_parapet_height || 0))).toLocaleString()}
+                  </div>
+                </Field>
+              </div>
+              <div className="text-xs text-zinc-500 mt-2">Total = Property SqFt + (Perimeter LnFt × Avg Parapet Height)</div>
+            </div>
+
+            <div className="pt-4 border-t border-zinc-200">
               <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">
                 {form.deal_type === "Assessment" ? "Assessment — 3 Roof System Options" : "Scope — Pricing Options"}
               </div>
@@ -300,6 +340,23 @@ export default function Deals() {
           </form>
         </Modal>
       )}
+
+      <ConfirmDialog
+        open={!!confirmTarget}
+        title="Delete Project?"
+        message={`This will permanently delete ${confirmTarget?.title || "this project"} and all associated milestones, cost items, and documents. This action cannot be undone.`}
+        onConfirm={removeConfirmed}
+        onClose={() => setConfirmTarget(null)}
+      />
+      <ConfirmDialog
+        open={!!archiveTarget}
+        danger={false}
+        title="Move to Past Leads?"
+        confirmLabel="Move"
+        message={`Move "${archiveTarget?.title || "this lead"}" to the Past Lead Prospects archive? You can find it later via the Past Leads filter.`}
+        onConfirm={archiveConfirmed}
+        onClose={() => setArchiveTarget(null)}
+      />
     </div>
   );
 }

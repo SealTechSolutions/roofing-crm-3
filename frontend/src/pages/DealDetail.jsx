@@ -295,7 +295,7 @@ export default function DealDetail() {
           <Row label="Chosen" value={formatCurrency(totals.revenue)} bold />
         </Card>
 
-        <Card title="Roof Spec">
+        <Card title="Roof Spec & Measurements">
           <Row label="Current Roof" value={deal.current_roof_type} />
           <Row label="Proposed Roof" value={deal.proposed_roof_type} bold />
           <Row label="Project Type" value={deal.project_type} />
@@ -305,6 +305,15 @@ export default function DealDetail() {
           )}
           {deal.date_sent && <Row label="Date Sent" value={deal.date_sent} />}
           {deal.chosen_date && <Row label="Chosen Date" value={deal.chosen_date} />}
+          {(deal.property_sqft || deal.perimeter_lnft || deal.avg_parapet_height) ? (
+            <>
+              <div className="border-t border-zinc-100 my-2" />
+              <Row label="Property SqFt" value={deal.property_sqft ? Number(deal.property_sqft).toLocaleString() : "—"} />
+              <Row label="Perimeter LnFt" value={deal.perimeter_lnft ? Number(deal.perimeter_lnft).toLocaleString() : "—"} />
+              <Row label="Avg Parapet Ht (ft)" value={deal.avg_parapet_height || "—"} />
+              <Row label="Total SqFt" value={deal.total_sqft ? Number(deal.total_sqft).toLocaleString() : "—"} bold />
+            </>
+          ) : null}
         </Card>
       </div>
 
