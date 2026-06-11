@@ -1,0 +1,153 @@
+import React, { useEffect, useState } from "react";
+import { api, formatApiError } from "@/lib/api";
+import { Plus, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
+
+const empty = {
+  property_name: "",
+  property_address: "",
+  property_contact_id: "",
+  property_contact_name: "",
+  property_contact_phone: "",
+  notes: "",
+};
+
+export default function Properties() {
+  const [items, setItems] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(empty);
+  const [loading, setLoading] = useState(false);
+
+  const load = () => api.get("/properties").then((r) => setItems(r.data));
+  useEffect(() => {
+    load();
+    api.get("/contacts").then((r) => setContacts(r.data));
+  }, []);
+
+  const openCreate = () => { setEditing(null); setForm(empty); setOpen(true); };
+  const openEdit = (p) => { setEditing(p); setForm({ ...empty, ...p }); setOpen(true); };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const payload = { ...form };
+      if (payload.property_contact_id) {
+        const c = contacts.find((x) => x.id === payload.property_contact_id);
+        if (c && !payload.property_contact_name) payload.property_contact_name = c.contact_name;
+      } else {
+        payload.property_contact_id = null;
+      }
+      if (editing) {
+        await api.put(`/properties/${editing.id}`, payload);
+        toast.success("Property updated");
+      } else {
+        await api.post(`/properties`, payload);
+        toast.success("Property created");
+      }
+      setOpen(false);
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("Delete this property?")) return;
+    await api.delete(`/properties/${id}`);
+    toast.success("Property deleted");
+    load();
+  };
+
+  const contactOpts = [{ value: "", label: "— None —" }, ...contacts.map((c) => ({ value: c.id, label: `${c.contact_name}${c.company_name ? " · " + c.company_name : ""}` }))];
+
+  return (
+    <div className="p-6 sm:p-8 animate-in fade-in duration-500" data-testid="properties-page">
+      <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 mb-2">Properties</div>
+          <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight">Sites &amp; Buildings</h1>
+        </div>
+        <button
+          data-testid="new-property-button"
+          onClick={openCreate}
+          className="inline-flex items-center gap-2 bg-orange-600 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-orange-700 rounded-sm transition-colors"
+        >
+          <Plus className="w-4 h-4" /> New Property
+        </button>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-sm overflow-x-auto">
+        {items.length === 0 ? (
+          <div className="p-12 text-center text-sm text-zinc-500">No properties yet.</div>
+        ) : (
+          <table className="w-full text-sm" data-testid="properties-table">
+            <thead>
+              <tr className="border-b-2 border-zinc-950 text-left">
+                <Th>Property</Th><Th>Address</Th><Th>Contact</Th><Th>Phone</Th><Th>Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((p) => (
+                <tr key={p.id} className="border-b border-zinc-100 hover:bg-zinc-50" data-testid={`property-row-${p.id}`}>
+                  <td className="px-6 py-3 font-bold text-zinc-950">{p.property_name}</td>
+                  <td className="px-6 py-3 text-zinc-600 text-xs max-w-xs truncate">{p.property_address}</td>
+                  <td className="px-6 py-3 text-zinc-700">{p.property_contact_name}</td>
+                  <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{p.property_contact_phone}</td>
+                  <td className="px-6 py-3">
+                    <div className="flex items-center gap-1">
+                      <button data-testid={`edit-property-${p.id}`} onClick={() => openEdit(p)} className="p-1.5 hover:bg-zinc-200 rounded-sm"><Pencil className="w-3.5 h-3.5" /></button>
+                      <button data-testid={`delete-property-${p.id}`} onClick={() => remove(p.id)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {open && (
+        <Modal title={editing ? "Edit Property" : "New Property"} onClose={() => setOpen(false)}>
+          <form onSubmit={submit} className="space-y-4" data-testid="property-form">
+            <Field label="Property Name *">
+              <Input data-testid="property-name" required value={form.property_name} onChange={(v) => setForm({ ...form, property_name: v })} />
+            </Field>
+            <Field label="Property Address">
+              <Input data-testid="property-address" value={form.property_address} onChange={(v) => setForm({ ...form, property_address: v })} />
+            </Field>
+            <Grid2>
+              <Field label="Link to Contact">
+                <Select data-testid="property-contact-id" value={form.property_contact_id || ""} onChange={(v) => setForm({ ...form, property_contact_id: v })} options={contactOpts} />
+              </Field>
+              <Field label="On-Site Contact Name">
+                <Input data-testid="property-contact-name" value={form.property_contact_name} onChange={(v) => setForm({ ...form, property_contact_name: v })} />
+              </Field>
+            </Grid2>
+            <Field label="On-Site Contact Phone">
+              <Input data-testid="property-contact-phone" value={form.property_contact_phone} onChange={(v) => setForm({ ...form, property_contact_phone: v })} />
+            </Field>
+            <Field label="Notes">
+              <textarea
+                data-testid="property-notes"
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-orange-600 text-sm"
+              />
+            </Field>
+            <div className="flex justify-end gap-2 pt-4 border-t border-zinc-200">
+              <button type="button" onClick={() => setOpen(false)} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50">Cancel</button>
+              <button type="submit" disabled={loading} data-testid="property-save" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-orange-600 text-white hover:bg-orange-700 rounded-sm disabled:opacity-50">{loading ? "Saving..." : "Save"}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
