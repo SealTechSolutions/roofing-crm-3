@@ -1,0 +1,38 @@
+{
+  "summary": "Backend-only re-test of Roofing CRM. Re-ran existing pytest suite at /app/backend/tests/backend_test.py covering all features in the review request. Result: 20/20 PASS in 5.70s. Auth (login success/invalid/register/duplicate/me protected+unprotected), /api/options counts (7/5/8/4), Contacts CRUD with billing_same_as_address true (auto-copy address) and false (preserve), Properties CRUD with property_contact_id linking, Deals CRUD with all P&L fields, and /api/dashboard/summary aggregations (open_leads, won_deals, pipeline_revenue, won_revenue, total_costs) all behave correctly with delta verification against snapshot. 401 enforced on all protected endpoints.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/login", "issue": "No brute-force lockout / rate limiting (acceptable per PRD; not requested)."},
+      {"endpoint": "/api/auth/login", "issue": "JWT returned in body only; httpOnly cookie not set on login (PRD explicitly says Bearer header is the contract, so not a defect)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is a single 452-line file - fine for current scope; split into routers if it exceeds ~700 lines.",
+    "CORS allow_origins defaults to '*' combined with allow_credentials=True is rejected by browsers per spec. Production deploys must set explicit CORS_ORIGINS in backend/.env.",
+    "Dashboard profit_ytd compares ISO timestamp strings to year_start string. Works due to ISO-8601 lexicographic ordering but a typed datetime comparison is more robust.",
+    "No refresh-token flow; 24h access tokens are acceptable for MVP.",
+    "All endpoints correctly exclude Mongo _id (projection or strip_id helper). No ObjectId leakage."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_2.json (created)",
+    "/app/test_reports/pytest/pytest_results.xml (regenerated)"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "not tested (skipped per request)"},
+  "test_credentials": "admin@roofingcrm.com / admin123 (from /app/memory/test_credentials.md - verified working)",
+  "seed_data_creation": "Admin user auto-seeded on backend startup. Tests create and clean up TEST_-prefixed contacts/properties/deals within the run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend is stable, no regressions vs iteration_1. All 12 review-request bullets verified. Re-run: pytest /app/backend/tests/backend_test.py -v --junitxml=/app/test_reports/pytest/pytest_results.xml from /app. JWT via Authorization: Bearer header; cookie path exists in get_current_user but login doesn't set one. /api/options is auth-protected. Dashboard total_costs aggregates only Won deals' four cost fields; pipeline_revenue sums non-Won/Lost deals' chosen_amount.",
+  "rca of the issue": "N/A - no failures."
+}
