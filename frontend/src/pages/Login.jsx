@@ -91,14 +91,17 @@ export default function Login() {
         </div>
       </div>
 
-      <div
-        className="hidden lg:block relative order-1 lg:order-2 bg-zinc-900"
-        style={{ backgroundImage: `url(${BG})`, backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat" }}
-      >
-        <div className="absolute inset-0 bg-zinc-950/30" />
-        <div className="relative h-full flex flex-col justify-end p-12 text-white">
+      <div className="hidden lg:flex flex-col order-1 lg:order-2 bg-zinc-950 h-screen">
+        <div className="h-[60%] overflow-hidden">
+          <img
+            src={BG}
+            alt="Commercial building"
+            className="w-full h-full object-cover object-top block"
+          />
+        </div>
+        <div className="flex-1 flex flex-col justify-center px-12 text-white">
           <div className="text-[10px] uppercase tracking-[0.3em] text-orange-500 mb-3">Building Solutions</div>
-          <h2 className="font-heading text-4xl font-black tracking-tight leading-tight max-w-md drop-shadow-lg">
+          <h2 className="font-heading text-4xl font-black tracking-tight leading-tight max-w-md">
             From first call to closed roof. One operating system.
           </h2>
         </div>
