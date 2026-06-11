@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const NAV = [
@@ -8,6 +8,7 @@ const NAV = [
   { to: "/contacts", label: "Contacts", icon: Users, testId: "nav-contacts" },
   { to: "/properties", label: "Properties", icon: Building2, testId: "nav-properties" },
   { to: "/deals", label: "Deals", icon: FileSpreadsheet, testId: "nav-deals" },
+  { to: "/vendors", label: "Vendors", icon: Truck, testId: "nav-vendors" },
 ];
 
 export default function Layout() {

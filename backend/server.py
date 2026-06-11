@@ -98,7 +98,12 @@ def strip_id(doc: dict) -> dict:
 LEAD_SOURCES = ["Referral", "Website", "Cold Call", "Door Knock", "Social Media", "Repeat Customer", "Other"]
 PROJECT_TYPES = ["Repair", "Re-roof", "New Construction", "Maintenance", "Inspection"]
 ROOF_TYPES = ["TPO", "EPDM", "PVC", "Modified Bitumen", "Built-Up (BUR)", "Metal", "Shingle", "Tile"]
-DEAL_STATUSES = ["Lead", "Proposal Sent", "Won", "Lost"]
+DEAL_STATUSES = ["Lead", "Sent", "Won", "Lost"]
+DEAL_TYPES = ["Assessment", "Scope"]
+VENDOR_CATEGORIES = ["Material Supplier", "Labor", "Subcontractor", "Other"]
+COST_CATEGORIES = ["Materials", "Labor", "Subcontractor", "Other"]
+MILESTONE_STATUSES = ["Pending", "Invoiced", "Paid"]
+COST_ITEM_STATUSES = ["Pending", "Paid"]
 
 
 class RegisterReq(BaseModel):
@@ -156,9 +161,48 @@ class Property(PropertyIn):
     created_at: str
 
 
+class PaymentMilestone(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    label: str = ""
+    percent: float = 0.0
+    amount: float = 0.0
+    due_date: str = ""
+    status: str = "Pending"  # Pending | Invoiced | Paid
+    paid_date: str = ""
+    notes: str = ""
+
+
+class CostItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    category: str = "Materials"  # Materials | Labor | Subcontractor | Other
+    vendor_id: Optional[str] = None
+    vendor_name: str = ""
+    description: str = ""
+    amount: float = 0.0
+    date: str = ""
+    status: str = "Pending"  # Pending | Paid
+
+
+class VendorIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    category: str = "Other"  # Material Supplier | Labor | Subcontractor | Other
+    phone: str = ""
+    email: str = ""
+    notes: str = ""
+
+
+class Vendor(VendorIn):
+    id: str
+    created_at: str
+
+
 class DealIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     title: str
+    deal_type: str = "Scope"  # Assessment | Scope
     contact_id: Optional[str] = None
     property_id: Optional[str] = None
     lead_source: str = "Other"
@@ -174,6 +218,8 @@ class DealIn(BaseModel):
     labor_cost: float = 0.0
     subcontractor_cost: float = 0.0
     other_expenses: float = 0.0
+    payment_milestones: List[PaymentMilestone] = Field(default_factory=list)
+    cost_items: List[CostItem] = Field(default_factory=list)
     notes: str = ""
 
 
@@ -229,6 +275,15 @@ async def options(current=Depends(get_current_user)):
         "project_types": PROJECT_TYPES,
         "roof_types": ROOF_TYPES,
         "deal_statuses": DEAL_STATUSES,
+        "deal_types": DEAL_TYPES,
+        "vendor_categories": VENDOR_CATEGORIES,
+        "cost_categories": COST_CATEGORIES,
+        "milestone_statuses": MILESTONE_STATUSES,
+        "cost_item_statuses": COST_ITEM_STATUSES,
+        "milestone_templates": {
+            "50/50": [{"label": "Deposit", "percent": 50}, {"label": "Completion", "percent": 50}],
+            "50/25/25": [{"label": "Deposit", "percent": 50}, {"label": "Mid-Job", "percent": 25}, {"label": "Completion", "percent": 25}],
+        },
     }
 
 
@@ -320,6 +375,47 @@ async def delete_property(property_id: str, current=Depends(get_current_user)):
     return {"ok": True}
 
 
+def normalize_deal(data: dict) -> dict:
+    """Auto-fill cost line item ids, milestone ids/amounts, and roll up aggregate cost buckets."""
+    chosen = float(data.get("chosen_amount") or 0)
+
+    # Milestones: ensure id, recompute amount from percent * chosen
+    milestones = data.get("payment_milestones") or []
+    for m in milestones:
+        if not m.get("id"):
+            m["id"] = str(uuid.uuid4())
+        try:
+            pct = float(m.get("percent") or 0)
+        except (TypeError, ValueError):
+            pct = 0.0
+        m["percent"] = pct
+        m["amount"] = round(chosen * pct / 100.0, 2)
+    data["payment_milestones"] = milestones
+
+    # Cost items: ensure id; aggregate buckets
+    items = data.get("cost_items") or []
+    buckets = {"Materials": 0.0, "Labor": 0.0, "Subcontractor": 0.0, "Other": 0.0}
+    for it in items:
+        if not it.get("id"):
+            it["id"] = str(uuid.uuid4())
+        try:
+            amt = float(it.get("amount") or 0)
+        except (TypeError, ValueError):
+            amt = 0.0
+        it["amount"] = amt
+        cat = it.get("category") or "Other"
+        if cat not in buckets:
+            cat = "Other"
+            it["category"] = cat
+        buckets[cat] += amt
+    data["cost_items"] = items
+    data["materials_cost"] = round(buckets["Materials"], 2)
+    data["labor_cost"] = round(buckets["Labor"], 2)
+    data["subcontractor_cost"] = round(buckets["Subcontractor"], 2)
+    data["other_expenses"] = round(buckets["Other"], 2)
+    return data
+
+
 # ----- Deals -----
 @api_router.get("/deals", response_model=List[Deal])
 async def list_deals(current=Depends(get_current_user)):
@@ -329,7 +425,7 @@ async def list_deals(current=Depends(get_current_user)):
 
 @api_router.post("/deals", response_model=Deal)
 async def create_deal(body: DealIn, current=Depends(get_current_user)):
-    data = body.model_dump()
+    data = normalize_deal(body.model_dump())
     data["id"] = str(uuid.uuid4())
     data["created_at"] = now_iso()
     await db.deals.insert_one(data.copy())
@@ -346,7 +442,7 @@ async def get_deal(deal_id: str, current=Depends(get_current_user)):
 
 @api_router.put("/deals/{deal_id}", response_model=Deal)
 async def update_deal(deal_id: str, body: DealIn, current=Depends(get_current_user)):
-    data = body.model_dump()
+    data = normalize_deal(body.model_dump())
     result = await db.deals.update_one({"id": deal_id}, {"$set": data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Deal not found")
@@ -359,6 +455,48 @@ async def delete_deal(deal_id: str, current=Depends(get_current_user)):
     result = await db.deals.delete_one({"id": deal_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Deal not found")
+    return {"ok": True}
+
+
+# ----- Vendors -----
+@api_router.get("/vendors", response_model=List[Vendor])
+async def list_vendors(current=Depends(get_current_user)):
+    cursor = db.vendors.find({}, {"_id": 0}).sort("name", 1)
+    return await cursor.to_list(1000)
+
+
+@api_router.post("/vendors", response_model=Vendor)
+async def create_vendor(body: VendorIn, current=Depends(get_current_user)):
+    data = body.model_dump()
+    data["id"] = str(uuid.uuid4())
+    data["created_at"] = now_iso()
+    await db.vendors.insert_one(data.copy())
+    return strip_id(data)
+
+
+@api_router.get("/vendors/{vendor_id}", response_model=Vendor)
+async def get_vendor(vendor_id: str, current=Depends(get_current_user)):
+    doc = await db.vendors.find_one({"id": vendor_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    return doc
+
+
+@api_router.put("/vendors/{vendor_id}", response_model=Vendor)
+async def update_vendor(vendor_id: str, body: VendorIn, current=Depends(get_current_user)):
+    data = body.model_dump()
+    result = await db.vendors.update_one({"id": vendor_id}, {"$set": data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    doc = await db.vendors.find_one({"id": vendor_id}, {"_id": 0})
+    return doc
+
+
+@api_router.delete("/vendors/{vendor_id}")
+async def delete_vendor(vendor_id: str, current=Depends(get_current_user)):
+    result = await db.vendors.delete_one({"id": vendor_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Vendor not found")
     return {"ok": True}
 
 
@@ -417,6 +555,10 @@ async def on_startup():
     await db.contacts.create_index("id", unique=True)
     await db.properties.create_index("id", unique=True)
     await db.deals.create_index("id", unique=True)
+    await db.vendors.create_index("id", unique=True)
+
+    # Migrate deprecated status "Proposal Sent" → "Sent"
+    await db.deals.update_many({"status": "Proposal Sent"}, {"$set": {"status": "Sent"}})
 
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@roofingcrm.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")

@@ -10,6 +10,7 @@ import Contacts from "@/pages/Contacts";
 import Properties from "@/pages/Properties";
 import Deals from "@/pages/Deals";
 import DealDetail from "@/pages/DealDetail";
+import Vendors from "@/pages/Vendors";
 import "@/App.css";
 
 const ProtectedRoute = ({ children }) => {
@@ -52,6 +53,7 @@ function App() {
               <Route path="/properties" element={<Properties />} />
               <Route path="/deals" element={<Deals />} />
               <Route path="/deals/:id" element={<DealDetail />} />
+              <Route path="/vendors" element={<Vendors />} />
             </Route>
           </Routes>
         </BrowserRouter>

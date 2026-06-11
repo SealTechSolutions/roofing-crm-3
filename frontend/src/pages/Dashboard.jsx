@@ -111,6 +111,7 @@ export function StatusPill({ status }) {
     Won: "bg-zinc-950 text-white",
     Lost: "bg-red-100 text-red-800",
     Lead: "bg-zinc-200 text-zinc-800",
+    Sent: "bg-orange-100 text-orange-800",
     "Proposal Sent": "bg-orange-100 text-orange-800",
   };
   return (

@@ -8,6 +8,7 @@ import { StatusPill } from "@/pages/Dashboard";
 
 const empty = {
   title: "",
+  deal_type: "Scope",
   contact_id: "",
   property_id: "",
   lead_source: "Other",
@@ -23,6 +24,8 @@ const empty = {
   labor_cost: 0,
   subcontractor_cost: 0,
   other_expenses: 0,
+  payment_milestones: [],
+  cost_items: [],
   notes: "",
 };
 
@@ -90,7 +93,7 @@ export default function Deals() {
       <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-2">Pipeline</div>
-          <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight">Deals &amp; Proposals</h1>
+          <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight">Deals &amp; Pipeline</h1>
         </div>
         <button
           data-testid="new-deal-button"
@@ -123,7 +126,7 @@ export default function Deals() {
           <table className="w-full text-sm" data-testid="deals-table">
             <thead>
               <tr className="border-b-2 border-zinc-950 text-left">
-                <Th>Title</Th><Th>Status</Th><Th>Source</Th><Th>Project</Th><Th>Current → Proposed</Th><Th>Chosen</Th><Th>Profit</Th><Th>Actions</Th>
+                <Th>Title</Th><Th>Type</Th><Th>Status</Th><Th>Source</Th><Th>Project</Th><Th>Current → Proposed</Th><Th>Chosen</Th><Th>Profit</Th><Th>Actions</Th>
               </tr>
             </thead>
             <tbody>
@@ -137,6 +140,7 @@ export default function Deals() {
                         {d.title} <ArrowUpRight className="w-3.5 h-3.5" />
                       </Link>
                     </td>
+                    <td className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-700">{d.deal_type || "Scope"}</td>
                     <td className="px-6 py-3"><StatusPill status={d.status} /></td>
                     <td className="px-6 py-3 text-zinc-600 text-xs">{d.lead_source}</td>
                     <td className="px-6 py-3 text-zinc-600 text-xs">{d.project_type}</td>
@@ -160,9 +164,30 @@ export default function Deals() {
       {open && (
         <Modal wide title={editing ? "Edit Deal" : "New Deal"} onClose={() => setOpen(false)}>
           <form onSubmit={submit} className="space-y-5" data-testid="deal-form">
-            <Field label="Deal Title *">
-              <Input data-testid="deal-title" required value={form.title} onChange={(v) => setForm({ ...form, title: v })} />
-            </Field>
+            <Grid2>
+              <Field label="Deal Title *">
+                <Input data-testid="deal-title" required value={form.title} onChange={(v) => setForm({ ...form, title: v })} />
+              </Field>
+              <Field label="Type">
+                <div className="flex gap-2 h-10">
+                  {(options.deal_types || ["Assessment", "Scope"]).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      data-testid={`deal-type-${t.toLowerCase()}`}
+                      onClick={() => setForm({ ...form, deal_type: t })}
+                      className={`flex-1 text-xs font-bold uppercase tracking-wider rounded-sm transition-colors border ${
+                        form.deal_type === t
+                          ? "bg-zinc-950 text-white border-zinc-950"
+                          : "bg-white text-zinc-700 border-zinc-300 hover:border-zinc-950"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </Grid2>
 
             <Grid2>
               <Field label="Contact">
@@ -192,7 +217,9 @@ export default function Deals() {
             </Grid2>
 
             <div className="pt-4 border-t border-zinc-200">
-              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">Proposal — 3 Option Amounts</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">
+                {form.deal_type === "Assessment" ? "Assessment — 3 Roof System Options" : "Scope — Pricing Options"}
+              </div>
               <div className="grid grid-cols-3 gap-4">
                 <Field label="Option A ($)">
                   <Input data-testid="deal-option-1" type="number" min="0" step="0.01" value={form.proposal_option_1} onChange={(v) => setForm({ ...form, proposal_option_1: v })} />
@@ -209,15 +236,8 @@ export default function Deals() {
                   <Input data-testid="deal-chosen-amount" type="number" min="0" step="0.01" value={form.chosen_amount} onChange={(v) => setForm({ ...form, chosen_amount: v })} />
                 </Field>
               </div>
-            </div>
-
-            <div className="pt-4 border-t border-zinc-200">
-              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">Costs / P&amp;L</div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <Field label="Materials ($)"><Input data-testid="deal-materials" type="number" min="0" step="0.01" value={form.materials_cost} onChange={(v) => setForm({ ...form, materials_cost: v })} /></Field>
-                <Field label="Labor ($)"><Input data-testid="deal-labor" type="number" min="0" step="0.01" value={form.labor_cost} onChange={(v) => setForm({ ...form, labor_cost: v })} /></Field>
-                <Field label="Subcontractor ($)"><Input data-testid="deal-subcontractor" type="number" min="0" step="0.01" value={form.subcontractor_cost} onChange={(v) => setForm({ ...form, subcontractor_cost: v })} /></Field>
-                <Field label="Other ($)"><Input data-testid="deal-other" type="number" min="0" step="0.01" value={form.other_expenses} onChange={(v) => setForm({ ...form, other_expenses: v })} /></Field>
+              <div className="text-xs text-zinc-500 mt-2">
+                Tip: After saving, open the deal to add payment milestones and vendor cost line items.
               </div>
             </div>
 
