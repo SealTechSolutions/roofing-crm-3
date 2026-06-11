@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { formatApiError } from "@/lib/api";
 
-const BG = "https://images.pexels.com/photos/4458205/pexels-photo-4458205.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
+const BG = "/login-building.jpeg";
 
 export default function Login() {
   const { login } = useAuth();
@@ -92,13 +92,13 @@ export default function Login() {
       </div>
 
       <div
-        className="hidden lg:block relative order-1 lg:order-2"
-        style={{ backgroundImage: `url(${BG})`, backgroundSize: "cover", backgroundPosition: "center" }}
+        className="hidden lg:block relative order-1 lg:order-2 bg-zinc-900"
+        style={{ backgroundImage: `url(${BG})`, backgroundSize: "contain", backgroundPosition: "center", backgroundRepeat: "no-repeat" }}
       >
-        <div className="absolute inset-0 bg-zinc-950/70" />
+        <div className="absolute inset-0 bg-zinc-950/30" />
         <div className="relative h-full flex flex-col justify-end p-12 text-white">
           <div className="text-[10px] uppercase tracking-[0.3em] text-orange-500 mb-3">Building Solutions</div>
-          <h2 className="font-heading text-4xl font-black tracking-tight leading-tight max-w-md">
+          <h2 className="font-heading text-4xl font-black tracking-tight leading-tight max-w-md drop-shadow-lg">
             From first call to closed roof. One operating system.
           </h2>
         </div>
