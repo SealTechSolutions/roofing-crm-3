@@ -105,18 +105,18 @@ def strip_id(doc: dict) -> dict:
 LEAD_SOURCES = ["Referral", "Marketing", "Website", "Email Campaign", "Personal"]
 PROJECT_TYPES = ["Repair", "Restoration", "Replacement"]
 ROOF_TYPES = [
-    "TPO",
-    "PVC",
-    "EPDM",
-    "EPDM w/ Ballast",
-    "ModBit",
-    "BUR (Built-Up)",
-    "Metal",
-    "Shingle",
-    "Tile",
-    "Silicone",
-    "Silicone w/ Granules",
     "FARM (Fluid Applied Reinforced Membrane)",
+    "Silicone w/ Granules",
+    "Silicone",
+    "Tile",
+    "Shingle",
+    "Metal",
+    "BUR (Built-Up)",
+    "ModBit",
+    "EPDM w/ Ballast",
+    "EPDM",
+    "PVC",
+    "TPO",
 ]
 DEAL_STATUSES = ["Lead", "Sent", "Won", "Lost", "Past Lead"]
 DEAL_TYPES = ["Assessment", "Scope"]
