@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { formatApiError } from "@/lib/api";
-import { HardHat } from "lucide-react";
 
 export default function Register() {
   const { register } = useAuth();
@@ -30,15 +29,14 @@ export default function Register() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 p-8">
       <div className="w-full max-w-md">
-        <div className="flex items-center gap-2 mb-12 justify-center">
-          <div className="w-10 h-10 bg-orange-600 flex items-center justify-center rounded-sm">
-            <HardHat className="w-5 h-5 text-white" />
+        <div className="mb-12 flex justify-center">
+          <div className="bg-zinc-950 p-4 rounded-sm">
+            <img src="/sealtech-logo.png" alt="SealTech Building Solutions" className="h-14 w-auto" />
           </div>
-          <div className="font-heading font-black tracking-tight text-xl">ROOFLINE</div>
         </div>
 
         <h1 className="font-heading text-3xl font-black tracking-tight mb-2">Create account.</h1>
-        <p className="text-sm text-zinc-500 mb-8">Start tracking your roofing pipeline today.</p>
+        <p className="text-sm text-zinc-500 mb-8">Start tracking your pipeline today.</p>
 
         <form onSubmit={submit} className="space-y-5" data-testid="register-form">
           <div>
@@ -48,7 +46,7 @@ export default function Register() {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full h-11 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-orange-600 text-sm"
+              className="w-full h-11 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-700 text-sm"
             />
           </div>
           <div>
@@ -59,7 +57,7 @@ export default function Register() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full h-11 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-orange-600 text-sm"
+              className="w-full h-11 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-700 text-sm"
             />
           </div>
           <div>
@@ -71,7 +69,7 @@ export default function Register() {
               minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full h-11 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-orange-600 text-sm"
+              className="w-full h-11 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-700 text-sm"
             />
           </div>
 
@@ -85,14 +83,14 @@ export default function Register() {
             data-testid="register-submit"
             type="submit"
             disabled={loading}
-            className="w-full h-11 bg-orange-600 text-white font-bold uppercase tracking-wider text-sm hover:bg-orange-700 transition-colors rounded-sm disabled:opacity-50"
+            className="w-full h-11 bg-blue-700 text-white font-bold uppercase tracking-wider text-sm hover:bg-blue-800 transition-colors rounded-sm disabled:opacity-50"
           >
             {loading ? "Creating..." : "Create Account"}
           </button>
 
           <p className="text-xs text-zinc-500 text-center pt-2">
             Have an account?{" "}
-            <Link to="/login" data-testid="goto-login" className="text-orange-600 font-bold hover:underline">
+            <Link to="/login" data-testid="goto-login" className="text-blue-700 font-bold hover:underline">
               Sign in
             </Link>
           </p>

@@ -70,13 +70,13 @@ export default function Properties() {
     <div className="p-6 sm:p-8 animate-in fade-in duration-500" data-testid="properties-page">
       <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200">
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 mb-2">Properties</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-2">Properties</div>
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight">Sites &amp; Buildings</h1>
         </div>
         <button
           data-testid="new-property-button"
           onClick={openCreate}
-          className="inline-flex items-center gap-2 bg-orange-600 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-orange-700 rounded-sm transition-colors"
+          className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
         >
           <Plus className="w-4 h-4" /> New Property
         </button>
@@ -138,12 +138,12 @@ export default function Properties() {
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 rows={3}
-                className="w-full px-3 py-2 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-orange-600 text-sm"
+                className="w-full px-3 py-2 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-700 text-sm"
               />
             </Field>
             <div className="flex justify-end gap-2 pt-4 border-t border-zinc-200">
               <button type="button" onClick={() => setOpen(false)} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50">Cancel</button>
-              <button type="submit" disabled={loading} data-testid="property-save" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-orange-600 text-white hover:bg-orange-700 rounded-sm disabled:opacity-50">{loading ? "Saving..." : "Save"}</button>
+              <button type="submit" disabled={loading} data-testid="property-save" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm disabled:opacity-50">{loading ? "Saving..." : "Save"}</button>
             </div>
           </form>
         </Modal>

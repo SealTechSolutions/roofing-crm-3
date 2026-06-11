@@ -55,7 +55,7 @@ h1, h2, h3, h4, h5, h6, .font-heading {
 
 /* Custom selection color */
 ::selection {
-    background: #EA580C;
+    background: #1D4ED8;
     color: #fff;
 }
 

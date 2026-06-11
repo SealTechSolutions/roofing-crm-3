@@ -61,13 +61,13 @@ export default function Contacts() {
     <div className="p-6 sm:p-8 animate-in fade-in duration-500" data-testid="contacts-page">
       <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200">
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 mb-2">Contacts</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-2">Contacts</div>
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight">People &amp; Companies</h1>
         </div>
         <button
           data-testid="new-contact-button"
           onClick={openCreate}
-          className="inline-flex items-center gap-2 bg-orange-600 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-orange-700 rounded-sm transition-colors"
+          className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
         >
           <Plus className="w-4 h-4" /> New Contact
         </button>
@@ -130,7 +130,7 @@ export default function Contacts() {
                 data-testid="contact-billing-same"
                 checked={form.billing_same_as_address}
                 onChange={(e) => setForm({ ...form, billing_same_as_address: e.target.checked })}
-                className="w-4 h-4 accent-orange-600"
+                className="w-4 h-4 accent-blue-700"
               />
               <span className="text-xs uppercase tracking-wider font-bold text-zinc-700">Billing address same as address</span>
             </label>
@@ -141,7 +141,7 @@ export default function Contacts() {
             )}
             <div className="flex justify-end gap-2 pt-4 border-t border-zinc-200">
               <button type="button" onClick={() => setOpen(false)} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50">Cancel</button>
-              <button type="submit" disabled={loading} data-testid="contact-save" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-orange-600 text-white hover:bg-orange-700 rounded-sm disabled:opacity-50">{loading ? "Saving..." : "Save"}</button>
+              <button type="submit" disabled={loading} data-testid="contact-save" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm disabled:opacity-50">{loading ? "Saving..." : "Save"}</button>
             </div>
           </form>
         </Modal>
@@ -180,7 +180,7 @@ export const Input = ({ value, onChange, type = "text", ...props }) => (
     type={type}
     value={value ?? ""}
     onChange={(e) => onChange(type === "number" ? parseFloat(e.target.value || 0) : e.target.value)}
-    className="w-full h-10 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-orange-600 text-sm"
+    className="w-full h-10 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-700 text-sm"
     {...props}
   />
 );
@@ -189,7 +189,7 @@ export const Select = ({ value, onChange, options, ...props }) => (
   <select
     value={value ?? ""}
     onChange={(e) => onChange(e.target.value)}
-    className="w-full h-10 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-orange-600 text-sm"
+    className="w-full h-10 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-700 text-sm"
     {...props}
   >
     {options.map((o) => (

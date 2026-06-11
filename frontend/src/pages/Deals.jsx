@@ -89,13 +89,13 @@ export default function Deals() {
     <div className="p-6 sm:p-8 animate-in fade-in duration-500" data-testid="deals-page">
       <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200">
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 mb-2">Pipeline</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-2">Pipeline</div>
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight">Deals &amp; Proposals</h1>
         </div>
         <button
           data-testid="new-deal-button"
           onClick={openCreate}
-          className="inline-flex items-center gap-2 bg-orange-600 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-orange-700 rounded-sm transition-colors"
+          className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
         >
           <Plus className="w-4 h-4" /> New Deal
         </button>
@@ -133,14 +133,14 @@ export default function Deals() {
                 return (
                   <tr key={d.id} className="border-b border-zinc-100 hover:bg-zinc-50" data-testid={`deal-row-${d.id}`}>
                     <td className="px-6 py-3">
-                      <Link to={`/deals/${d.id}`} className="font-bold text-zinc-950 hover:text-orange-600 inline-flex items-center gap-1">
+                      <Link to={`/deals/${d.id}`} className="font-bold text-zinc-950 hover:text-blue-700 inline-flex items-center gap-1">
                         {d.title} <ArrowUpRight className="w-3.5 h-3.5" />
                       </Link>
                     </td>
                     <td className="px-6 py-3"><StatusPill status={d.status} /></td>
                     <td className="px-6 py-3 text-zinc-600 text-xs">{d.lead_source}</td>
                     <td className="px-6 py-3 text-zinc-600 text-xs">{d.project_type}</td>
-                    <td className="px-6 py-3 text-zinc-600 text-xs">{d.current_roof_type} → <span className="text-orange-700 font-bold">{d.proposed_roof_type}</span></td>
+                    <td className="px-6 py-3 text-zinc-600 text-xs">{d.current_roof_type} → <span className="text-blue-700 font-bold">{d.proposed_roof_type}</span></td>
                     <td className="px-6 py-3 font-mono text-right">{formatCurrency(d.chosen_amount)}</td>
                     <td className={`px-6 py-3 font-mono text-right font-bold ${profit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCurrency(profit)}</td>
                     <td className="px-6 py-3">
@@ -227,13 +227,13 @@ export default function Deals() {
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 rows={3}
-                className="w-full px-3 py-2 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-orange-600 text-sm"
+                className="w-full px-3 py-2 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-700 text-sm"
               />
             </Field>
 
             <div className="flex justify-end gap-2 pt-4 border-t border-zinc-200">
               <button type="button" onClick={() => setOpen(false)} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50">Cancel</button>
-              <button type="submit" disabled={loading} data-testid="deal-save" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-orange-600 text-white hover:bg-orange-700 rounded-sm disabled:opacity-50">{loading ? "Saving..." : "Save Deal"}</button>
+              <button type="submit" disabled={loading} data-testid="deal-save" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm disabled:opacity-50">{loading ? "Saving..." : "Save Deal"}</button>
             </div>
           </form>
         </Modal>

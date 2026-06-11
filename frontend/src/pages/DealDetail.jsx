@@ -32,14 +32,14 @@ export default function DealDetail() {
 
   return (
     <div className="p-6 sm:p-8 animate-in fade-in duration-500" data-testid="deal-detail-page">
-      <Link to="/deals" className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 hover:text-orange-600 mb-4" data-testid="back-to-deals">
+      <Link to="/deals" className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 hover:text-blue-700 mb-4" data-testid="back-to-deals">
         <ArrowLeft className="w-3 h-3" /> Back to Deals
       </Link>
 
       <div className="flex items-end justify-between mb-8 pb-6 border-b border-zinc-200">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600">Deal</div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700">Deal</div>
             <StatusPill status={deal.status} />
           </div>
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight" data-testid="deal-title">{deal.title}</h1>
@@ -129,7 +129,7 @@ const Card = ({ title, children }) => (
 );
 
 const Row = ({ label, value, bold, highlight, accent }) => (
-  <div className={`flex items-center justify-between py-2 ${highlight ? "bg-orange-50 -mx-2 px-2 rounded-sm" : ""}`}>
+  <div className={`flex items-center justify-between py-2 ${highlight ? "bg-blue-50 -mx-2 px-2 rounded-sm" : ""}`}>
     <div className="text-xs uppercase tracking-wider text-zinc-500">{label}</div>
     <div className={`text-sm ${bold ? "font-bold text-zinc-950" : "text-zinc-700"} font-mono ${accent || ""}`}>{value || "—"}</div>
   </div>
