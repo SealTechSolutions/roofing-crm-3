@@ -27,7 +27,7 @@ h1, h2, h3, h4, h5, h6, .font-heading {
         --card-foreground: 240 6% 10%;
         --popover: 0 0% 100%;
         --popover-foreground: 240 6% 10%;
-        --primary: 21 90% 48%;
+        --primary: 218 73% 45%;
         --primary-foreground: 0 0% 100%;
         --secondary: 240 5% 96%;
         --secondary-foreground: 240 6% 10%;
@@ -39,7 +39,7 @@ h1, h2, h3, h4, h5, h6, .font-heading {
         --destructive-foreground: 0 0% 98%;
         --border: 240 6% 90%;
         --input: 240 6% 90%;
-        --ring: 21 90% 48%;
+        --ring: 218 73% 45%;
         --radius: 0.125rem;
     }
 }
