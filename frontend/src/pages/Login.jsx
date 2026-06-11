@@ -92,7 +92,7 @@ export default function Login() {
       </div>
 
       <div className="hidden lg:flex flex-col order-1 lg:order-2 bg-zinc-950 h-screen">
-        <div className="h-[60%] overflow-hidden">
+        <div className="h-[70%] overflow-hidden">
           <img
             src={BG}
             alt="Commercial building"
