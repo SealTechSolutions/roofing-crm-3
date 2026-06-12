@@ -253,10 +253,13 @@ def build_silicone_spec(data: dict, cover_photo_bytes: bytes = None) -> bytes:
     story.append(Paragraph(excl, s["body"]))
     story.append(Spacer(1, 0.12 * inch))
 
+    appreciation_style = ParagraphStyle(
+        "appreciation", parent=s["body"], alignment=1, fontName="Helvetica-Oblique",
+    )
     story.append(Paragraph(
         "We appreciate your consideration of SealTech Building Solutions for your roofing investment. "
         "We are committed to delivering exceptional craftsmanship, transparency, and lasting value on every project we undertake.",
-        s["body"],
+        appreciation_style,
     ))
     story.append(Spacer(1, 0.1 * inch))
 
