@@ -107,7 +107,7 @@ def strip_id(doc: dict) -> dict:
 
 # ----- Models -----
 LEAD_SOURCES = ["Referral", "Marketing", "Website", "Email Campaign", "Personal"]
-PROJECT_TYPES = ["Repair", "Restoration", "Replacement"]
+PROJECT_TYPES = ["Repair", "Roof Restoration", "Roof Replacement", "Maintenance", "New Construction"]
 ROOF_TYPES = [
     "FARM (Fluid Applied Reinforced Membrane)",
     "Silicone w/ Granules",
@@ -1502,6 +1502,77 @@ async def dashboard_summary(current=Depends(get_current_user)):
         "maintenance_overdue": maintenance_overdue,
         "maintenance_annual_revenue": round(maintenance_annual_revenue, 2),
     }
+
+
+@api_router.get("/dashboard/revenue-by-type")
+async def revenue_by_type(window: str = "ytd", current=Depends(get_current_user)):
+    """Booked + Received revenue grouped by project_type.
+    window = 'ytd' (current calendar year) or 'all' (all-time).
+    Maintenance is a special bucket fed by maintenance_visits, NOT by project_type=Maintenance deals
+    (those would also be included separately if user labels a one-off project as Maintenance type)."""
+    if window not in ("ytd", "all"):
+        window = "ytd"
+    year_start_iso = datetime(now_utc().year, 1, 1, tzinfo=timezone.utc).date().isoformat()
+
+    def in_window(date_str: str) -> bool:
+        if window == "all":
+            return True
+        if not date_str:
+            return False
+        return date_str[:10] >= year_start_iso
+
+    # Sales filter
+    query = {"is_deleted": {"$ne": True}}
+    if current.get("role") == "sales":
+        query["$or"] = [{"assigned_to_user_id": current["id"]}, {"created_by_user_id": current["id"]}]
+    deals = await db.deals.find(query, {"_id": 0}).to_list(5000)
+
+    types = ["Repair", "Roof Restoration", "Roof Replacement", "Maintenance", "New Construction"]
+    buckets = {t: {"booked": 0.0, "received": 0.0, "count": 0} for t in types}
+    other = {"booked": 0.0, "received": 0.0, "count": 0}
+
+    for d in deals:
+        # Project type breakdown from Won deals
+        if d.get("status") == "Won":
+            # Use chosen_date if present, else created_at
+            ref = (d.get("chosen_date") or d.get("created_at") or "")[:10]
+            if in_window(ref):
+                ptype = d.get("project_type") or "Repair"
+                target = buckets.get(ptype, other)
+                booked = float(d.get("chosen_amount", 0) or 0)
+                received = sum(float(m.get("amount", 0) or 0) for m in (d.get("payment_milestones") or []) if m.get("status") == "Paid")
+                target["booked"] += booked
+                target["received"] += received
+                target["count"] += 1
+
+        # Maintenance visits feed the Maintenance bucket regardless of the project's own type
+        for v in (d.get("maintenance_visits") or []):
+            vd = (v.get("visit_date") or "")[:10]
+            if not in_window(vd):
+                continue
+            amt = float(v.get("amount", 0) or 0)
+            buckets["Maintenance"]["booked"] += amt
+            buckets["Maintenance"]["received"] += amt  # actuals from logged visits
+            buckets["Maintenance"]["count"] += 1
+
+    rows = []
+    for t in types:
+        b = buckets[t]
+        rows.append({
+            "project_type": t,
+            "booked": round(b["booked"], 2),
+            "received": round(b["received"], 2),
+            "count": b["count"],
+        })
+    # Append "Other" if any
+    if other["count"] > 0:
+        rows.append({"project_type": "Other", "booked": round(other["booked"], 2), "received": round(other["received"], 2), "count": other["count"]})
+
+    totals = {
+        "booked": round(sum(r["booked"] for r in rows), 2),
+        "received": round(sum(r["received"] for r in rows), 2),
+    }
+    return {"window": window, "rows": rows, "totals": totals}
 
 
 # ----- Startup -----

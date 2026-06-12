@@ -18,11 +18,17 @@ const KPI = ({ label, value, hint, icon: Icon, testId }) => (
 export default function Dashboard() {
   const [data, setData] = useState(null);
   const [deals, setDeals] = useState([]);
+  const [revWindow, setRevWindow] = useState("ytd");
+  const [revData, setRevData] = useState(null);
 
   useEffect(() => {
     api.get("/dashboard/summary").then((r) => setData(r.data));
     api.get("/deals").then((r) => setDeals(r.data));
   }, []);
+
+  useEffect(() => {
+    api.get(`/dashboard/revenue-by-type?window=${revWindow}`).then((r) => setRevData(r.data));
+  }, [revWindow]);
 
   if (!data) {
     return <div className="p-8 text-xs uppercase tracking-[0.2em] text-zinc-500">Loading dashboard...</div>;
@@ -79,6 +85,76 @@ export default function Dashboard() {
         <Link to="/maintenance" className="block">
           <KPI label="Maintenance Overdue" value={data.maintenance_overdue || 0} hint="Past next due date" icon={Trophy} testId="kpi-maintenance-overdue" />
         </Link>
+      </div>
+
+      {/* Revenue by Project Type */}
+      <div className="bg-white border border-zinc-200 rounded-sm mb-12" data-testid="revenue-by-type-card">
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h2 className="font-heading text-lg font-bold tracking-tight">Revenue by Type</h2>
+            <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-1">Booked vs Received — broken out by project category</div>
+          </div>
+          <div className="inline-flex border border-zinc-300 rounded-sm overflow-hidden" data-testid="revenue-window-toggle">
+            <button
+              data-testid="revenue-window-ytd"
+              onClick={() => setRevWindow("ytd")}
+              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${revWindow === "ytd" ? "bg-blue-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
+            >
+              YTD
+            </button>
+            <button
+              data-testid="revenue-window-all"
+              onClick={() => setRevWindow("all")}
+              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${revWindow === "all" ? "bg-blue-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
+            >
+              All-Time
+            </button>
+          </div>
+        </div>
+        {!revData ? (
+          <div className="p-8 text-xs uppercase tracking-wider text-zinc-500 text-center">Loading…</div>
+        ) : (
+          <table className="w-full text-sm" data-testid="revenue-by-type-table">
+            <thead>
+              <tr className="border-b-2 border-zinc-950 text-left">
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider">Project Type</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Count</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Booked</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Received</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Outstanding</th>
+              </tr>
+            </thead>
+            <tbody>
+              {revData.rows.map((row) => {
+                const outstanding = (row.booked || 0) - (row.received || 0);
+                const isMaint = row.project_type === "Maintenance";
+                return (
+                  <tr key={row.project_type} className={`border-b border-zinc-100 ${isMaint ? "bg-blue-50/40" : ""}`} data-testid={`revenue-row-${row.project_type.replace(/\s+/g, "-").toLowerCase()}`}>
+                    <td className="px-6 py-3 font-bold text-zinc-950">
+                      {row.project_type}
+                      {isMaint && <span className="ml-2 text-[9px] font-bold uppercase tracking-wider text-blue-700">(Recurring Visits)</span>}
+                    </td>
+                    <td className="px-6 py-3 text-right text-zinc-600 font-mono">{row.count}</td>
+                    <td className="px-6 py-3 text-right font-mono">{formatCurrency(row.booked)}</td>
+                    <td className="px-6 py-3 text-right font-mono text-emerald-700">{formatCurrency(row.received)}</td>
+                    <td className={`px-6 py-3 text-right font-mono ${outstanding > 0 ? "text-orange-700" : "text-zinc-400"}`}>{formatCurrency(outstanding)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-zinc-950 bg-zinc-50">
+                <td className="px-6 py-3 font-bold uppercase text-[10px] tracking-wider" colSpan={2}>Total</td>
+                <td className="px-6 py-3 text-right font-mono font-bold">{formatCurrency(revData.totals.booked)}</td>
+                <td className="px-6 py-3 text-right font-mono font-bold text-emerald-700">{formatCurrency(revData.totals.received)}</td>
+                <td className="px-6 py-3 text-right font-mono font-bold text-orange-700">{formatCurrency((revData.totals.booked || 0) - (revData.totals.received || 0))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+        <div className="px-6 py-3 border-t border-zinc-100 text-[10px] uppercase tracking-wider text-zinc-500">
+          <span className="text-blue-700 font-bold">Note:</span> "Received" currently uses Paid milestone amounts as a proxy. Once invoicing is added, this will track actual invoiced + collected amounts.
+        </div>
       </div>
 
       <div className="bg-white border border-zinc-200 rounded-sm">

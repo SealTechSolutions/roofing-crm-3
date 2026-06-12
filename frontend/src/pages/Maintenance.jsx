@@ -64,6 +64,14 @@ export default function Maintenance() {
     return { annualRev, overdue, due30, count: filtered.length };
   }, [filtered]);
 
+  const [ytdIncome, setYtdIncome] = useState(0);
+  useEffect(() => {
+    api.get("/dashboard/revenue-by-type?window=ytd").then((r) => {
+      const m = (r.data?.rows || []).find((x) => x.project_type === "Maintenance");
+      setYtdIncome(m?.received || 0);
+    }).catch(() => setYtdIncome(0));
+  }, [rows]);
+
   const downloadList = async (fmt) => {
     const token = localStorage.getItem("crm_token");
     try {
@@ -113,9 +121,10 @@ export default function Maintenance() {
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <KpiCard label="Customers on Plan" value={totals.count} testId="kpi-maint-count" />
-        <KpiCard label="Annual Recurring Revenue" value={formatCurrency(totals.annualRev)} testId="kpi-maint-arr" accent="text-emerald-700" />
+        <KpiCard label="Annual Recurring Revenue" value={formatCurrency(totals.annualRev)} hint="Contracted rate" testId="kpi-maint-arr" accent="text-emerald-700" />
+        <KpiCard label="Visits Income (YTD)" value={formatCurrency(ytdIncome)} hint="Actual income from logged visits" testId="kpi-maint-ytd-income" accent="text-emerald-700" />
         <KpiCard label="Due Within 30 Days" value={totals.due30} testId="kpi-maint-due30" accent="text-orange-700" />
         <KpiCard label="Overdue" value={totals.overdue} testId="kpi-maint-overdue" accent="text-red-700" />
       </div>
