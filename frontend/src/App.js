@@ -15,6 +15,7 @@ import UsersPage from "@/pages/Users";
 import Maintenance from "@/pages/Maintenance";
 import Invoices from "@/pages/Invoices";
 import Payables from "@/pages/Payables";
+import Materials from "@/pages/Materials";
 import "@/App.css";
 
 const ProtectedRoute = ({ children }) => {
@@ -64,6 +65,7 @@ function App() {
               <Route path="/maintenance" element={<Maintenance />} />
               <Route path="/invoices" element={<Invoices />} />
               <Route path="/payables" element={<Payables />} />
+              <Route path="/materials" element={<Materials />} />
               <Route path="/users" element={<UsersPage />} />
             </Route>
           </Routes>

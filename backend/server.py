@@ -451,6 +451,7 @@ class VendorBillIn(BaseModel):
     total: float = 0.0
     subtotal: float = 0.0
     tax: float = 0.0
+    shipping: float = 0.0
     status: str = "Pending"  # Pending | Approved | Paid | Disputed | Void
     notes: str = ""
     attached_file_id: Optional[str] = None
@@ -467,6 +468,30 @@ class VendorBill(VendorBillIn):
     id: str
     created_at: str
     created_by_user_id: Optional[str] = None
+
+
+# ----- Materials Catalog -----
+MATERIAL_CATEGORIES = ["Coating", "Primer", "Fabric", "Mastic", "Fasteners", "Sealant", "Equipment", "Tools", "Other"]
+
+
+class MaterialIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    sku: str = ""
+    name: str = Field(min_length=1)
+    category: str = "Other"
+    unit: str = "each"
+    default_price: float = 0.0
+    shipping_pct: float = 0.0  # typical shipping load %, default per material
+    markup_pct: float = 0.0    # internal target markup % (for your P&L planning only — never shown to customers)
+    vendor_id: Optional[str] = None
+    vendor_name: str = ""
+    notes: str = ""
+
+
+class Material(MaterialIn):
+    id: str
+    created_at: str
+    updated_at: str
 
 
 # ----- Auth Routes -----
@@ -601,6 +626,7 @@ async def options(current=Depends(get_current_user)):
     return {
         "lead_sources": LEAD_SOURCES,
         "project_types": PROJECT_TYPES,
+        "material_categories": MATERIAL_CATEGORIES,
         "roof_types": ROOF_TYPES,
         "deal_statuses": DEAL_STATUSES,
         "deal_types": DEAL_TYPES,
@@ -1424,11 +1450,12 @@ def _recalc_bill(bill: dict) -> dict:
         it["amount"] = round(amt, 2)
         sub += it["amount"]
     bill["line_items"] = items
-    # If user provided a total, keep it; else compute from line items
+    # If user provided a total, keep it; else compute from line items + tax + shipping
     if not float(bill.get("total") or 0):
         tax = float(bill.get("tax") or 0)
+        shipping = float(bill.get("shipping") or 0)
         bill["subtotal"] = round(sub, 2)
-        bill["total"] = round(sub + tax, 2)
+        bill["total"] = round(sub + tax + shipping, 2)
     # Auto-fill paid_amount when status = Paid
     if (bill.get("status") or "").lower() == "paid":
         total = float(bill.get("total") or 0)
@@ -2323,6 +2350,185 @@ async def import_category(
     }
 
 
+# ----- Materials Catalog -----
+@api_router.get("/materials")
+async def list_materials(category: Optional[str] = None, current=Depends(get_current_user)):
+    query = {"is_deleted": {"$ne": True}}
+    if category and category != "All":
+        query["category"] = category
+    items = await db.materials.find(query, {"_id": 0}).sort("name", 1).to_list(5000)
+    return items
+
+
+@api_router.post("/materials", response_model=Material)
+async def create_material(body: MaterialIn, current=Depends(get_current_user)):
+    data = body.model_dump()
+    if data.get("vendor_id") and not data.get("vendor_name"):
+        v = await db.vendors.find_one({"id": data["vendor_id"]}, {"_id": 0})
+        if v:
+            data["vendor_name"] = v.get("name", "")
+    data["id"] = str(uuid.uuid4())
+    data["created_at"] = now_iso()
+    data["updated_at"] = now_iso()
+    data["is_deleted"] = False
+    await db.materials.insert_one(data.copy())
+    return strip_id(data)
+
+
+@api_router.put("/materials/{material_id}", response_model=Material)
+async def update_material(material_id: str, body: MaterialIn, current=Depends(get_current_user)):
+    existing = await db.materials.find_one({"id": material_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Material not found")
+    data = body.model_dump()
+    if data.get("vendor_id") and not data.get("vendor_name"):
+        v = await db.vendors.find_one({"id": data["vendor_id"]}, {"_id": 0})
+        if v:
+            data["vendor_name"] = v.get("name", "")
+    data["id"] = existing["id"]
+    data["created_at"] = existing.get("created_at")
+    data["updated_at"] = now_iso()
+    await db.materials.update_one({"id": material_id}, {"$set": data})
+    return strip_id(data)
+
+
+@api_router.delete("/materials/{material_id}")
+async def delete_material(material_id: str, current=Depends(get_current_user)):
+    if is_admin(current):
+        await db.materials.delete_one({"id": material_id})
+    else:
+        await db.materials.update_one({"id": material_id}, {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}})
+    return {"ok": True}
+
+
+@api_router.post("/materials/bulk-import")
+async def bulk_import_materials(file: UploadFile = File(...), current=Depends(get_current_user)):
+    """Import materials from CSV or Excel. Required columns: name (rest optional)."""
+    raw = await file.read()
+    try:
+        import pandas as pd
+        from io import BytesIO as _BIO
+        if (file.filename or "").lower().endswith(".csv"):
+            df = pd.read_csv(_BIO(raw))
+        else:
+            df = pd.read_excel(_BIO(raw))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read file: {e}")
+
+    # Normalize column names (lowercase + strip)
+    df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+    if "name" not in df.columns:
+        raise HTTPException(status_code=400, detail="CSV must include a 'name' column")
+
+    # Match vendors by name (case-insensitive)
+    vendors = await db.vendors.find({"is_deleted": {"$ne": True}}, {"_id": 0, "id": 1, "name": 1}).to_list(500)
+    vendor_lookup = {(v.get("name") or "").strip().lower(): v["id"] for v in vendors}
+
+    created = 0
+    updated = 0
+    skipped = 0
+    for _, row in df.iterrows():
+        name = str(row.get("name", "") or "").strip()
+        if not name:
+            skipped += 1
+            continue
+        sku = str(row.get("sku", "") or "").strip()
+        category = str(row.get("category", "") or "Other").strip() or "Other"
+        unit = str(row.get("unit", "") or "each").strip() or "each"
+        try:
+            price = float(row.get("default_price") or row.get("price") or 0)
+        except (TypeError, ValueError):
+            price = 0.0
+        try:
+            shipping_pct = float(row.get("shipping_pct") or row.get("shipping%") or 0)
+        except (TypeError, ValueError):
+            shipping_pct = 0.0
+        try:
+            markup_pct = float(row.get("markup_pct") or row.get("markup%") or 0)
+        except (TypeError, ValueError):
+            markup_pct = 0.0
+        vendor_name = str(row.get("preferred_vendor", "") or row.get("vendor", "") or "").strip()
+        vendor_id = vendor_lookup.get(vendor_name.lower()) if vendor_name else None
+        notes = str(row.get("notes", "") or "").strip()
+
+        # Find existing by SKU (preferred) or name
+        existing = None
+        if sku:
+            existing = await db.materials.find_one({"sku": sku, "is_deleted": {"$ne": True}}, {"_id": 0})
+        if not existing:
+            existing = await db.materials.find_one({"name": name, "is_deleted": {"$ne": True}}, {"_id": 0})
+
+        doc = {
+            "sku": sku,
+            "name": name,
+            "category": category,
+            "unit": unit,
+            "default_price": price,
+            "shipping_pct": shipping_pct,
+            "markup_pct": markup_pct,
+            "vendor_id": vendor_id,
+            "vendor_name": vendor_name,
+            "notes": notes,
+            "updated_at": now_iso(),
+        }
+        if existing:
+            await db.materials.update_one({"id": existing["id"]}, {"$set": doc})
+            updated += 1
+        else:
+            doc["id"] = str(uuid.uuid4())
+            doc["created_at"] = now_iso()
+            doc["is_deleted"] = False
+            await db.materials.insert_one(doc)
+            created += 1
+    return {"created": created, "updated": updated, "skipped": skipped}
+
+
+@api_router.get("/materials/export.xlsx")
+async def export_materials(current=Depends(get_current_user)):
+    items = await db.materials.find({"is_deleted": {"$ne": True}}, {"_id": 0}).sort("name", 1).to_list(5000)
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Materials"
+    headers = ["SKU", "Name", "Category", "Unit", "Default Price", "Shipping %", "Markup %", "Loaded Cost", "Preferred Vendor", "Notes", "Last Updated"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF", size=11)
+        cell.fill = PatternFill("solid", fgColor="1D4ED8")
+        cell.alignment = Alignment(horizontal="left")
+    for m in items:
+        price = float(m.get("default_price") or 0)
+        ship_pct = float(m.get("shipping_pct") or 0)
+        loaded = round(price * (1 + ship_pct / 100), 2)
+        ws.append([m.get("sku", ""), m.get("name", ""), m.get("category", ""), m.get("unit", ""), price, ship_pct, float(m.get("markup_pct") or 0), loaded, m.get("vendor_name", ""), m.get("notes", ""), (m.get("updated_at") or "")[:10]])
+    ws.freeze_panes = "A2"
+    for i in range(1, 12):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = 18
+    buf = BytesIO()
+    wb.save(buf)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="sealtech-materials.xlsx"'})
+
+
+@api_router.get("/materials/template.xlsx")
+async def materials_template(current=Depends(get_current_user)):
+    """Empty CSV-ready template for users to fill out."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    wb = Workbook(); ws = wb.active; ws.title = "Materials"
+    headers = ["sku", "name", "category", "unit", "default_price", "shipping_pct", "markup_pct", "preferred_vendor", "notes"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF", size=11)
+        cell.fill = PatternFill("solid", fgColor="A0703A")
+    ws.append(["EX-001", "Example Silicone 5gal", "Coating", "5-gal pail", 285.0, 8.0, 35.0, "ABC Supply", "Optional notes"])
+    for i in range(1, 10):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = 22
+    buf = BytesIO()
+    wb.save(buf)
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="sealtech-materials-template.xlsx"'})
+
+
 # ----- Dashboard -----
 @api_router.get("/dashboard/summary")
 async def dashboard_summary(current=Depends(get_current_user)):
@@ -2517,6 +2723,9 @@ async def on_startup():
     await db.vendor_bills.create_index("id", unique=True)
     await db.vendor_bills.create_index("vendor_id")
     await db.vendor_bills.create_index("due_date")
+    await db.materials.create_index("id", unique=True)
+    await db.materials.create_index("sku")
+    await db.materials.create_index("name")
     await db.settings.create_index("key", unique=True)
 
     # Migrate deprecated status "Proposal Sent" → "Sent"

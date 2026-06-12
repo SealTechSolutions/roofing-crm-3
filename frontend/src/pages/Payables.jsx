@@ -374,6 +374,7 @@ function BillEditor({ bill, vendors, deals, onClose, onSaved }) {
     total: bill.total || 0,
     subtotal: bill.subtotal || 0,
     tax: bill.tax || 0,
+    shipping: bill.shipping || 0,
     status: bill.status || "Pending",
     notes: bill.notes || "",
     attached_file_id: bill.attached_file_id || null,
@@ -409,7 +410,7 @@ function BillEditor({ bill, vendors, deals, onClose, onSaved }) {
   }, [form.vendor_id, vendors.length]);
 
   const subtotal = form.line_items.reduce((s, li) => s + Number(li.amount || 0), 0);
-  const total = subtotal + Number(form.tax || 0);
+  const total = subtotal + Number(form.tax || 0) + Number(form.shipping || 0);
 
   const save = async () => {
     setSaving(true);
@@ -556,6 +557,13 @@ function BillEditor({ bill, vendors, deals, onClose, onSaved }) {
                   <tr className="border-t-2 border-zinc-950 bg-zinc-50">
                     <td colSpan={4} className="px-2 py-2 text-right text-[10px] font-bold uppercase tracking-wider">Subtotal</td>
                     <td className="px-2 py-2 text-right font-mono">{formatCurrency(subtotal)}</td>
+                    <td></td>
+                  </tr>
+                  <tr className="bg-zinc-50">
+                    <td colSpan={4} className="px-2 py-2 text-right text-[10px] font-bold uppercase tracking-wider">Shipping</td>
+                    <td className="px-2 py-2 text-right">
+                      <input type="number" value={form.shipping} onChange={(e) => setForm({ ...form, shipping: Number(e.target.value || 0) })} className="w-full h-7 px-2 text-right border border-zinc-300 rounded-sm text-sm font-mono" data-testid="bill-shipping" />
+                    </td>
                     <td></td>
                   </tr>
                   <tr className="bg-zinc-50">
