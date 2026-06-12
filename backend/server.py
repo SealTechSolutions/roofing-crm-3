@@ -352,6 +352,8 @@ class DealIn(BaseModel):
     warranty_10yr_add: float = 0.0
     warranty_color: str = "white"
     cover_photo_file_id: Optional[str] = None
+    # Change orders — approved scope additions/deductions that affect the contract total
+    change_orders: List[dict] = Field(default_factory=list)
     # Maintenance plan tracking
     maintenance_plan: bool = False
     maintenance_rate: float = 0.0
@@ -762,6 +764,21 @@ def normalize_deal(data: dict) -> dict:
     last_visit_date = cleaned_visits[0].get("visit_date", "") if cleaned_visits else ""
     data["last_maintenance_date"] = last_visit_date
 
+    # Normalize change orders
+    change_orders = data.get("change_orders") or []
+    cleaned_cos = []
+    for co in change_orders:
+        if not co.get("id"):
+            co["id"] = str(uuid.uuid4())
+        try:
+            co["amount"] = float(co.get("amount") or 0)
+        except (TypeError, ValueError):
+            co["amount"] = 0.0
+        if not co.get("status"):
+            co["status"] = "Approved"
+        cleaned_cos.append(co)
+    data["change_orders"] = cleaned_cos
+
     # Compute next_maintenance_date: last_visit + 1 year, else start_date + 1 year
     start = data.get("maintenance_start_date", "") or ""
     base = last_visit_date or start
@@ -1088,7 +1105,13 @@ async def create_invoice(body: InvoiceIn, current=Depends(get_current_user)):
                 pt = float(deal.get("chosen_amount", 0) or 0)
                 if pt <= 0:
                     pt = proposal_mid_amount(deal)
-                data["project_total"] = pt
+                # Add approved change orders
+                co_total = sum(
+                    float(co.get("amount", 0) or 0)
+                    for co in (deal.get("change_orders") or [])
+                    if (co.get("status") or "Approved") == "Approved"
+                )
+                data["project_total"] = round(pt + co_total, 2)
             if not data.get("customer_contact_id"):
                 data["customer_contact_id"] = deal.get("customer_contact_id") or deal.get("contact_id")
             # Auto-fill bill-to from deal's contact if still empty

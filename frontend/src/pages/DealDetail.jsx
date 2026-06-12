@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
@@ -158,6 +158,34 @@ export default function DealDetail() {
       setSaving(false);
     }
   };
+
+  // ----- Change Order handlers -----
+  const [newCO, setNewCO] = useState({ description: "", amount: 0, date: new Date().toISOString().slice(0, 10), status: "Approved", notes: "" });
+
+  const addChangeOrder = () => {
+    if (!newCO.description.trim()) {
+      toast.error("Description is required");
+      return;
+    }
+    const co = { ...newCO, id: crypto.randomUUID(), amount: Number(newCO.amount || 0) };
+    const list = [...(deal.change_orders || []), co];
+    persist({ change_orders: list });
+    setNewCO({ description: "", amount: 0, date: new Date().toISOString().slice(0, 10), status: "Approved", notes: "" });
+  };
+
+  const removeChangeOrder = (coId) => {
+    if (!window.confirm("Remove this change order?")) return;
+    persist({ change_orders: (deal.change_orders || []).filter((co) => co.id !== coId) });
+  };
+
+  const updateChangeOrder = (coId, patch) => {
+    const list = (deal.change_orders || []).map((co) => (co.id === coId ? { ...co, ...patch } : co));
+    persist({ change_orders: list });
+  };
+
+  const changeOrderTotal = (deal.change_orders || [])
+    .filter((co) => (co.status || "Approved") === "Approved")
+    .reduce((s, co) => s + Number(co.amount || 0), 0);
 
   if (!deal) return <div className="p-8 text-xs uppercase tracking-[0.2em] text-zinc-500">Loading...</div>;
 
@@ -581,6 +609,123 @@ export default function DealDetail() {
               </div>
             )}
           </>
+        )}
+      </Card>
+
+      {/* Change Orders */}
+      <Card
+        title={
+          <span className="inline-flex items-center gap-2">
+            <FilePlus className="w-3.5 h-3.5 text-blue-700" /> Change Orders
+            {changeOrderTotal !== 0 && (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-sm">
+                +{formatCurrency(changeOrderTotal)} approved
+              </span>
+            )}
+          </span>
+        }
+      >
+        {/* Add new change order */}
+        <div className="bg-zinc-50 border border-zinc-200 rounded-sm p-3 mb-4">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">Add Change Order</div>
+          <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
+            <input
+              type="date"
+              value={newCO.date}
+              onChange={(e) => setNewCO({ ...newCO, date: e.target.value })}
+              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm"
+              data-testid="new-co-date"
+            />
+            <input
+              type="text"
+              placeholder="Description"
+              value={newCO.description}
+              onChange={(e) => setNewCO({ ...newCO, description: e.target.value })}
+              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm sm:col-span-2"
+              data-testid="new-co-desc"
+            />
+            <input
+              type="number"
+              placeholder="Amount"
+              value={newCO.amount}
+              onChange={(e) => setNewCO({ ...newCO, amount: e.target.value })}
+              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm font-mono"
+              data-testid="new-co-amount"
+            />
+            <select
+              value={newCO.status}
+              onChange={(e) => setNewCO({ ...newCO, status: e.target.value })}
+              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+              data-testid="new-co-status"
+            >
+              <option value="Draft">Draft</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+            <button
+              onClick={addChangeOrder}
+              className="h-9 inline-flex items-center justify-center gap-1 px-3 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm"
+              data-testid="add-co-button"
+            >
+              <Plus className="w-3 h-3" /> Add
+            </button>
+          </div>
+          <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-2">
+            Approved change orders are added to Project Total on new invoices for this project.
+          </div>
+        </div>
+
+        {/* Change order history */}
+        {(deal.change_orders || []).length === 0 ? (
+          <div className="text-sm text-zinc-500 py-3 text-center">No change orders on this project.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="change-orders-table">
+              <thead>
+                <tr className="border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider">
+                  <th className="py-2 pr-3 w-32">Date</th>
+                  <th className="py-2 pr-3">Description</th>
+                  <th className="py-2 pr-3 w-32 text-right">Amount</th>
+                  <th className="py-2 pr-3 w-28">Status</th>
+                  <th className="py-2 w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(deal.change_orders || []).map((co) => (
+                  <tr key={co.id} className="border-b border-zinc-100" data-testid={`co-row-${co.id}`}>
+                    <td className="py-2 pr-3 font-mono">{co.date || "—"}</td>
+                    <td className="py-2 pr-3 text-zinc-700">{co.description}</td>
+                    <td className="py-2 pr-3 text-right font-mono font-bold">{formatCurrency(co.amount)}</td>
+                    <td className="py-2 pr-3">
+                      <select
+                        value={co.status || "Approved"}
+                        onChange={(e) => updateChangeOrder(co.id, { status: e.target.value })}
+                        className={`h-7 px-2 text-[10px] font-bold uppercase tracking-wider border rounded-sm bg-white ${
+                          (co.status || "Approved") === "Approved" ? "border-emerald-300 text-emerald-700" :
+                          co.status === "Rejected" ? "border-red-300 text-red-700" :
+                          "border-zinc-300 text-zinc-600"
+                        }`}
+                      >
+                        <option value="Draft">Draft</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Rejected">Rejected</option>
+                      </select>
+                    </td>
+                    <td className="py-2 text-right">
+                      <button onClick={() => removeChangeOrder(co.id)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm" data-testid={`del-co-${co.id}`}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-zinc-950 bg-zinc-50">
+                  <td className="py-2 pr-3 font-bold uppercase text-[10px] tracking-wider" colSpan={2}>Approved Change Orders Total</td>
+                  <td className="py-2 pr-3 text-right font-mono font-bold text-blue-700">{formatCurrency(changeOrderTotal)}</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
 

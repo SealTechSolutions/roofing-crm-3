@@ -220,6 +220,8 @@ export default function Invoices() {
 // ---------- Invoice editor ----------
 function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
   const isNew = !invoice?.id;
+  const [existingInvoices, setExistingInvoices] = useState([]); // for the linked deal
+  const [changeOrders, setChangeOrders] = useState([]); // approved change orders on the linked deal
   const [form, setForm] = useState(() => ({
     deal_id: invoice.deal_id || "",
     customer_contact_id: invoice.customer_contact_id || "",
@@ -260,11 +262,21 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
     try {
       const r = await api.get(`/deals/${deal_id}`);
       const d = r.data;
+      // Load existing invoices for this deal (used for Final % decision)
+      try {
+        const invs = await api.get(`/invoices?deal_id=${deal_id}`);
+        setExistingInvoices(invs.data || []);
+      } catch { setExistingInvoices([]); }
+      // Approved change orders → available to add as line items
+      const approvedCOs = (d.change_orders || []).filter((co) => (co.status || "Approved") === "Approved");
+      setChangeOrders(approvedCOs);
+      const coTotal = approvedCOs.reduce((s, co) => s + Number(co.amount || 0), 0);
       const cid = d.customer_contact_id || d.contact_id;
-      // Compute project total from chosen_amount or MID proposal option (typical buy point)
+      // Compute project total from chosen_amount or MID proposal option (typical buy point) + approved change orders
       const opts = [Number(d.proposal_option_1 || 0), Number(d.proposal_option_2 || 0), Number(d.proposal_option_3 || 0)].filter((x) => x > 0).sort((a, b) => a - b);
       const midOption = opts.length ? opts[Math.floor(opts.length / 2)] : 0;
-      const projTotal = Number(d.chosen_amount || 0) > 0 ? Number(d.chosen_amount) : midOption;
+      const baseTotal = Number(d.chosen_amount || 0) > 0 ? Number(d.chosen_amount) : midOption;
+      const projTotal = baseTotal + coTotal;
       let patch = { project_title: d.title || "", project_total: projTotal };
       if (cid) {
         const c = await api.get(`/contacts/${cid}`);
@@ -307,18 +319,34 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
   const addLine = () => setForm({ ...form, line_items: [...form.line_items, { description: "", quantity: 1, unit_price: 0, amount: 0 }] });
   const removeLine = (idx) => setForm({ ...form, line_items: form.line_items.filter((_, i) => i !== idx) });
 
-  // Quick presets — clicking adds a line item with templated (editable) description
+  // Quick presets — clicking adds a line item with templated (editable) description.
+  // When a project is linked, the unit_price auto-calculates from project_total.
   const PRESETS = [
-    { label: "Project Amount", desc: "Project Amount — Full contract value" },
-    { label: "Deposit", desc: "Deposit Invoice — Initial deposit per signed agreement" },
-    { label: "Mid-Project", desc: "Mid-Project Invoice — Progress draw per signed agreement" },
-    { label: "Final", desc: "Final Invoice — Completion of all scoped work" },
-    { label: "Maintenance", desc: "Annual Maintenance Visit — Inspection, cleaning, and seam touch-ups" },
-    { label: "Repair", desc: "Repair Services — Roof repair as described" },
+    { label: "Project Amount", desc: "Project Amount — Full contract value", pct: 100 },
+    { label: "Deposit", desc: "Deposit Invoice — Initial deposit per signed agreement", pct: 50 },
+    { label: "Mid-Project", desc: "Mid-Project Invoice — Progress draw per signed agreement", pct: 25 },
+    // Final: 50% by default, 25% if a Mid-Project invoice already exists for this deal
+    { label: "Final", desc: "Final Invoice — Completion of all scoped work", pctDefault: 50, pctIfMid: 25 },
+    { label: "Maintenance", desc: "Annual Maintenance Visit — Inspection, cleaning, and seam touch-ups", pct: null },
+    { label: "Repair", desc: "Repair Services — Roof repair as described", pct: null },
   ];
 
   const applyPreset = (preset) => {
-    const newLine = { description: preset.desc, quantity: 1, unit_price: 0, amount: 0 };
+    // Resolve percentage (Final has conditional)
+    let pct = preset.pct;
+    if (preset.label === "Final") {
+      const hasMid = existingInvoices.some((i) => i.invoice_type === "Mid-Project" && i.status !== "Void");
+      pct = hasMid ? preset.pctIfMid : preset.pctDefault;
+    }
+    const projectTotal = Number(form.project_total || 0);
+    const unitPrice = pct && projectTotal > 0 ? Math.round((projectTotal * pct) / 100 * 100) / 100 : 0;
+    const descSuffix = pct && projectTotal > 0 ? ` (${pct}% of $${projectTotal.toLocaleString()})` : "";
+    const newLine = {
+      description: preset.desc + descSuffix,
+      quantity: 1,
+      unit_price: unitPrice,
+      amount: unitPrice,
+    };
     // If the only line item is empty, replace it; otherwise append
     const items = form.line_items;
     const firstEmpty = items.length === 1 && !items[0].description && !Number(items[0].unit_price);
@@ -326,6 +354,20 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
     // Also stamp invoice_type if currently blank
     const patchType = !form.invoice_type ? { invoice_type: preset.label } : {};
     setForm({ ...form, line_items: next, ...patchType });
+    if (pct && projectTotal > 0) {
+      toast.success(`Added ${pct}% line item: ${formatCurrency(unitPrice)}${preset.label === "Final" && existingInvoices.some((i) => i.invoice_type === "Mid-Project" && i.status !== "Void") ? " (mid invoice detected → 25%)" : ""}`);
+    }
+  };
+
+  const addChangeOrderLine = (co) => {
+    const newLine = {
+      description: `Change Order — ${co.description}${co.date ? ` (${co.date})` : ""}`,
+      quantity: 1,
+      unit_price: Number(co.amount || 0),
+      amount: Number(co.amount || 0),
+    };
+    setForm({ ...form, line_items: [...form.line_items, newLine] });
+    toast.success("Change order added as line item");
   };
 
   const subtotal = form.line_items.reduce((s, li) => s + Number(li.amount || 0), 0);
@@ -457,6 +499,31 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
                 </button>
               ))}
             </div>
+
+            {/* Change Orders picker (only when deal linked + COs exist) */}
+            {changeOrders.length > 0 && (
+              <div className="bg-amber-50/40 border border-amber-200 rounded-sm p-3 mb-2" data-testid="change-orders-panel">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-amber-900 mb-2">Approved Change Orders Available</div>
+                <div className="space-y-1">
+                  {changeOrders.map((co) => (
+                    <div key={co.id} className="flex items-center justify-between gap-2 text-sm" data-testid={`co-pick-${co.id}`}>
+                      <div className="flex-1">
+                        <span className="font-mono text-zinc-500 text-[11px] mr-2">{co.date}</span>
+                        <span>{co.description}</span>
+                        <span className="ml-2 font-mono font-bold text-blue-700">{formatCurrency(co.amount)}</span>
+                      </div>
+                      <button
+                        onClick={() => addChangeOrderLine(co)}
+                        className="inline-flex items-center gap-1 px-2 h-6 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm"
+                        data-testid={`add-co-line-${co.id}`}
+                      >
+                        <Plus className="w-3 h-3" /> Add as Line
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="border border-zinc-200 rounded-sm overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
