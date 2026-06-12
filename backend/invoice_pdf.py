@@ -173,12 +173,14 @@ def build_invoice_pdf(inv: dict) -> bytes:
     story.append(Spacer(1, 0.2 * inch))
 
     # Project info block
-    if inv.get("project_title") or inv.get("project_address"):
+    if inv.get("project_title") or inv.get("project_address") or float(inv.get("project_total") or 0) > 0:
         proj_rows = []
         if inv.get("project_title"):
             proj_rows.append(["PROJECT", inv["project_title"]])
         if inv.get("project_address"):
             proj_rows.append(["LOCATION", inv["project_address"]])
+        if float(inv.get("project_total") or 0) > 0:
+            proj_rows.append(["PROJECT TOTAL", _currency(inv["project_total"])])
         if proj_rows:
             pt = Table(proj_rows, colWidths=[1.2 * inch, 6.3 * inch])
             pt.setStyle(TableStyle([

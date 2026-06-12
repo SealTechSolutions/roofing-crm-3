@@ -383,6 +383,7 @@ class InvoiceIn(BaseModel):
     terms: str = "Due Upon Receipt"
     project_title: str = ""
     project_address: str = ""
+    project_total: float = 0.0  # Contract total of the parent project (for context on partial invoices)
     notes: str = ""
     line_items: List[InvoiceLineItem] = Field(default_factory=list)
     status: str = "Draft"  # Draft | Sent | Paid | Partial | Void | Overdue
@@ -1067,6 +1068,16 @@ async def create_invoice(body: InvoiceIn, current=Depends(get_current_user)):
         if deal:
             if not data.get("project_title"):
                 data["project_title"] = deal.get("title", "")
+            if not data.get("project_total"):
+                # Use chosen_amount if set, else highest proposal option
+                pt = float(deal.get("chosen_amount", 0) or 0)
+                if pt <= 0:
+                    pt = max(
+                        float(deal.get("proposal_option_1", 0) or 0),
+                        float(deal.get("proposal_option_2", 0) or 0),
+                        float(deal.get("proposal_option_3", 0) or 0),
+                    )
+                data["project_total"] = pt
             if not data.get("customer_contact_id"):
                 data["customer_contact_id"] = deal.get("customer_contact_id") or deal.get("contact_id")
             # Auto-fill bill-to from deal's contact if still empty

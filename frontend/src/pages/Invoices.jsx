@@ -238,6 +238,7 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
     terms: invoice.terms || "Due Upon Receipt",
     project_title: invoice.project_title || "",
     project_address: invoice.project_address || "",
+    project_total: invoice.project_total || 0,
     notes: invoice.notes || "",
     line_items: invoice.line_items?.length
       ? invoice.line_items.map((li) => ({ ...li }))
@@ -260,7 +261,11 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
       const r = await api.get(`/deals/${deal_id}`);
       const d = r.data;
       const cid = d.customer_contact_id || d.contact_id;
-      let patch = { project_title: d.title || "" };
+      // Compute project total from chosen_amount or highest proposal option
+      const projTotal = Number(d.chosen_amount || 0) > 0
+        ? Number(d.chosen_amount)
+        : Math.max(Number(d.proposal_option_1 || 0), Number(d.proposal_option_2 || 0), Number(d.proposal_option_3 || 0));
+      let patch = { project_title: d.title || "", project_total: projTotal };
       if (cid) {
         const c = await api.get(`/contacts/${cid}`);
         const cust = c.data;
@@ -406,10 +411,15 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
           </div>
 
           {/* Project */}
-          <div className="grid grid-cols-2 gap-3">
-            <input value={form.project_title} onChange={(e) => setForm({ ...form, project_title: e.target.value })} placeholder="Project Title" className="h-9 px-2 border border-zinc-300 rounded-sm text-sm" />
+          <div className="grid grid-cols-3 gap-3">
+            <input value={form.project_title} onChange={(e) => setForm({ ...form, project_title: e.target.value })} placeholder="Project Title" className="h-9 px-2 border border-zinc-300 rounded-sm text-sm" data-testid="project-title" />
             <input value={form.project_address} onChange={(e) => setForm({ ...form, project_address: e.target.value })} placeholder="Project Address / Location" className="h-9 px-2 border border-zinc-300 rounded-sm text-sm" />
+            <div className="relative">
+              <input type="number" value={form.project_total} onChange={(e) => setForm({ ...form, project_total: Number(e.target.value || 0) })} placeholder="Project Total" className="h-9 pl-7 pr-2 w-full border border-zinc-300 rounded-sm text-sm font-mono" data-testid="project-total" />
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">$</span>
+            </div>
           </div>
+          <div className="text-[10px] uppercase tracking-wider text-zinc-500 -mt-3">Project Total appears on the invoice for context (e.g., "Deposit of X on a Y project")</div>
 
           {/* Line Items */}
           <div>
