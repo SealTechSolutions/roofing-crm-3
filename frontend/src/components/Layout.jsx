@@ -1,19 +1,21 @@
 import React from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
-const NAV = [
+const ALL_NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testId: "nav-dashboard" },
   { to: "/contacts", label: "Contacts", icon: Users, testId: "nav-contacts" },
   { to: "/properties", label: "Properties", icon: Building2, testId: "nav-properties" },
   { to: "/projects", label: "Projects", icon: FileSpreadsheet, testId: "nav-projects" },
   { to: "/vendors", label: "Vendors", icon: Truck, testId: "nav-vendors" },
   { to: "/subcontractors", label: "Subcontractors", icon: HardHat, testId: "nav-subcontractors" },
+  { to: "/users", label: "Users", icon: UserCog, testId: "nav-users", adminOnly: true },
 ];
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const NAV = ALL_NAV.filter((item) => !item.adminOnly || user?.role === "admin");
   return (
     <div className="min-h-screen flex bg-zinc-100">
       {/* Sidebar */}
@@ -48,7 +50,7 @@ export default function Layout() {
             </div>
             <div className="min-w-0">
               <div className="text-sm font-bold truncate" data-testid="current-user-name">{user?.name}</div>
-              <div className="text-[10px] uppercase tracking-wider text-zinc-500 truncate">{user?.email}</div>
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500 truncate">{user?.role || "user"}{user?.title ? " · " + user.title : ""}</div>
             </div>
           </div>
           <button

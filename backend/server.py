@@ -14,6 +14,8 @@ import bcrypt
 import jwt
 import csv
 import io
+import secrets
+import string
 from openpyxl import load_workbook
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Form, Query, Header
 from fastapi.responses import Response, StreamingResponse
@@ -130,6 +132,32 @@ DOCUMENT_CATEGORIES = ["Measurement Report", "Assessment", "Scope", "Proposal", 
 PARENT_TYPES = ["project", "vendor", "subcontractor", "contact", "property"]
 IMPORT_CATEGORIES = ["contacts", "properties", "projects", "vendors", "subcontractors"]
 DUPLICATE_MODES = ["skip", "update", "create"]
+USER_ROLES = ["admin", "manager", "sales"]
+FINANCIAL_FIELDS = ["proposal_option_1", "proposal_option_2", "proposal_option_3", "chosen_amount", "materials_cost", "labor_cost", "subcontractor_cost", "other_expenses", "payment_milestones", "cost_items"]
+
+
+def generate_password(length: int = 12) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def is_admin(user: dict) -> bool:
+    return user.get("role") == "admin"
+
+
+def scrub_deal(doc: dict, user: dict) -> dict:
+    """For non-admin viewers, hide financial fields unless they own/created the deal."""
+    if is_admin(user):
+        return doc
+    owns = doc.get("assigned_to_user_id") == user["id"] or doc.get("created_by_user_id") == user["id"]
+    if owns:
+        return doc
+    out = dict(doc)
+    for f in FINANCIAL_FIELDS:
+        if f in out:
+            out[f] = [] if isinstance(out[f], list) else 0
+    out["_financial_hidden"] = True
+    return out
 
 
 class RegisterReq(BaseModel):
@@ -147,7 +175,24 @@ class UserOut(BaseModel):
     id: str
     email: str
     name: str
-    role: str = "user"
+    role: str = "admin"
+    phone: str = ""
+    title: str = ""
+
+
+class UserCreateReq(BaseModel):
+    email: EmailStr
+    name: str
+    role: str = "sales"  # admin | manager | sales
+    phone: str = ""
+    title: str = ""
+
+
+class UserUpdateReq(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+    phone: Optional[str] = None
+    title: Optional[str] = None
 
 
 class TokenOut(BaseModel):
@@ -282,6 +327,7 @@ class DealIn(BaseModel):
     payment_milestones: List[PaymentMilestone] = Field(default_factory=list)
     cost_items: List[CostItem] = Field(default_factory=list)
     notes: str = ""
+    assigned_to_user_id: Optional[str] = None
 
 
 class Deal(DealIn):
@@ -292,22 +338,25 @@ class Deal(DealIn):
 # ----- Auth Routes -----
 @api_router.post("/auth/register", response_model=TokenOut)
 async def register(body: RegisterReq):
+    # Self-registration disabled if any users exist (admin must create users)
+    count = await db.users.count_documents({})
+    if count > 0:
+        raise HTTPException(status_code=403, detail="Registration disabled. Ask an admin to add you.")
     email = body.email.lower()
-    existing = await db.users.find_one({"email": email})
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
     user_id = str(uuid.uuid4())
     doc = {
         "id": user_id,
         "email": email,
         "name": body.name,
-        "role": "user",
+        "role": "admin",
+        "phone": "",
+        "title": "",
         "password_hash": hash_password(body.password),
         "created_at": now_iso(),
     }
     await db.users.insert_one(doc)
     token = create_access_token(user_id, email)
-    return TokenOut(access_token=token, user=UserOut(id=user_id, email=email, name=body.name, role="user"))
+    return TokenOut(access_token=token, user=UserOut(id=user_id, email=email, name=body.name, role="admin"))
 
 
 @api_router.post("/auth/login", response_model=TokenOut)
@@ -319,13 +368,97 @@ async def login(body: LoginReq):
     token = create_access_token(user["id"], email)
     return TokenOut(
         access_token=token,
-        user=UserOut(id=user["id"], email=email, name=user.get("name", ""), role=user.get("role", "user")),
+        user=UserOut(
+            id=user["id"], email=email, name=user.get("name", ""), role=user.get("role", "admin"),
+            phone=user.get("phone", ""), title=user.get("title", ""),
+        ),
     )
 
 
 @api_router.get("/auth/me", response_model=UserOut)
 async def me(current=Depends(get_current_user)):
-    return UserOut(id=current["id"], email=current["email"], name=current.get("name", ""), role=current.get("role", "user"))
+    return UserOut(
+        id=current["id"], email=current["email"], name=current.get("name", ""),
+        role=current.get("role", "admin"), phone=current.get("phone", ""), title=current.get("title", ""),
+    )
+
+
+# ----- Users (admin only) -----
+def require_admin(current=Depends(get_current_user)) -> dict:
+    if not is_admin(current):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current
+
+
+@api_router.get("/users", response_model=List[UserOut])
+async def list_users(current=Depends(require_admin)):
+    cursor = db.users.find({}, {"_id": 0, "password_hash": 0}).sort("name", 1)
+    return await cursor.to_list(1000)
+
+
+@api_router.post("/users")
+async def create_user(body: UserCreateReq, current=Depends(require_admin)):
+    email = body.email.lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email already exists")
+    if body.role not in USER_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    user_id = str(uuid.uuid4())
+    generated = generate_password(12)
+    doc = {
+        "id": user_id,
+        "email": email,
+        "name": body.name,
+        "role": body.role,
+        "phone": body.phone or "",
+        "title": body.title or "",
+        "password_hash": hash_password(generated),
+        "created_at": now_iso(),
+        "created_by": current["id"],
+    }
+    await db.users.insert_one(doc)
+    return {
+        "user": {"id": user_id, "email": email, "name": body.name, "role": body.role, "phone": doc["phone"], "title": doc["title"]},
+        "generated_password": generated,
+    }
+
+
+@api_router.put("/users/{user_id}", response_model=UserOut)
+async def update_user(user_id: str, body: UserUpdateReq, current=Depends(require_admin)):
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "role" in patch and patch["role"] not in USER_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    if not patch:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    result = await db.users.update_one({"id": user_id}, {"$set": patch})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    return user
+
+
+@api_router.post("/users/{user_id}/regenerate-password")
+async def regenerate_password(user_id: str, current=Depends(require_admin)):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    new_pw = generate_password(12)
+    await db.users.update_one({"id": user_id}, {"$set": {"password_hash": hash_password(new_pw)}})
+    return {"generated_password": new_pw}
+
+
+@api_router.delete("/users/{user_id}")
+async def delete_user(user_id: str, current=Depends(require_admin)):
+    if user_id == current["id"]:
+        raise HTTPException(status_code=400, detail="You cannot delete yourself")
+    admin_count = await db.users.count_documents({"role": "admin"})
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "admin" and admin_count <= 1:
+        raise HTTPException(status_code=400, detail="Cannot delete the last admin")
+    await db.users.delete_one({"id": user_id})
+    return {"ok": True}
 
 
 # ----- Options Route -----
@@ -346,6 +479,7 @@ async def options(current=Depends(get_current_user)):
         "document_categories": DOCUMENT_CATEGORIES,
         "import_categories": IMPORT_CATEGORIES,
         "duplicate_modes": DUPLICATE_MODES,
+        "user_roles": USER_ROLES,
         "milestone_templates": {
             "50/50": [{"label": "Deposit", "percent": 50}, {"label": "Completion", "percent": 50}],
             "50/25/25": [{"label": "Deposit", "percent": 50}, {"label": "Mid-Job", "percent": 25}, {"label": "Completion", "percent": 25}],
@@ -356,7 +490,10 @@ async def options(current=Depends(get_current_user)):
 # ----- Contacts -----
 @api_router.get("/contacts", response_model=List[Contact])
 async def list_contacts(current=Depends(get_current_user)):
-    cursor = db.contacts.find({}, {"_id": 0}).sort("created_at", -1)
+    query = {"is_deleted": {"$ne": True}}
+    if current.get("role") == "sales":
+        query["$or"] = [{"assigned_to_user_id": current["id"]}, {"created_by_user_id": current["id"]}]
+    cursor = db.contacts.find(query, {"_id": 0}).sort("created_at", -1)
     return await cursor.to_list(1000)
 
 
@@ -371,6 +508,9 @@ async def create_contact(body: ContactIn, current=Depends(get_current_user)):
         data["billing_zip"] = data["zip_code"]
     data["id"] = str(uuid.uuid4())
     data["created_at"] = now_iso()
+    data["created_by_user_id"] = current["id"]
+    if not data.get("assigned_to_user_id"):
+        data["assigned_to_user_id"] = current["id"]
     await db.contacts.insert_one(data.copy())
     return strip_id(data)
 
@@ -401,16 +541,24 @@ async def update_contact(contact_id: str, body: ContactIn, current=Depends(get_c
 
 @api_router.delete("/contacts/{contact_id}")
 async def delete_contact(contact_id: str, current=Depends(get_current_user)):
-    result = await db.contacts.delete_one({"id": contact_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Contact not found")
+    if is_admin(current):
+        result = await db.contacts.delete_one({"id": contact_id})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Contact not found")
+    else:
+        result = await db.contacts.update_one(
+            {"id": contact_id},
+            {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}},
+        )
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Contact not found")
     return {"ok": True}
 
 
 # ----- Properties -----
 @api_router.get("/properties", response_model=List[Property])
 async def list_properties(current=Depends(get_current_user)):
-    cursor = db.properties.find({}, {"_id": 0}).sort("created_at", -1)
+    cursor = db.properties.find({"is_deleted": {"$ne": True}}, {"_id": 0}).sort("created_at", -1)
     return await cursor.to_list(1000)
 
 
@@ -443,9 +591,17 @@ async def update_property(property_id: str, body: PropertyIn, current=Depends(ge
 
 @api_router.delete("/properties/{property_id}")
 async def delete_property(property_id: str, current=Depends(get_current_user)):
-    result = await db.properties.delete_one({"id": property_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Property not found")
+    if is_admin(current):
+        result = await db.properties.delete_one({"id": property_id})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Property not found")
+    else:
+        result = await db.properties.update_one(
+            {"id": property_id},
+            {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}},
+        )
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Property not found")
     return {"ok": True}
 
 
@@ -505,8 +661,12 @@ def normalize_deal(data: dict) -> dict:
 # ----- Deals -----
 @api_router.get("/deals", response_model=List[Deal])
 async def list_deals(current=Depends(get_current_user)):
-    cursor = db.deals.find({}, {"_id": 0}).sort("created_at", -1)
-    return await cursor.to_list(1000)
+    query = {"is_deleted": {"$ne": True}}
+    if current.get("role") == "sales":
+        query["$or"] = [{"assigned_to_user_id": current["id"]}, {"created_by_user_id": current["id"]}]
+    cursor = db.deals.find(query, {"_id": 0}).sort("created_at", -1)
+    items = await cursor.to_list(1000)
+    return [scrub_deal(d, current) for d in items]
 
 
 @api_router.post("/deals", response_model=Deal)
@@ -514,40 +674,60 @@ async def create_deal(body: DealIn, current=Depends(get_current_user)):
     data = normalize_deal(body.model_dump())
     data["id"] = str(uuid.uuid4())
     data["created_at"] = now_iso()
+    data["created_by_user_id"] = current["id"]
+    if not data.get("assigned_to_user_id"):
+        data["assigned_to_user_id"] = current["id"]
     await db.deals.insert_one(data.copy())
     return strip_id(data)
 
 
 @api_router.get("/deals/{deal_id}", response_model=Deal)
 async def get_deal(deal_id: str, current=Depends(get_current_user)):
-    doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    doc = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Deal not found")
-    return doc
+    if current.get("role") == "sales":
+        owns = doc.get("assigned_to_user_id") == current["id"] or doc.get("created_by_user_id") == current["id"]
+        if not owns:
+            raise HTTPException(status_code=403, detail="Not your project")
+    return scrub_deal(doc, current)
 
 
 @api_router.put("/deals/{deal_id}", response_model=Deal)
 async def update_deal(deal_id: str, body: DealIn, current=Depends(get_current_user)):
-    data = normalize_deal(body.model_dump())
-    result = await db.deals.update_one({"id": deal_id}, {"$set": data})
-    if result.matched_count == 0:
+    existing = await db.deals.find_one({"id": deal_id})
+    if not existing:
         raise HTTPException(status_code=404, detail="Deal not found")
+    if current.get("role") == "sales":
+        owns = existing.get("assigned_to_user_id") == current["id"] or existing.get("created_by_user_id") == current["id"]
+        if not owns:
+            raise HTTPException(status_code=403, detail="Not your project")
+    data = normalize_deal(body.model_dump())
+    await db.deals.update_one({"id": deal_id}, {"$set": data})
     doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
-    return doc
+    return scrub_deal(doc, current)
 
 
 @api_router.delete("/deals/{deal_id}")
 async def delete_deal(deal_id: str, current=Depends(get_current_user)):
-    result = await db.deals.delete_one({"id": deal_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Deal not found")
+    if is_admin(current):
+        result = await db.deals.delete_one({"id": deal_id})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Deal not found")
+    else:
+        result = await db.deals.update_one(
+            {"id": deal_id},
+            {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}},
+        )
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Deal not found")
     return {"ok": True}
 
 
 # ----- Vendors -----
 @api_router.get("/vendors", response_model=List[Vendor])
 async def list_vendors(kind: Optional[str] = None, current=Depends(get_current_user)):
-    query = {}
+    query = {"is_deleted": {"$ne": True}}
     if kind:
         query["kind"] = kind
     cursor = db.vendors.find(query, {"_id": 0}).sort("name", 1)
@@ -968,9 +1148,14 @@ async def on_startup():
             "email": admin_email,
             "name": "Admin",
             "role": "admin",
+            "phone": "",
+            "title": "Owner",
             "password_hash": hash_password(admin_password),
             "created_at": now_iso(),
         })
+    else:
+        # Make sure existing admin has role=admin (migration)
+        await db.users.update_one({"id": existing["id"]}, {"$set": {"role": "admin"}})
 
 
 @app.on_event("shutdown")
@@ -987,6 +1172,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

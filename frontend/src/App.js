@@ -11,6 +11,7 @@ import Properties from "@/pages/Properties";
 import Deals from "@/pages/Deals";
 import DealDetail from "@/pages/DealDetail";
 import Vendors from "@/pages/Vendors";
+import UsersPage from "@/pages/Users";
 import "@/App.css";
 
 const ProtectedRoute = ({ children }) => {
@@ -57,6 +58,7 @@ function App() {
               <Route path="/deals/:id" element={<DealDetail />} />
               <Route path="/vendors" element={<Vendors kind="Vendor" />} />
               <Route path="/subcontractors" element={<Vendors kind="Subcontractor" />} />
+              <Route path="/users" element={<UsersPage />} />
             </Route>
           </Routes>
         </BrowserRouter>

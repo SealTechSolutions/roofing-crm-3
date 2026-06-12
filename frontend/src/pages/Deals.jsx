@@ -15,6 +15,7 @@ const empty = {
   customer_contact_id: "",
   owner_contact_id: "",
   property_id: "",
+  assigned_to_user_id: "",
   lead_source: "Personal",
   referral_source: "",
   project_type: "Repair",
@@ -44,6 +45,7 @@ export default function Deals() {
   const [items, setItems] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [properties, setProperties] = useState([]);
+  const [users, setUsers] = useState([]);
   const [options, setOptions] = useState({ lead_sources: [], project_types: [], roof_types: [], deal_statuses: [] });
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -271,6 +273,9 @@ export default function Deals() {
               </Field>
               <Field label="Proposed Roof Type">
                 <Select data-testid="deal-proposed-roof" value={form.proposed_roof_type} onChange={(v) => setForm({ ...form, proposed_roof_type: v })} options={options.roof_types} />
+              </Field>
+              <Field label="Assigned To">
+                <Select data-testid="deal-assigned-to" value={form.assigned_to_user_id || ""} onChange={(v) => setForm({ ...form, assigned_to_user_id: v })} options={userOpts} />
               </Field>
             </Grid2>
 
