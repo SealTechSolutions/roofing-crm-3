@@ -1,4 +1,5 @@
 """Silicone Roof Scope spec sheet generator (SealTech-branded)."""
+import os
 from io import BytesIO
 from datetime import datetime
 from reportlab.lib import colors
@@ -7,6 +8,8 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Image
 from reportlab.platypus.flowables import KeepTogether
+
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "sealtech-logo.png")
 
 
 BLUE = colors.HexColor("#1D4ED8")
@@ -91,8 +94,30 @@ def _footer(canvas, doc):
 
 def _header_block(s, doc):
     elems = []
-    elems.append(Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"]))
-    elems.append(Paragraph("RESTORATION ROOF SCOPE", s["title"]))
+    # Logo at top-left (replaces the SEALTECH · BUILDING SOLUTIONS eyebrow text)
+    logo_cell = ""
+    if os.path.exists(LOGO_PATH):
+        try:
+            logo_cell = Image(LOGO_PATH, width=2.2 * inch, height=0.85 * inch, kind="proportional")
+        except Exception:
+            logo_cell = Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"])
+    else:
+        logo_cell = Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"])
+
+    header_row = Table(
+        [[logo_cell, Paragraph("RESTORATION ROOF SCOPE", s["title"])]],
+        colWidths=[2.6 * inch, 4.9 * inch],
+    )
+    header_row.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    elems.append(header_row)
+    elems.append(Spacer(1, 0.15 * inch))
     info_rows = [
         ["PROJECT ADDRESS", doc.get("project_address", "—")],
         ["PRODUCT TYPE", doc.get("product_type", "—")],
