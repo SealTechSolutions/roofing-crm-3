@@ -25,8 +25,9 @@ def _styles():
         "body": ParagraphStyle("body", fontName="Helvetica", fontSize=9, textColor=DARK, leading=12),
         "small": ParagraphStyle("small", fontName="Helvetica", fontSize=8, textColor=GRAY, leading=10),
         "bold": ParagraphStyle("bold", fontName="Helvetica-Bold", fontSize=9, textColor=DARK, leading=12),
-        "tc": ParagraphStyle("tc", fontName="Helvetica", fontSize=8, textColor=DARK, leading=10, spaceAfter=4),
-        "tc_h": ParagraphStyle("tch", fontName="Helvetica-Bold", fontSize=8, textColor=DARK, leading=10),
+        "tc": ParagraphStyle("tc", fontName="Helvetica", fontSize=11, textColor=DARK, leading=14, spaceAfter=8),
+        "tc_h": ParagraphStyle("tch", fontName="Helvetica-Bold", fontSize=11, textColor=DARK, leading=14, spaceBefore=4),
+        "tc_intro": ParagraphStyle("tc_intro", fontName="Helvetica-Bold", fontSize=10, textColor=DARK, leading=13, spaceAfter=8),
     }
 
 
@@ -272,7 +273,7 @@ def build_silicone_spec(data: dict, cover_photo_bytes: bytes = None) -> bytes:
     story.append(Paragraph(
         "The following terms and conditions are an integral part of this proposal and form a binding agreement upon acceptance. "
         "No representations or reliance on any statements not contained herein shall be binding upon SealTech Building Solutions.",
-        s["small"],
+        s["tc_intro"],
     ))
     story.append(Spacer(1, 0.1 * inch))
     for head, body in TERMS:
