@@ -29,6 +29,8 @@ export default function Properties() {
   const [loading, setLoading] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState(null);
 
+  const load = () => api.get("/properties").then((r) => setItems(r.data));
+
   const removeConfirmed = async () => {
     if (!confirmTarget) return;
     try {
