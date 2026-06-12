@@ -18,7 +18,7 @@ export default function Payables() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("Active");
   const [editor, setEditor] = useState(null);
   const [report, setReport] = useState(null);
   const [vendors, setVendors] = useState([]);
@@ -57,7 +57,11 @@ export default function Payables() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let out = rows;
-    if (statusFilter !== "All") out = out.filter((r) => r.status === statusFilter);
+    if (statusFilter === "Active") {
+      out = out.filter((r) => r.status === "Pending" || r.status === "Approved");
+    } else if (statusFilter !== "All") {
+      out = out.filter((r) => r.status === statusFilter);
+    }
     if (q) {
       out = out.filter((r) =>
         (r.vendor_name || "").toLowerCase().includes(q) ||
@@ -69,9 +73,10 @@ export default function Payables() {
   }, [rows, search, statusFilter]);
 
   const totals = useMemo(() => {
-    const totalDue = rows.filter((r) => !["Paid", "Void"].includes(r.status)).reduce((s, r) => s + (Number(r.total || 0) - Number(r.paid_amount || 0)), 0);
-    const paid = rows.reduce((s, r) => s + Number(r.paid_amount || 0), 0);
-    return { totalDue, paid, count: rows.length };
+    const activeBills = rows.filter((r) => r.status === "Pending" || r.status === "Approved");
+    const totalDue = activeBills.reduce((s, r) => s + (Number(r.total || 0) - Number(r.paid_amount || 0)), 0);
+    const paid = rows.filter((r) => r.status === "Paid").reduce((s, r) => s + Number(r.paid_amount || 0), 0);
+    return { totalDue, paid, activeCount: activeBills.length, totalCount: rows.length };
   }, [rows]);
 
   const handleUploadClick = () => fileInputRef.current?.click();
@@ -193,7 +198,7 @@ export default function Payables() {
         <>
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <KpiCard label="Total Bills" value={totals.count} testId="kpi-bills-count" />
+            <KpiCard label="Active Bills" value={totals.activeCount} hint={`${totals.totalCount} total in history`} testId="kpi-bills-count" />
             <KpiCard label="Outstanding" value={formatCurrency(totals.totalDue)} accent="text-red-700" testId="kpi-bills-outstanding" />
             <KpiCard label="Paid (All-Time)" value={formatCurrency(totals.paid)} accent="text-emerald-700" testId="kpi-bills-paid" />
             <KpiCard label="Overdue + Due 7d" value={report ? (report.overdue_count + report.due_this_week_count) : 0} hint="Click 'Friday Report' tab" accent="text-orange-700" testId="kpi-bills-week" />
@@ -207,7 +212,8 @@ export default function Payables() {
                 <input type="text" placeholder="Search vendor, bill #, line item..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full h-9 pl-9 pr-3 border border-zinc-300 rounded-sm text-sm" data-testid="bills-search" />
               </div>
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-9 px-3 border border-zinc-300 rounded-sm text-sm bg-white" data-testid="bills-status-filter">
-                <option value="All">All Statuses</option>
+                <option value="Active">Active (Pending + Approved)</option>
+                <option value="All">All Statuses (Show History)</option>
                 <option value="Pending">Pending</option>
                 <option value="Approved">Approved</option>
                 <option value="Paid">Paid</option>
