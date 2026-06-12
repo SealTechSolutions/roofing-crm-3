@@ -15,6 +15,7 @@ import jwt
 import csv
 import io
 from io import BytesIO
+import smtplib
 import secrets
 import string
 from openpyxl import load_workbook
@@ -1210,7 +1211,7 @@ async def invoice_pdf(invoice_id: str, token: Optional[str] = Query(None), autho
 
 @api_router.post("/invoices/{invoice_id}/email")
 async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends(get_current_user)):
-    """STUB — wires up after email provider integration. Marks invoice as Sent."""
+    """Send the invoice via Gmail SMTP with PDF attached. Marks invoice as Sent."""
     inv = await db.invoices.find_one({"id": invoice_id, "is_deleted": {"$ne": True}}, {"_id": 0})
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -1218,21 +1219,97 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
     cc_email = (body.get("cc_email") or inv.get("cc_email") or "").strip()
     if not to_email:
         raise HTTPException(status_code=400, detail="No recipient email — please provide one.")
-    # Mark sent and persist the to/cc choice
+
+    # Generate the PDF in-memory
+    from invoice_pdf import build_invoice_pdf
+    pdf_bytes = build_invoice_pdf(inv)
+
+    # Compose email
+    inv_num = inv.get("invoice_number", "")
+    total = float(inv.get("total") or 0)
+    balance = float(inv.get("balance_due") or 0)
+    bill_to = inv.get("bill_to_company") or inv.get("bill_to_name") or "—"
+    project = inv.get("project_title") or ""
+    due_date = inv.get("due_date") or "Due upon receipt"
+
+    subject = f"Invoice {inv_num} from SealTech Building Solutions"
+    if project:
+        subject += f" — {project}"
+
+    body_text = (
+        f"Hello,\n\n"
+        f"Please find attached Invoice {inv_num} for {bill_to}.\n\n"
+        f"  Total:        ${total:,.2f}\n"
+        f"  Balance Due:  ${balance:,.2f}\n"
+        f"  Due Date:     {due_date}\n"
+        f"  Terms:        {inv.get('terms', 'Due Upon Receipt')}\n\n"
+        f"Remit payment to:\n"
+        f"  SealTech Building Solutions\n"
+        f"  2278 Mannatt Ct, Castle Rock, CO 80104\n\n"
+        f"If you have any questions, please reply to this email.\n\n"
+        f"Thank you for your business,\n"
+        f"SealTech Building Solutions\n"
+        f"720-715-9955  ·  info@sealtechbuildingsolutions.com"
+    )
+
+    body_html = f"""
+    <html><body style="font-family: Arial, Helvetica, sans-serif; color: #0A0A0A; max-width: 620px;">
+      <p style="margin: 0 0 16px;">Hello,</p>
+      <p style="margin: 0 0 16px;">Please find attached <b>Invoice {inv_num}</b> for {bill_to}.</p>
+      <table style="border-collapse: collapse; margin: 16px 0;">
+        <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Total</td><td style="padding: 4px 0; font-weight: bold; font-family: monospace;">${total:,.2f}</td></tr>
+        <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Balance Due</td><td style="padding: 4px 0; font-weight: bold; font-family: monospace; color: #1D4ED8;">${balance:,.2f}</td></tr>
+        <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Due Date</td><td style="padding: 4px 0; font-family: monospace;">{due_date}</td></tr>
+        <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Terms</td><td style="padding: 4px 0;">{inv.get('terms', 'Due Upon Receipt')}</td></tr>
+      </table>
+      <p style="margin: 16px 0 8px; color: #52525B; font-size: 13px;"><b>Remit payment to:</b></p>
+      <p style="margin: 0 0 16px; line-height: 1.5;">
+        SealTech Building Solutions<br/>
+        2278 Mannatt Ct, Castle Rock, CO 80104
+      </p>
+      <p style="margin: 16px 0;">If you have any questions, please reply to this email.</p>
+      <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
+        <b style="color: #0A0A0A;">SealTech Building Solutions</b><br/>
+        720-715-9955  ·  info@sealtechbuildingsolutions.com  ·  www.sealtechbuildingsolutions.com
+      </p>
+    </body></html>
+    """
+
+    try:
+        from email_sender import send_email, EmailNotConfigured
+        result = send_email(
+            to=to_email,
+            cc=cc_email,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+            reply_to=os.environ.get("GMAIL_FROM_EMAIL") or None,
+            attachments=[{"filename": f"{inv_num}.pdf", "data": pdf_bytes, "mime": "application/pdf"}],
+        )
+    except EmailNotConfigured as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except smtplib.SMTPAuthenticationError as e:
+        raise HTTPException(status_code=500, detail=f"Gmail authentication failed — check the App Password. ({e.smtp_code}: {e.smtp_error.decode() if e.smtp_error else ''})")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email send failed: {type(e).__name__}: {e}")
+
+    # Mark invoice as Sent (preserves Paid/Partial)
     patch = {
         "bill_to_email": to_email,
         "cc_email": cc_email,
         "last_sent_at": now_iso(),
     }
-    if inv.get("status") == "Draft":
+    if inv.get("status") in ("Draft", "Overdue"):
         patch["status"] = "Sent"
     await db.invoices.update_one({"id": invoice_id}, {"$set": patch})
+
     return {
         "ok": True,
-        "mocked": True,
-        "message": f"MOCKED — email provider not yet configured. Invoice marked as Sent. Would send to {to_email}" + (f" (cc: {cc_email})" if cc_email else ""),
+        "mocked": False,
+        "message": f"Invoice {inv_num} emailed to {to_email}" + (f" (cc: {cc_email})" if cc_email else ""),
         "to_email": to_email,
         "cc_email": cc_email,
+        "message_id": result.get("message_id"),
     }
 
 

@@ -499,7 +499,7 @@ function EmailInvoiceModal({ invoice, onClose, onSent }) {
       if (r.data?.mocked) {
         toast.warning(`Invoice marked Sent (email provider not yet configured — would send to ${to}${cc ? ` cc: ${cc}` : ""})`);
       } else {
-        toast.success("Invoice emailed");
+        toast.success(r.data?.message || "Invoice emailed");
       }
       onSent();
     } catch (e) {
@@ -526,8 +526,8 @@ function EmailInvoiceModal({ invoice, onClose, onSent }) {
             <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">CC (optional)</label>
             <input type="email" value={cc} onChange={(e) => setCc(e.target.value)} className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm" placeholder="you@yourcompany.com" data-testid="email-cc" />
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-sm p-3 text-[11px] text-amber-900">
-            Email provider is not yet configured. The invoice will be marked as <b>Sent</b> and the email addresses saved. Once we wire up Resend / SendGrid / Gmail, real delivery will start working.
+          <div className="bg-blue-50 border border-blue-200 rounded-sm p-3 text-[11px] text-blue-900">
+            Sending from <b>finance@sealtechsolutions.co</b> via Gmail. PDF invoice will be attached automatically. Replies go to your finance inbox.
           </div>
         </div>
         <div className="px-5 py-4 border-t border-zinc-200 flex justify-end gap-2">
