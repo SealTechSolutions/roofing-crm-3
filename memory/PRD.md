@@ -41,6 +41,12 @@
 - ✅ Dynamic document title (e.g. "TPO ROOF SYSTEM SCOPE", "ASPHALT SHINGLE ROOF SCOPE")
 - ✅ Backward compatible — `build_silicone_spec` retained as alias
 
+## Materials UI Redesign (2026-02)
+- ✅ Materials page now groups products by vendor into collapsible black-header sections
+- ✅ Each section shows product count + total loaded inventory value
+- ✅ Expand-all / Collapse-all shortcuts + per-vendor filter dropdown
+- ✅ Inline notes column merged under product name for better readability
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics)
 - Statement of Account PDF (aging report per customer)
