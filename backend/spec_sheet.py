@@ -140,7 +140,7 @@ def _header_block(s, doc):
 
 def _pricing_table(s, doc):
     elems = []
-    elems.append(Paragraph("Silicone Roof System w/ Granules Over Single-Ply Investment", s["h2"]))
+    elems.append(Paragraph(doc.get("product_type", "Roof System Investment"), s["h2"]))
     base = [
         ["Warranty Tier", "Base Investment"],
         ["20-Year Workmanship", _currency(doc.get("opt_20"))],
