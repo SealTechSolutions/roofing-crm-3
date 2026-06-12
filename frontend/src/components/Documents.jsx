@@ -113,7 +113,7 @@ export default function Documents({ parentType, parentId, title = "Documents", c
                 <button onClick={() => downloadFile(f)} title="Download" className="p-1.5 hover:bg-zinc-100 rounded-sm" data-testid={`download-${f.id}`}>
                   <Download className="w-4 h-4 text-zinc-700" />
                 </button>
-                {onSetCover && f.category === "Photo" && (
+                {onSetCover && (f.category === "Photo" || f.content_type?.startsWith("image/")) && (
                   <button
                     onClick={() => onSetCover(f.id)}
                     title={coverPhotoId === f.id ? "Cover photo" : "Set as cover photo"}
