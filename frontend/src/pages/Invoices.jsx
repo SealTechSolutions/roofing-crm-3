@@ -168,7 +168,10 @@ export default function Invoices() {
                       <div className="font-bold text-zinc-950">{r.bill_to_company || r.bill_to_name || "—"}</div>
                       <div className="text-[11px] text-zinc-500">{r.bill_to_name && r.bill_to_company ? r.bill_to_name : ""}</div>
                     </td>
-                    <td className="py-3 px-4 text-zinc-700">{r.project_title || "—"}</td>
+                    <td className="py-3 px-4 text-zinc-700">
+                      {r.project_title || "—"}
+                      {r.invoice_type && <div className="text-[10px] uppercase tracking-wider text-blue-700 font-bold mt-0.5">{r.invoice_type}</div>}
+                    </td>
                     <td className="py-3 px-4 font-mono text-zinc-700">{r.invoice_date}</td>
                     <td className="py-3 px-4 font-mono text-zinc-700">{r.due_date}</td>
                     <td className="py-3 px-4 text-right font-mono">{formatCurrency(r.total)}</td>
@@ -220,6 +223,7 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
   const [form, setForm] = useState(() => ({
     deal_id: invoice.deal_id || "",
     customer_contact_id: invoice.customer_contact_id || "",
+    invoice_type: invoice.invoice_type || "",
     bill_to_company: invoice.bill_to_company || "",
     bill_to_name: invoice.bill_to_name || "",
     bill_to_address: invoice.bill_to_address || "",
@@ -297,6 +301,27 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
   };
   const addLine = () => setForm({ ...form, line_items: [...form.line_items, { description: "", quantity: 1, unit_price: 0, amount: 0 }] });
   const removeLine = (idx) => setForm({ ...form, line_items: form.line_items.filter((_, i) => i !== idx) });
+
+  // Quick presets — clicking adds a line item with templated (editable) description
+  const PRESETS = [
+    { label: "Project Amount", desc: "Project Amount — Full contract value" },
+    { label: "Deposit", desc: "Deposit Invoice — Initial deposit per signed agreement" },
+    { label: "Mid-Project", desc: "Mid-Project Invoice — Progress draw per signed agreement" },
+    { label: "Final", desc: "Final Invoice — Completion of all scoped work" },
+    { label: "Maintenance", desc: "Annual Maintenance Visit — Inspection, cleaning, and seam touch-ups" },
+    { label: "Repair", desc: "Repair Services — Roof repair as described" },
+  ];
+
+  const applyPreset = (preset) => {
+    const newLine = { description: preset.desc, quantity: 1, unit_price: 0, amount: 0 };
+    // If the only line item is empty, replace it; otherwise append
+    const items = form.line_items;
+    const firstEmpty = items.length === 1 && !items[0].description && !Number(items[0].unit_price);
+    const next = firstEmpty ? [newLine] : [...items, newLine];
+    // Also stamp invoice_type if currently blank
+    const patchType = !form.invoice_type ? { invoice_type: preset.label } : {};
+    setForm({ ...form, line_items: next, ...patchType });
+  };
 
   const subtotal = form.line_items.reduce((s, li) => s + Number(li.amount || 0), 0);
   const total = subtotal;
@@ -388,9 +413,39 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
 
           {/* Line Items */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Line Items</div>
-              <button onClick={addLine} className="inline-flex items-center gap-1 px-2 h-7 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 rounded-sm" data-testid="add-line-item"><Plus className="w-3 h-3" /> Add Line</button>
+            <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Line Items</div>
+                <select
+                  value={form.invoice_type}
+                  onChange={(e) => setForm({ ...form, invoice_type: e.target.value })}
+                  className="h-7 px-2 border border-zinc-300 rounded-sm text-[11px] bg-white"
+                  data-testid="invoice-type-select"
+                >
+                  <option value="">Invoice Type…</option>
+                  <option value="Project Amount">Project Amount</option>
+                  <option value="Deposit">Deposit</option>
+                  <option value="Mid-Project">Mid-Project</option>
+                  <option value="Final">Final</option>
+                  <option value="Maintenance">Maintenance</option>
+                  <option value="Repair">Repair</option>
+                </select>
+              </div>
+              <button onClick={addLine} className="inline-flex items-center gap-1 px-2 h-7 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 rounded-sm" data-testid="add-line-item"><Plus className="w-3 h-3" /> Add Blank Line</button>
+            </div>
+            {/* Preset buttons */}
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  onClick={() => applyPreset(p)}
+                  className="inline-flex items-center gap-1 px-2.5 h-7 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-blue-700 hover:text-blue-700 rounded-sm transition-colors"
+                  data-testid={`preset-${p.label.toLowerCase().replace(/\s+/g, "-")}`}
+                  title={p.desc}
+                >
+                  <Plus className="w-3 h-3" /> {p.label}
+                </button>
+              ))}
             </div>
             <div className="border border-zinc-200 rounded-sm overflow-hidden">
               <table className="w-full text-sm">
@@ -407,7 +462,7 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
                   {form.line_items.map((li, i) => (
                     <tr key={i} className="border-t border-zinc-100" data-testid={`line-item-${i}`}>
                       <td className="px-2 py-1">
-                        <input value={li.description} onChange={(e) => updateLine(i, { description: e.target.value })} placeholder="Description" className="w-full h-8 px-2 border border-transparent hover:border-zinc-300 focus:border-blue-700 focus:outline-none rounded-sm text-sm" data-testid={`line-desc-${i}`} />
+                        <textarea value={li.description} onChange={(e) => updateLine(i, { description: e.target.value })} placeholder="Description (multi-line ok)" rows={1} className="w-full min-h-[34px] px-2 py-1 border border-transparent hover:border-zinc-300 focus:border-blue-700 focus:outline-none rounded-sm text-sm resize-y" data-testid={`line-desc-${i}`} />
                       </td>
                       <td className="px-2 py-1 text-right">
                         <input type="number" value={li.quantity} onChange={(e) => updateLine(i, { quantity: e.target.value })} className="w-full h-8 px-2 text-right border border-transparent hover:border-zinc-300 focus:border-blue-700 focus:outline-none rounded-sm text-sm font-mono" data-testid={`line-qty-${i}`} />

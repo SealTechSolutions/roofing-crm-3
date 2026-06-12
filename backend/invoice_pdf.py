@@ -78,8 +78,11 @@ def build_invoice_pdf(inv: dict) -> bytes:
     else:
         header_left.append(Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"]))
 
+    title_label = "INVOICE"
+    if inv.get("invoice_type"):
+        title_label = f"{inv['invoice_type'].upper()} INVOICE"
     header_right = [
-        Paragraph("INVOICE", s["h1"]),
+        Paragraph(title_label, s["h1"]),
         Paragraph(f"<font color='#52525B'>{inv.get('invoice_number', '—')}</font>", s["body"]),
     ]
 

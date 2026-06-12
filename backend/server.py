@@ -365,6 +365,7 @@ class InvoiceIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     deal_id: Optional[str] = None
     customer_contact_id: Optional[str] = None
+    invoice_type: str = ""  # Project Amount | Deposit | Mid-Project | Final | Maintenance | Repair | (blank)
     # Bill-to snapshot (frozen at creation time)
     bill_to_company: str = ""
     bill_to_name: str = ""
