@@ -28,6 +28,7 @@ const empty = {
   billing_city: "",
   billing_state: DEFAULT_STATE,
   billing_zip: "",
+  website: "",
 };
 
 export default function Contacts() {
@@ -132,7 +133,14 @@ export default function Contacts() {
                 .filter((c) => typeFilter === "All" || (c.contact_type || "Owner") === typeFilter)
                 .map((c) => (
                 <tr key={c.id} className="border-b border-zinc-100 hover:bg-zinc-50" data-testid={`contact-row-${c.id}`}>
-                  <td className="px-6 py-3 font-bold text-zinc-950">{c.contact_name}</td>
+                  <td className="px-6 py-3 font-bold text-zinc-950">
+                    {c.contact_name}
+                    {c.website && (
+                      <a href={c.website.startsWith("http") ? c.website : `https://${c.website}`} target="_blank" rel="noopener noreferrer" className="block text-[10px] font-normal text-blue-700 hover:underline mt-0.5" data-testid={`contact-website-${c.id}`}>
+                        🌐 {c.website.replace(/^https?:\/\//, "")}
+                      </a>
+                    )}
+                  </td>
                   <td className="px-6 py-3 text-[10px] uppercase tracking-wider text-zinc-700">{c.contact_type || "—"}</td>
                   <td className="px-6 py-3 text-zinc-700">{c.company_name}</td>
                   <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{c.mobile_phone || c.work_phone || c.phone}</td>
@@ -166,6 +174,9 @@ export default function Contacts() {
               </Field>
               <Field label="Email">
                 <Input data-testid="contact-email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
+              </Field>
+              <Field label="Website / URL">
+                <Input data-testid="contact-website" value={form.website} onChange={(v) => setForm({ ...form, website: v })} placeholder="https://company.com" />
               </Field>
               <Field label="Work Phone">
                 <Input data-testid="contact-work-phone" value={form.work_phone} onChange={(v) => setForm({ ...form, work_phone: v })} />

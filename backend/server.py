@@ -241,6 +241,7 @@ class ContactIn(BaseModel):
     billing_city: str = ""
     billing_state: str = ""
     billing_zip: str = ""
+    website: str = ""
 
 
 class Contact(ContactIn):
@@ -298,6 +299,7 @@ class VendorIn(BaseModel):
     category: str = "Other"
     contact_name: str = ""
     contact_title: str = ""
+    website: str = ""
     phone: str = ""
     work_phone: str = ""
     mobile_phone: str = ""
