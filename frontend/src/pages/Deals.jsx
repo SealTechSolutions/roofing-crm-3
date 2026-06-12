@@ -130,6 +130,7 @@ export default function Deals() {
 
   const contactOpts = [{ value: "", label: "— None —" }, ...contacts.map((c) => ({ value: c.id, label: `${c.contact_name}${c.company_name ? " · " + c.company_name : ""}` }))];
   const propertyOpts = [{ value: "", label: "— None —" }, ...properties.map((p) => ({ value: p.id, label: p.property_name }))];
+  const userOpts = [{ value: "", label: "— Unassigned —" }, ...users.map((u) => ({ value: u.id, label: `${u.name}${u.role !== "admin" ? " · " + u.role : ""}` }))];
 
   // Hide Past Lead from default filter chips; show via dedicated toggle in "All"
   const VISIBLE_FILTERS = ["All", "Lead", "Sent", "Won", "Lost", "Past Lead"];
