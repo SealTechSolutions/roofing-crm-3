@@ -818,7 +818,7 @@ async def deal_spec_sheet(
                 line2 = f"{line2} {zp}".strip()
             project_address = "  ·  ".join([p for p in [line1, line2] if p]).strip() or "—"
 
-    product_desc = deal.get("product_description") or f"{deal.get('proposed_roof_type','Silicone')} Roof System Over Existing"
+    product_desc = deal.get("product_description") or f"{deal.get('proposed_roof_type','Silicone')} Roof System Over Existing {deal.get('current_roof_type','')}".strip()
     color = deal.get("warranty_color") or "white"
 
     data = {

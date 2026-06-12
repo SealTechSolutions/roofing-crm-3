@@ -94,30 +94,26 @@ def _footer(canvas, doc):
 
 def _header_block(s, doc):
     elems = []
-    # Logo at top-left (replaces the SEALTECH · BUILDING SOLUTIONS eyebrow text)
-    logo_cell = ""
+    # Logo at top-left, 50% larger
     if os.path.exists(LOGO_PATH):
         try:
-            logo_cell = Image(LOGO_PATH, width=2.2 * inch, height=0.85 * inch, kind="proportional")
+            logo = Image(LOGO_PATH, width=3.3 * inch, height=1.275 * inch, kind="proportional")
+            logo.hAlign = "LEFT"
+            elems.append(logo)
         except Exception:
-            logo_cell = Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"])
+            elems.append(Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"]))
     else:
-        logo_cell = Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"])
+        elems.append(Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"]))
 
-    header_row = Table(
-        [[logo_cell, Paragraph("RESTORATION ROOF SCOPE", s["title"])]],
-        colWidths=[2.6 * inch, 4.9 * inch],
+    # Centered title — sits midway between logo and PROJECT ADDRESS
+    elems.append(Spacer(1, 0.05 * inch))
+    title_centered = ParagraphStyle(
+        "title_centered", parent=s["title"], alignment=1,  # 1 = CENTER
+        fontSize=22, leading=26, spaceAfter=6,
     )
-    header_row.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    elems.append(header_row)
-    elems.append(Spacer(1, 0.15 * inch))
+    elems.append(Paragraph("RESTORATION ROOF SCOPE", title_centered))
+    elems.append(Spacer(1, 0.35 * inch))
+
     info_rows = [
         ["PROJECT ADDRESS", doc.get("project_address", "—")],
         ["PRODUCT TYPE", doc.get("product_type", "—")],
