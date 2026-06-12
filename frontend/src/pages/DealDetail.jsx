@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2, FileText, Star, Download } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
@@ -143,10 +143,8 @@ export default function DealDetail() {
                 }
                 const blob = await r.blob();
                 const url = URL.createObjectURL(blob);
-                // Open in new tab so the user immediately sees the PDF — works regardless of browser download blocking
                 const newWin = window.open(url, "_blank");
                 if (!newWin) {
-                  // Fallback: trigger an attached anchor download
                   const a = document.createElement("a");
                   a.href = url;
                   a.download = `sealtech-scope-${(deal.title || "project").replace(/\s+/g, "_")}.pdf`;
@@ -162,7 +160,42 @@ export default function DealDetail() {
             }}
             className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
           >
-            <Download className="w-4 h-4" /> Generate Spec Sheet
+            <Download className="w-4 h-4" /> View / Download
+          </button>
+          <button
+            data-testid="print-spec-sheet"
+            onClick={async () => {
+              const token = localStorage.getItem("crm_token");
+              try {
+                toast.info("Preparing for print...");
+                const r = await fetch(`${API}/deals/${id}/spec-sheet.pdf`, { headers: { Authorization: `Bearer ${token}` } });
+                if (!r.ok) throw new Error(`Print failed (${r.status})`);
+                const blob = await r.blob();
+                const url = URL.createObjectURL(blob);
+                const win = window.open(url, "_blank");
+                if (!win) {
+                  toast.error("Pop-up blocked. Allow pop-ups from this site to print directly.");
+                } else {
+                  // Try to auto-trigger print once the PDF loads
+                  win.addEventListener("load", () => { try { win.print(); } catch (e) {} });
+                  // Fallback: trigger print after 1.5s in case load doesn't fire for PDFs
+                  setTimeout(() => { try { win.print(); } catch (e) {} }, 1500);
+                }
+                setTimeout(() => URL.revokeObjectURL(url), 60_000);
+              } catch (e) {
+                toast.error(e.message || "Could not print");
+              }
+            }}
+            className="inline-flex items-center gap-2 bg-zinc-950 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-zinc-800 rounded-sm transition-colors"
+          >
+            <Printer className="w-4 h-4" /> Print
+          </button>
+          <button
+            data-testid="email-spec-sheet"
+            onClick={() => toast.info("Email to prospect — coming soon. Connect an email provider (Resend / SendGrid / Gmail) to enable.")}
+            className="inline-flex items-center gap-2 border border-zinc-300 text-zinc-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:border-zinc-950 rounded-sm transition-colors"
+          >
+            <Mail className="w-4 h-4" /> Email to Prospect
           </button>
         </div>
       </div>
