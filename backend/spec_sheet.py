@@ -167,7 +167,7 @@ def _pricing_table(s, doc):
     elems.append(t)
     elems.append(Spacer(1, 0.12 * inch))
 
-    elems.append(Paragraph("[OPTIONAL] Manufacturer Warranty (Everest Systems Labor &amp; Material)", s["h2"]))
+    elems.append(Paragraph("[OPTIONAL] Manufacturer Warranty (Labor &amp; Material)", s["h2"]))
     opt = [
         ["Warranty Tier", "Add-On Cost"],
         ["20-Year Labor & Material", _currency(doc.get("w20"))],
