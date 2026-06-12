@@ -21,7 +21,7 @@ function iconFor(name = "", type = "") {
   return FileIcon;
 }
 
-export default function Documents({ parentType, parentId, title = "Documents" }) {
+export default function Documents({ parentType, parentId, title = "Documents", coverPhotoId = null, onSetCover = null }) {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [category, setCategory] = useState("Other");
