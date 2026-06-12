@@ -465,7 +465,17 @@ function BillEditor({ bill, vendors, deals, onClose, onSaved }) {
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Status</label>
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white" data-testid="bill-status">
+              <select value={form.status} onChange={(e) => {
+                const next = e.target.value;
+                const patch = { status: next };
+                if (next === "Paid") {
+                  // Auto-fill paid_amount and paid_date when marking Paid
+                  const total = Number(form.total || 0) || form.line_items.reduce((s, li) => s + Number(li.amount || 0), 0) + Number(form.tax || 0);
+                  if (Number(form.paid_amount || 0) < total - 0.01) patch.paid_amount = total;
+                  if (!form.paid_date) patch.paid_date = new Date().toISOString().slice(0, 10);
+                }
+                setForm({ ...form, ...patch });
+              }} className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white" data-testid="bill-status">
                 {["Pending", "Approved", "Paid", "Disputed", "Void"].map((s) => <option key={s}>{s}</option>)}
               </select>
             </div>

@@ -1429,6 +1429,14 @@ def _recalc_bill(bill: dict) -> dict:
         tax = float(bill.get("tax") or 0)
         bill["subtotal"] = round(sub, 2)
         bill["total"] = round(sub + tax, 2)
+    # Auto-fill paid_amount when status = Paid
+    if (bill.get("status") or "").lower() == "paid":
+        total = float(bill.get("total") or 0)
+        paid = float(bill.get("paid_amount") or 0)
+        if paid < total - 0.01:
+            bill["paid_amount"] = total
+        if not bill.get("paid_date"):
+            bill["paid_date"] = datetime.now(timezone.utc).date().isoformat()
     # Auto-compute due_date from terms when missing
     if not bill.get("due_date") and bill.get("bill_date"):
         try:
