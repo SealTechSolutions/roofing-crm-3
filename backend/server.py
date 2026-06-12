@@ -818,10 +818,22 @@ async def deal_spec_sheet(
                 line2 = f"{line2} {zp}".strip()
             project_address = "  ·  ".join([p for p in [line1, line2] if p]).strip() or "—"
 
+    # Fetch customer contact (name + best phone) for personalization
+    contact_name = ""
+    contact_phone = ""
+    customer_id = deal.get("customer_contact_id") or deal.get("contact_id")
+    if customer_id:
+        cust = await db.contacts.find_one({"id": customer_id}, {"_id": 0})
+        if cust:
+            contact_name = cust.get("contact_name", "") or ""
+            contact_phone = (cust.get("mobile_phone") or cust.get("phone") or cust.get("work_phone") or "").strip()
+
     product_desc = deal.get("product_description") or f"{deal.get('proposed_roof_type','Silicone')} Roof System Over Existing {deal.get('current_roof_type','')}".strip()
     color = deal.get("warranty_color") or "white"
 
     data = {
+        "contact_name": contact_name,
+        "contact_phone": contact_phone,
         "project_address": project_address,
         "product_type": product_desc,
         "date": datetime.now(timezone.utc).strftime("%m/%d/%Y"),

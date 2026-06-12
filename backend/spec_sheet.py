@@ -119,11 +119,20 @@ def _header_block(s, doc):
         f'{product_line} <font size="7" color="#52525B"><i>(Standard Warranty Included)</i></font>',
         s["body"],
     )
-    info_rows = [
-        ["PROJECT ADDRESS", doc.get("project_address", "—")],
+
+    # Build contact display ("Name  ·  Phone") if either is provided
+    cname = (doc.get("contact_name") or "").strip()
+    cphone = (doc.get("contact_phone") or "").strip()
+    contact_display = "  ·  ".join([p for p in [cname, cphone] if p]) if (cname or cphone) else ""
+
+    info_rows = []
+    if contact_display:
+        info_rows.append(["CONTACT", Paragraph(contact_display, s["body"])])
+    info_rows.extend([
+        ["PROJECT ADDRESS", Paragraph(doc.get("project_address", "—"), s["body"])],
         ["PRODUCT TYPE", product_cell],
-        ["DATE", doc.get("date", "—")],
-    ]
+        ["DATE", Paragraph(doc.get("date", "—"), s["body"])],
+    ])
     t = Table(info_rows, colWidths=[1.5 * inch, 6.0 * inch])
     t.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
