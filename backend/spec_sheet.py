@@ -24,8 +24,8 @@ def _styles():
     return {
         "title": ParagraphStyle("title", fontName="Helvetica-Bold", fontSize=20, textColor=DARK, leading=24, spaceAfter=4),
         "eyebrow": ParagraphStyle("eyebrow", fontName="Helvetica-Bold", fontSize=8, textColor=ORANGE, leading=10, spaceAfter=2),
-        "h2": ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=12, textColor=BLUE, leading=15, spaceBefore=10, spaceAfter=4),
-        "body": ParagraphStyle("body", fontName="Helvetica", fontSize=9, textColor=DARK, leading=12),
+        "h2": ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=12, textColor=BLUE, leading=15, spaceBefore=4, spaceAfter=4),
+        "body": ParagraphStyle("body", fontName="Helvetica", fontSize=10, textColor=DARK, leading=13),
         "small": ParagraphStyle("small", fontName="Helvetica", fontSize=8, textColor=GRAY, leading=10),
         "bold": ParagraphStyle("bold", fontName="Helvetica-Bold", fontSize=9, textColor=DARK, leading=12),
         "tc": ParagraphStyle("tc", fontName="Helvetica", fontSize=11, textColor=DARK, leading=14, spaceAfter=8),
@@ -222,9 +222,9 @@ def build_silicone_spec(data: dict, cover_photo_bytes: bytes = None) -> bytes:
 
     # ---- Page 2: Scope of Work + Inclusions + Photo + Exclusions ----
     story.extend(_scope_block(s, "Inspection and Repairs", SCOPE_INSPECTION))
-    story.append(Spacer(1, 0.1 * inch))
+    story.append(Spacer(1, 0.06 * inch))
     story.extend(_scope_block(s, "Substrate Preparation and Coating", SCOPE_COATING))
-    story.append(Spacer(1, 0.15 * inch))
+    story.append(Spacer(1, 0.08 * inch))
 
     story.append(Paragraph("Inclusions", s["h2"]))
     total_sqft = data.get("total_sqft", 0) or 0
@@ -232,39 +232,39 @@ def build_silicone_spec(data: dict, cover_photo_bytes: bytes = None) -> bytes:
     color = data.get("color", "white")
     inc_text = f"Approximately {total_sqft:,.0f} SF ({sq} SQ) {color} {data.get('roof_type_label','silicone')} coating, including walls."
     story.append(Paragraph(inc_text, s["body"]))
-    story.append(Spacer(1, 0.12 * inch))
+    story.append(Spacer(1, 0.08 * inch))
 
     # Cover photo
     if cover_photo_bytes:
         try:
-            img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=3.2 * inch, kind="proportional")
+            img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=1.6 * inch, kind="proportional")
             story.append(img)
         except Exception:
             story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
     else:
-        ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[2.0 * inch])
+        ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[1.8 * inch])
         ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
         story.append(ph)
         story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))
-    story.append(Spacer(1, 0.15 * inch))
+    story.append(Spacer(1, 0.08 * inch))
 
     story.append(Paragraph("Exclusions", s["h2"]))
     excl = "<br/>".join([f"•&nbsp;&nbsp;{e}" for e in EXCLUSIONS])
     story.append(Paragraph(excl, s["body"]))
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(Spacer(1, 0.12 * inch))
 
     story.append(Paragraph(
         "We appreciate your consideration of SealTech Building Solutions for your roofing investment. "
         "We are committed to delivering exceptional craftsmanship, transparency, and lasting value on every project we undertake.",
         s["body"],
     ))
-    story.append(Spacer(1, 0.18 * inch))
+    story.append(Spacer(1, 0.1 * inch))
 
     sig = Table([
         [Paragraph("<b>Darren Oliver, CSI, IIBEC</b><br/>GM, SealTech Building Solutions", s["body"]), ""],
     ], colWidths=[3.5 * inch, 4.0 * inch])
     story.append(sig)
-    story.append(Spacer(1, 0.15 * inch))
+    story.append(Spacer(1, 0.04 * inch))
 
     story.append(Paragraph("Acceptance Of Scope", s["h2"]))
     story.append(Paragraph(
@@ -273,11 +273,10 @@ def build_silicone_spec(data: dict, cover_photo_bytes: bytes = None) -> bytes:
         "&quot;Owner&quot; refers to the legal owner of the property or their duly authorized representative.",
         s["body"],
     ))
-    story.append(Spacer(1, 0.15 * inch))
+    story.append(Spacer(1, 0.06 * inch))
 
     accept_rows = [
         ["By:", "________________________________", "Title:", "________________________________"],
-        ["", "", "", ""],
         ["Signature:", "________________________________", "Date:", "________________________________"],
     ]
     at = Table(accept_rows, colWidths=[0.7 * inch, 3.0 * inch, 0.6 * inch, 3.0 * inch])
@@ -285,6 +284,8 @@ def build_silicone_spec(data: dict, cover_photo_bytes: bytes = None) -> bytes:
         ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("TEXTCOLOR", (0, 0), (-1, -1), DARK),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     story.append(at)
     story.append(PageBreak())
