@@ -126,8 +126,19 @@ export default function DealDetail() {
       if (!payload.subcontractor_id) delete payload.subcontractor_id;
       const r = await api.post(`/deals/${id}/maintenance-visits`, payload);
       setDeal(r.data);
+      // Find newest visit
+      const visits = r.data?.maintenance_visits || [];
+      const newest = [...visits].sort((a, b) => (b.visit_date || "").localeCompare(a.visit_date || ""))[0];
       setNewVisit({ visit_date: new Date().toISOString().slice(0, 10), amount: Number(r.data.maintenance_rate || 0), subcontractor_id: "", notes: "" });
       toast.success("Visit logged — next due date advanced");
+      if (newest && Number(payload.amount) > 0 && window.confirm(`Create a draft invoice for $${Number(payload.amount).toLocaleString()}?`)) {
+        try {
+          const inv = await api.post("/invoices/from-maintenance-visit", { deal_id: id, visit_id: newest.id });
+          toast.success(`Draft invoice ${inv.data.invoice_number} created`);
+        } catch (e) {
+          toast.error("Visit logged, but invoice could not be auto-created");
+        }
+      }
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message);
     } finally {

@@ -13,6 +13,7 @@ import DealDetail from "@/pages/DealDetail";
 import Vendors from "@/pages/Vendors";
 import UsersPage from "@/pages/Users";
 import Maintenance from "@/pages/Maintenance";
+import Invoices from "@/pages/Invoices";
 import "@/App.css";
 
 const ProtectedRoute = ({ children }) => {
@@ -60,6 +61,7 @@ function App() {
               <Route path="/vendors" element={<Vendors kind="Vendor" />} />
               <Route path="/subcontractors" element={<Vendors kind="Subcontractor" />} />
               <Route path="/maintenance" element={<Maintenance />} />
+              <Route path="/invoices" element={<Invoices />} />
               <Route path="/users" element={<UsersPage />} />
             </Route>
           </Routes>

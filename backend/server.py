@@ -18,7 +18,7 @@ from io import BytesIO
 import secrets
 import string
 from openpyxl import load_workbook
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Form, Query, Header
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Form, Query, Header, Body
 from fastapi.responses import Response, StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -107,7 +107,7 @@ def strip_id(doc: dict) -> dict:
 
 # ----- Models -----
 LEAD_SOURCES = ["Referral", "Marketing", "Website", "Email Campaign", "Personal"]
-PROJECT_TYPES = ["Repair", "Roof Restoration", "Roof Replacement", "Maintenance", "New Construction"]
+PROJECT_TYPES = ["Repair", "Roof Restoration", "Roof Replacement", "Maintenance", "New Construction", "Other"]
 ROOF_TYPES = [
     "FARM (Fluid Applied Reinforced Membrane)",
     "Silicone w/ Granules",
@@ -348,6 +348,62 @@ class DealIn(BaseModel):
 class Deal(DealIn):
     id: str
     created_at: str
+
+
+# ----- Invoice Models -----
+class InvoiceLineItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    description: str = ""
+    quantity: float = 1.0
+    unit_price: float = 0.0
+    amount: float = 0.0  # qty * unit_price (server-computed)
+
+
+class InvoiceIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    deal_id: Optional[str] = None
+    customer_contact_id: Optional[str] = None
+    # Bill-to snapshot (frozen at creation time)
+    bill_to_company: str = ""
+    bill_to_name: str = ""
+    bill_to_address: str = ""
+    bill_to_address_line2: str = ""
+    bill_to_city: str = ""
+    bill_to_state: str = ""
+    bill_to_zip: str = ""
+    bill_to_email: str = ""
+    # Email send config
+    cc_email: str = ""
+    # Invoice fields
+    invoice_date: str = ""  # ISO yyyy-mm-dd
+    due_date: str = ""
+    terms: str = "Due Upon Receipt"
+    project_title: str = ""
+    project_address: str = ""
+    notes: str = ""
+    line_items: List[InvoiceLineItem] = Field(default_factory=list)
+    status: str = "Draft"  # Draft | Sent | Paid | Partial | Void | Overdue
+    # Payment
+    amount_paid: float = 0.0
+    payment_date: str = ""
+    payment_method: str = ""
+    payment_reference: str = ""
+    # Source link (which milestone or maintenance visit created this)
+    source_type: str = ""  # milestone | maintenance_visit | manual
+    source_id: str = ""
+
+
+class Invoice(InvoiceIn):
+    id: str
+    invoice_number: str
+    subtotal: float = 0.0
+    total: float = 0.0
+    balance_due: float = 0.0
+    created_at: str
+    created_by_user_id: Optional[str] = None
+    last_sent_at: str = ""
+    pdf_generated_at: str = ""
 
 
 # ----- Auth Routes -----
@@ -886,6 +942,298 @@ async def list_maintenance(current=Depends(get_current_user)):
             "visit_count": len(d.get("maintenance_visits") or []),
         })
     return out
+
+
+# ----- Invoices -----
+# Number sequence seed: INV-2026-1100 (user-specified starting point)
+INVOICE_SEQ_SEED = {"year": 2026, "next": 1100}
+
+
+async def _next_invoice_number() -> str:
+    """Atomic counter per year stored in `settings` collection (key=invoice_seq_{year})."""
+    year = datetime.now(timezone.utc).year
+    key = f"invoice_seq_{year}"
+    seed = INVOICE_SEQ_SEED["next"] if year == INVOICE_SEQ_SEED["year"] else 1
+    doc = await db.settings.find_one_and_update(
+        {"key": key},
+        {"$inc": {"value": 1}, "$setOnInsert": {"key": key}},
+        upsert=True,
+        return_document=True,
+    )
+    raw = doc.get("value", 1)
+    # If we just inserted and value is 1 but year matches seed, jump to seed
+    if year == INVOICE_SEQ_SEED["year"] and raw < INVOICE_SEQ_SEED["next"]:
+        await db.settings.update_one({"key": key}, {"$set": {"value": INVOICE_SEQ_SEED["next"]}})
+        raw = INVOICE_SEQ_SEED["next"]
+    return f"INV-{year}-{raw:04d}"
+
+
+def _recalc_invoice(inv: dict) -> dict:
+    """Compute line-item amounts + subtotal + total + balance_due."""
+    items = inv.get("line_items") or []
+    sub = 0.0
+    for it in items:
+        if not it.get("id"):
+            it["id"] = str(uuid.uuid4())
+        try:
+            qty = float(it.get("quantity") or 0)
+            unit = float(it.get("unit_price") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+            unit = 0.0
+        it["quantity"] = qty
+        it["unit_price"] = unit
+        it["amount"] = round(qty * unit, 2)
+        sub += it["amount"]
+    inv["line_items"] = items
+    inv["subtotal"] = round(sub, 2)
+    inv["total"] = round(sub, 2)  # no tax
+    paid = float(inv.get("amount_paid") or 0)
+    inv["amount_paid"] = round(paid, 2)
+    inv["balance_due"] = round(inv["total"] - paid, 2)
+    # Status auto-rules
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    status = inv.get("status", "Draft")
+    if status not in ("Void", "Draft"):
+        if inv["balance_due"] <= 0.01:
+            status = "Paid"
+        elif paid > 0:
+            status = "Partial"
+        elif inv.get("due_date") and inv["due_date"] < today_iso:
+            status = "Overdue"
+    inv["status"] = status
+    return inv
+
+
+async def _build_bill_to_from_contact(contact_id: str) -> dict:
+    """Pull billing address snapshot from a contact, defaulting to primary address if billing_same."""
+    if not contact_id:
+        return {}
+    c = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    if not c:
+        return {}
+    same = c.get("billing_same_as_address", True)
+    if same:
+        return {
+            "bill_to_company": c.get("company_name", ""),
+            "bill_to_name": c.get("contact_name", ""),
+            "bill_to_address": c.get("address", ""),
+            "bill_to_address_line2": c.get("address_line2", ""),
+            "bill_to_city": c.get("city", ""),
+            "bill_to_state": c.get("state", ""),
+            "bill_to_zip": c.get("zip_code", ""),
+            "bill_to_email": c.get("email", ""),
+        }
+    return {
+        "bill_to_company": c.get("company_name", ""),
+        "bill_to_name": c.get("contact_name", ""),
+        "bill_to_address": c.get("billing_address", ""),
+        "bill_to_address_line2": c.get("billing_address_line2", ""),
+        "bill_to_city": c.get("billing_city", ""),
+        "bill_to_state": c.get("billing_state", ""),
+        "bill_to_zip": c.get("billing_zip", ""),
+        "bill_to_email": c.get("email", ""),
+    }
+
+
+@api_router.get("/invoices")
+async def list_invoices(status: Optional[str] = None, deal_id: Optional[str] = None, current=Depends(get_current_user)):
+    query = {"is_deleted": {"$ne": True}}
+    if status:
+        query["status"] = status
+    if deal_id:
+        query["deal_id"] = deal_id
+    if current.get("role") == "sales":
+        query["created_by_user_id"] = current["id"]
+    cursor = db.invoices.find(query, {"_id": 0}).sort("created_at", -1)
+    items = await cursor.to_list(2000)
+    return items
+
+
+@api_router.post("/invoices", response_model=Invoice)
+async def create_invoice(body: InvoiceIn, current=Depends(get_current_user)):
+    data = body.model_dump()
+    # Pre-fill bill-to from contact if not provided
+    if data.get("customer_contact_id") and not data.get("bill_to_company") and not data.get("bill_to_name"):
+        bt = await _build_bill_to_from_contact(data["customer_contact_id"])
+        for k, v in bt.items():
+            if not data.get(k):
+                data[k] = v
+    # Pre-fill project info if deal_id supplied
+    if data.get("deal_id"):
+        deal = await db.deals.find_one({"id": data["deal_id"]}, {"_id": 0})
+        if deal:
+            if not data.get("project_title"):
+                data["project_title"] = deal.get("title", "")
+            if not data.get("customer_contact_id"):
+                data["customer_contact_id"] = deal.get("customer_contact_id") or deal.get("contact_id")
+            # Auto-fill bill-to from deal's contact if still empty
+            if not data.get("bill_to_company") and not data.get("bill_to_name") and data.get("customer_contact_id"):
+                bt = await _build_bill_to_from_contact(data["customer_contact_id"])
+                for k, v in bt.items():
+                    if not data.get(k):
+                        data[k] = v
+            # Property address
+            if not data.get("project_address") and deal.get("property_id"):
+                prop = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
+                if prop:
+                    addr1 = " ".join([p for p in [prop.get("property_address", ""), prop.get("property_address_line2", "")] if p]).strip()
+                    line2 = ", ".join([p for p in [prop.get("property_city", ""), prop.get("property_state", "")] if p])
+                    if prop.get("property_zip"):
+                        line2 = f"{line2} {prop.get('property_zip')}".strip()
+                    data["project_address"] = "  ·  ".join([p for p in [addr1, line2] if p])
+    # Defaults
+    if not data.get("invoice_date"):
+        data["invoice_date"] = datetime.now(timezone.utc).date().isoformat()
+    if not data.get("due_date"):
+        data["due_date"] = data["invoice_date"]  # "Due Upon Receipt"
+    if not data.get("terms"):
+        data["terms"] = "Due Upon Receipt"
+    data = _recalc_invoice(data)
+    data["id"] = str(uuid.uuid4())
+    data["invoice_number"] = await _next_invoice_number()
+    data["created_at"] = now_iso()
+    data["created_by_user_id"] = current["id"]
+    data["is_deleted"] = False
+    await db.invoices.insert_one(data.copy())
+    return strip_id(data)
+
+
+@api_router.get("/invoices/{invoice_id}", response_model=Invoice)
+async def get_invoice(invoice_id: str, current=Depends(get_current_user)):
+    doc = await db.invoices.find_one({"id": invoice_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return doc
+
+
+@api_router.put("/invoices/{invoice_id}", response_model=Invoice)
+async def update_invoice(invoice_id: str, body: InvoiceIn, current=Depends(get_current_user)):
+    existing = await db.invoices.find_one({"id": invoice_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    data = body.model_dump()
+    # Preserve immutable fields
+    data["id"] = existing["id"]
+    data["invoice_number"] = existing["invoice_number"]
+    data["created_at"] = existing["created_at"]
+    data["created_by_user_id"] = existing.get("created_by_user_id")
+    data["last_sent_at"] = existing.get("last_sent_at", "")
+    data["pdf_generated_at"] = existing.get("pdf_generated_at", "")
+    data = _recalc_invoice(data)
+    await db.invoices.update_one({"id": invoice_id}, {"$set": data})
+    return strip_id(data)
+
+
+@api_router.delete("/invoices/{invoice_id}")
+async def delete_invoice(invoice_id: str, current=Depends(get_current_user)):
+    if is_admin(current):
+        await db.invoices.delete_one({"id": invoice_id})
+    else:
+        await db.invoices.update_one({"id": invoice_id}, {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}})
+    return {"ok": True}
+
+
+@api_router.post("/invoices/from-milestone")
+async def invoice_from_milestone(deal_id: str = Body(...), milestone_id: str = Body(...), current=Depends(get_current_user)):
+    """Auto-generate a draft invoice for a single milestone of a deal."""
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    ms = next((m for m in (deal.get("payment_milestones") or []) if m.get("id") == milestone_id), None)
+    if not ms:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    body = InvoiceIn(
+        deal_id=deal_id,
+        customer_contact_id=deal.get("customer_contact_id") or deal.get("contact_id"),
+        source_type="milestone",
+        source_id=milestone_id,
+        project_title=deal.get("title", ""),
+        line_items=[InvoiceLineItem(description=f"{ms.get('label') or 'Project Milestone'} — {ms.get('percent', 0)}% of contract", quantity=1, unit_price=float(ms.get("amount") or 0))],
+    )
+    return await create_invoice(body, current)
+
+
+@api_router.post("/invoices/from-maintenance-visit")
+async def invoice_from_maintenance_visit(deal_id: str = Body(...), visit_id: str = Body(...), current=Depends(get_current_user)):
+    """Auto-generate a draft invoice for a maintenance visit."""
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    visit = next((v for v in (deal.get("maintenance_visits") or []) if v.get("id") == visit_id), None)
+    if not visit:
+        raise HTTPException(status_code=404, detail="Visit not found")
+    visit_date = visit.get("visit_date", "")
+    desc_bits = [f"Annual Maintenance Visit ({visit_date})" if visit_date else "Annual Maintenance Visit"]
+    if visit.get("notes"):
+        desc_bits.append(visit["notes"])
+    body = InvoiceIn(
+        deal_id=deal_id,
+        customer_contact_id=deal.get("customer_contact_id") or deal.get("contact_id"),
+        source_type="maintenance_visit",
+        source_id=visit_id,
+        project_title=deal.get("title", ""),
+        invoice_date=visit_date or datetime.now(timezone.utc).date().isoformat(),
+        line_items=[InvoiceLineItem(description=" — ".join(desc_bits), quantity=1, unit_price=float(visit.get("amount") or 0))],
+    )
+    return await create_invoice(body, current)
+
+
+@api_router.get("/invoices/{invoice_id}/pdf")
+async def invoice_pdf(invoice_id: str, token: Optional[str] = Query(None), authorization: Optional[str] = Header(None)):
+    # Allow ?token= for browser downloads
+    raw = None
+    if authorization and authorization.startswith("Bearer "):
+        raw = authorization[7:]
+    elif token:
+        raw = token
+    if not raw:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(raw, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["sub"]})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    inv = await db.invoices.find_one({"id": invoice_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    from invoice_pdf import build_invoice_pdf
+    pdf_bytes = build_invoice_pdf(inv)
+    # Mark PDF generated
+    await db.invoices.update_one({"id": invoice_id}, {"$set": {"pdf_generated_at": now_iso()}})
+    fname = f"{inv['invoice_number']}.pdf"
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@api_router.post("/invoices/{invoice_id}/email")
+async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends(get_current_user)):
+    """STUB — wires up after email provider integration. Marks invoice as Sent."""
+    inv = await db.invoices.find_one({"id": invoice_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    to_email = (body.get("to_email") or inv.get("bill_to_email") or "").strip()
+    cc_email = (body.get("cc_email") or inv.get("cc_email") or "").strip()
+    if not to_email:
+        raise HTTPException(status_code=400, detail="No recipient email — please provide one.")
+    # Mark sent and persist the to/cc choice
+    patch = {
+        "bill_to_email": to_email,
+        "cc_email": cc_email,
+        "last_sent_at": now_iso(),
+    }
+    if inv.get("status") == "Draft":
+        patch["status"] = "Sent"
+    await db.invoices.update_one({"id": invoice_id}, {"$set": patch})
+    return {
+        "ok": True,
+        "mocked": True,
+        "message": f"MOCKED — email provider not yet configured. Invoice marked as Sent. Would send to {to_email}" + (f" (cc: {cc_email})" if cc_email else ""),
+        "to_email": to_email,
+        "cc_email": cc_email,
+    }
 
 
 # ----- Vendors -----
@@ -1527,9 +1875,8 @@ async def revenue_by_type(window: str = "ytd", current=Depends(get_current_user)
         query["$or"] = [{"assigned_to_user_id": current["id"]}, {"created_by_user_id": current["id"]}]
     deals = await db.deals.find(query, {"_id": 0}).to_list(5000)
 
-    types = ["Repair", "Roof Restoration", "Roof Replacement", "Maintenance", "New Construction"]
+    types = ["Repair", "Roof Restoration", "Roof Replacement", "Maintenance", "New Construction", "Other"]
     buckets = {t: {"booked": 0.0, "received": 0.0, "count": 0} for t in types}
-    other = {"booked": 0.0, "received": 0.0, "count": 0}
 
     for d in deals:
         # Project type breakdown from Won deals
@@ -1537,8 +1884,10 @@ async def revenue_by_type(window: str = "ytd", current=Depends(get_current_user)
             # Use chosen_date if present, else created_at
             ref = (d.get("chosen_date") or d.get("created_at") or "")[:10]
             if in_window(ref):
-                ptype = d.get("project_type") or "Repair"
-                target = buckets.get(ptype, other)
+                ptype = d.get("project_type") or "Other"
+                if ptype not in buckets:
+                    ptype = "Other"
+                target = buckets[ptype]
                 booked = float(d.get("chosen_amount", 0) or 0)
                 received = sum(float(m.get("amount", 0) or 0) for m in (d.get("payment_milestones") or []) if m.get("status") == "Paid")
                 target["booked"] += booked
@@ -1564,9 +1913,6 @@ async def revenue_by_type(window: str = "ytd", current=Depends(get_current_user)
             "received": round(b["received"], 2),
             "count": b["count"],
         })
-    # Append "Other" if any
-    if other["count"] > 0:
-        rows.append({"project_type": "Other", "booked": round(other["booked"], 2), "received": round(other["received"], 2), "count": other["count"]})
 
     totals = {
         "booked": round(sum(r["booked"] for r in rows), 2),
@@ -1585,6 +1931,10 @@ async def on_startup():
     await db.vendors.create_index("id", unique=True)
     await db.files.create_index("id", unique=True)
     await db.files.create_index([("parent_type", 1), ("parent_id", 1)])
+    await db.invoices.create_index("id", unique=True)
+    await db.invoices.create_index("invoice_number", unique=True, sparse=True)
+    await db.invoices.create_index("deal_id")
+    await db.settings.create_index("key", unique=True)
 
     # Migrate deprecated status "Proposal Sent" → "Sent"
     await db.deals.update_many({"status": "Proposal Sent"}, {"$set": {"status": "Sent"}})

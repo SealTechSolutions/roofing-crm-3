@@ -100,7 +100,7 @@ export default function Login() {
           />
         </div>
         <div className="flex-1 flex flex-col justify-center px-12 text-white">
-          <div className="text-[10px] uppercase tracking-[0.3em] text-orange-500 mb-3">Building Solutions</div>
+          <div className="text-[10px] uppercase tracking-[0.3em] mb-3" style={{ color: "#A0703A" }}>Building Solutions</div>
           <h2 className="font-heading text-4xl font-black tracking-tight leading-tight max-w-md">
             SealTech CRM and Operations.
           </h2>

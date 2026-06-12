@@ -41,12 +41,21 @@ Single owner-operator of a small commercial roofing business, managing the full 
 - ✅ New "Maintenance" page in nav: searchable/filterable list, status badges (Overdue / Due Soon / Upcoming), Log Visit modal, Excel + PDF export
 - ✅ Dashboard maintenance KPIs (Plans count, ARR, Due 30d, Overdue) — all linked to /maintenance
 - ✅ Spec Sheet refinements: header normalization, CONTACT row, "(Standard Warranty Included)" suffix, Upgraded Warranty labels, footer with phone, centered+italic appreciation paragraph, photo right-sized to 1.6" so everything fits 3 pages
+- ✅ Project Types expanded to: Repair, Roof Restoration, Roof Replacement, Maintenance, New Construction, Other
+- ✅ Revenue by Type card on Dashboard with YTD ↔ All-Time toggle (Booked / Received / Outstanding columns)
+- ✅ Maintenance page now shows "Visits Income (YTD)" KPI alongside ARR
+- ✅ Brand accent updated from orange to bronze (#A0703A) on Spec Sheet, Login eyebrow, Documents star
+- ✅ **Invoicing Module**: Invoice model + endpoints, SealTech-branded PDF, INV-YYYY-NNNN numbering starting at INV-2026-1100, auto-fill Bill To from customer billing address, status workflow (Draft → Sent → Partial → Paid → Overdue), payment tracking, Invoices list page with filters/search/KPIs
+- ✅ Auto-create draft invoice when logging a maintenance visit (prompted)
+- ✅ Auto-create from milestone endpoint (`POST /api/invoices/from-milestone`)
+- ⚠️ Email-sending currently **MOCKED** (marks invoice as Sent, records to/cc emails) — awaiting provider choice (Resend / SendGrid / Gmail SMTP) + API key
 
 ## Backlog (P1)
-- Email to Prospect integration (Resend / SendGrid / Gmail) — placeholder button currently MOCKED
+- 📧 Wire actual email delivery for Invoices + Spec Sheets (provider pending user choice)
 - Additional Roof Type Templates for Spec Sheet (TPO, EPDM, ModBit, BUR, Metal, Shingle, Tile, FARM)
 - Kanban view of deals by status (drag to update)
 - Activity timeline per deal (notes, calls, meetings)
+- Materials catalog with default unit costs
 
 ## Backlog (P2)
 - Admin Trash View (restore / permanent-delete soft-deleted records)
@@ -54,3 +63,4 @@ Single owner-operator of a small commercial roofing business, managing the full 
 - Google Calendar Sync for project schedules
 - Mobile-responsive sidebar (hamburger)
 - Stripe payments / invoicing
+- Online pay link + ACH info on invoice (user will provide)

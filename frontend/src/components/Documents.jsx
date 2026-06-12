@@ -117,10 +117,11 @@ export default function Documents({ parentType, parentId, title = "Documents", c
                   <button
                     onClick={() => onSetCover(f.id)}
                     title={coverPhotoId === f.id ? "Cover photo" : "Set as cover photo"}
-                    className={`p-1.5 rounded-sm ${coverPhotoId === f.id ? "text-orange-500" : "text-zinc-400 hover:text-orange-500 hover:bg-zinc-100"}`}
+                    className="p-1.5 rounded-sm hover:bg-zinc-100"
+                    style={{ color: coverPhotoId === f.id ? "#A0703A" : undefined }}
                     data-testid={`cover-${f.id}`}
                   >
-                    <Star className={`w-4 h-4 ${coverPhotoId === f.id ? "fill-current" : ""}`} />
+                    <Star className="w-4 h-4" style={{ fill: coverPhotoId === f.id ? "#A0703A" : "none", color: coverPhotoId === f.id ? "#A0703A" : "#a1a1aa" }} />
                   </button>
                 )}
                 <button onClick={() => remove(f.id)} title="Delete" className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm" data-testid={`delete-doc-${f.id}`}>

@@ -266,8 +266,22 @@ function LogVisitModal({ row, onClose, onSaved }) {
     try {
       const payload = { visit_date: date, amount: Number(amount || 0), notes };
       if (subId) payload.subcontractor_id = subId;
-      await api.post(`/deals/${row.id}/maintenance-visits`, payload);
+      const visitRes = await api.post(`/deals/${row.id}/maintenance-visits`, payload);
       toast.success("Visit logged — next due date advanced");
+      // Find the newly-added visit (highest id from response)
+      const visits = visitRes.data?.maintenance_visits || [];
+      const newest = [...visits].sort((a, b) => (b.visit_date || "").localeCompare(a.visit_date || ""))[0];
+      // Offer to auto-create draft invoice
+      if (newest && Number(amount || 0) > 0 && window.confirm(`Create a draft invoice for $${Number(amount).toLocaleString()}? This is enabled because most maintenance customers get billed per visit.`)) {
+        try {
+          const inv = await api.post("/invoices/from-maintenance-visit", { deal_id: row.id, visit_id: newest.id });
+          toast.success(`Draft invoice ${inv.data.invoice_number} created — opening invoices`);
+          setTimeout(() => { window.location.href = "/invoices"; }, 600);
+          return;
+        } catch (e) {
+          toast.error("Visit logged, but invoice could not be auto-created");
+        }
+      }
       onSaved();
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message);
