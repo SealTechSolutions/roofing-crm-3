@@ -114,9 +114,14 @@ def _header_block(s, doc):
     elems.append(Paragraph("RESTORATION ROOF SCOPE", title_centered))
     elems.append(Spacer(1, 0.35 * inch))
 
+    product_line = doc.get("product_type", "—")
+    product_cell = Paragraph(
+        f'{product_line} <font size="7" color="#52525B"><i>(Standard Warranty Included)</i></font>',
+        s["body"],
+    )
     info_rows = [
         ["PROJECT ADDRESS", doc.get("project_address", "—")],
-        ["PRODUCT TYPE", doc.get("product_type", "—")],
+        ["PRODUCT TYPE", product_cell],
         ["DATE", doc.get("date", "—")],
     ]
     t = Table(info_rows, colWidths=[1.5 * inch, 6.0 * inch])
@@ -136,7 +141,10 @@ def _header_block(s, doc):
 
 def _pricing_table(s, doc):
     elems = []
-    elems.append(Paragraph(doc.get("product_type", "Roof System Investment"), s["h2"]))
+    elems.append(Paragraph(
+        f'{doc.get("product_type", "Roof System Investment")} <font size="9"><i>(Standard Warranty Included)</i></font>',
+        s["h2"],
+    ))
     base = [
         ["Warranty Tier", "Base Investment"],
         ["20-Year Workmanship", _currency(doc.get("opt_20"))],
