@@ -189,9 +189,9 @@ def _pricing_table(s, doc):
     # Totals
     elems.append(Paragraph("Total Investment with Optional Manufacturer Warranty", s["h2"]))
     tot = [
-        ["Including 20-Year Warranty", _currency((doc.get("opt_20") or 0) + (doc.get("w20") or 0))],
-        ["Including 15-Year Warranty", _currency((doc.get("opt_15") or 0) + (doc.get("w15") or 0))],
-        ["Including 10-Year Warranty", _currency((doc.get("opt_10") or 0) + (doc.get("w10") or 0))],
+        ["Including 20-Year Upgraded Warranty", _currency((doc.get("opt_20") or 0) + (doc.get("w20") or 0))],
+        ["Including 15-Year Upgraded Warranty", _currency((doc.get("opt_15") or 0) + (doc.get("w15") or 0))],
+        ["Including 10-Year Upgraded Warranty", _currency((doc.get("opt_10") or 0) + (doc.get("w10") or 0))],
     ]
     t3 = Table(tot, colWidths=[4.5 * inch, 3.0 * inch])
     t3.setStyle(TableStyle([
