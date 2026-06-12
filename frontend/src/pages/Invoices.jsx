@@ -261,10 +261,10 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
       const r = await api.get(`/deals/${deal_id}`);
       const d = r.data;
       const cid = d.customer_contact_id || d.contact_id;
-      // Compute project total from chosen_amount or highest proposal option
-      const projTotal = Number(d.chosen_amount || 0) > 0
-        ? Number(d.chosen_amount)
-        : Math.max(Number(d.proposal_option_1 || 0), Number(d.proposal_option_2 || 0), Number(d.proposal_option_3 || 0));
+      // Compute project total from chosen_amount or MID proposal option (typical buy point)
+      const opts = [Number(d.proposal_option_1 || 0), Number(d.proposal_option_2 || 0), Number(d.proposal_option_3 || 0)].filter((x) => x > 0).sort((a, b) => a - b);
+      const midOption = opts.length ? opts[Math.floor(opts.length / 2)] : 0;
+      const projTotal = Number(d.chosen_amount || 0) > 0 ? Number(d.chosen_amount) : midOption;
       let patch = { project_title: d.title || "", project_total: projTotal };
       if (cid) {
         const c = await api.get(`/contacts/${cid}`);

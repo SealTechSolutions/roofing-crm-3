@@ -139,6 +139,21 @@ USER_ROLES = ["admin", "manager", "sales"]
 FINANCIAL_FIELDS = ["proposal_option_1", "proposal_option_2", "proposal_option_3", "chosen_amount", "materials_cost", "labor_cost", "subcontractor_cost", "other_expenses", "payment_milestones", "cost_items"]
 
 
+def proposal_mid_amount(d: dict) -> float:
+    """Return the middle (median by value) of the 3 proposal options, ignoring zeros.
+    Falls back to the single non-zero value if only one is set.
+    Used as the default tracking amount before a chosen_amount is locked in."""
+    opts = []
+    for i in (1, 2, 3):
+        v = float(d.get(f"proposal_option_{i}", 0) or 0)
+        if v > 0:
+            opts.append(v)
+    if not opts:
+        return 0.0
+    opts.sort()
+    return opts[len(opts) // 2]
+
+
 def generate_password(length: int = 12) -> str:
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
@@ -1069,14 +1084,10 @@ async def create_invoice(body: InvoiceIn, current=Depends(get_current_user)):
             if not data.get("project_title"):
                 data["project_title"] = deal.get("title", "")
             if not data.get("project_total"):
-                # Use chosen_amount if set, else highest proposal option
+                # Use chosen_amount if set, else MID proposal option (typical buy point)
                 pt = float(deal.get("chosen_amount", 0) or 0)
                 if pt <= 0:
-                    pt = max(
-                        float(deal.get("proposal_option_1", 0) or 0),
-                        float(deal.get("proposal_option_2", 0) or 0),
-                        float(deal.get("proposal_option_3", 0) or 0),
-                    )
+                    pt = proposal_mid_amount(deal)
                 data["project_total"] = pt
             if not data.get("customer_contact_id"):
                 data["customer_contact_id"] = deal.get("customer_contact_id") or deal.get("contact_id")
@@ -1890,13 +1901,8 @@ async def dashboard_summary(current=Depends(get_current_user)):
     for d in deals:
         status_v = d.get("status", "Lead")
         chosen = float(d.get("chosen_amount", 0) or 0)
-        # Pipeline value: use chosen_amount if set, otherwise the highest proposal option
-        proposal_max = max(
-            float(d.get("proposal_option_1", 0) or 0),
-            float(d.get("proposal_option_2", 0) or 0),
-            float(d.get("proposal_option_3", 0) or 0),
-        )
-        pipeline_value = chosen if chosen > 0 else proposal_max
+        # Pipeline value: use chosen_amount if set, otherwise the MID proposal option (typical buy point)
+        pipeline_value = chosen if chosen > 0 else proposal_mid_amount(d)
         costs = float(d.get("materials_cost", 0) or 0) + float(d.get("labor_cost", 0) or 0) + float(d.get("subcontractor_cost", 0) or 0) + float(d.get("other_expenses", 0) or 0)
         if status_v == "Won":
             won_deals += 1
