@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, formatCurrency } from "@/lib/api";
 import { Link } from "react-router-dom";
-import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet } from "lucide-react";
 import { ExportButtons } from "@/components/ExportImport";
 
 const KPI = ({ label, value, hint, icon: Icon, testId }) => (
@@ -84,6 +84,19 @@ export default function Dashboard() {
         </Link>
         <Link to="/maintenance" className="block">
           <KPI label="Maintenance Overdue" value={data.maintenance_overdue || 0} hint="Past next due date" icon={Trophy} testId="kpi-maintenance-overdue" />
+        </Link>
+      </div>
+
+      {/* Payables KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-12">
+        <Link to="/payables" className="block">
+          <KPI label="Payables Outstanding" value={formatCurrency(data.payables_outstanding || 0)} hint="All unpaid vendor bills" icon={Wallet} testId="kpi-payables-outstanding" />
+        </Link>
+        <Link to="/payables" className="block">
+          <KPI label="Payables Overdue" value={formatCurrency(data.payables_overdue || 0)} hint={`${data.payables_overdue_count || 0} bills past due`} icon={Wallet} testId="kpi-payables-overdue" />
+        </Link>
+        <Link to="/payables" className="block">
+          <KPI label="Due This Week" value={formatCurrency(data.payables_due_this_week || 0)} hint={`${data.payables_due_this_week_count || 0} bills due in 7 days`} icon={Wallet} testId="kpi-payables-due-week" />
         </Link>
       </div>
 

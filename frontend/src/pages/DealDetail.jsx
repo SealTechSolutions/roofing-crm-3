@@ -15,6 +15,7 @@ export default function DealDetail() {
   const [vendors, setVendors] = useState([]);
   const [options, setOptions] = useState({});
   const [saving, setSaving] = useState(false);
+  const [vendorBills, setVendorBills] = useState([]);  // actual bills linked to this project
 
   const reload = async () => {
     const r = await api.get(`/deals/${id}`);
@@ -31,10 +32,11 @@ export default function DealDetail() {
     reload().catch(() => nav("/projects"));
     api.get("/vendors").then((r) => setVendors(r.data));
     api.get("/options").then((r) => setOptions(r.data));
+    api.get(`/vendor-bills?project_id=${id}`).then((r) => setVendorBills(r.data)).catch(() => setVendorBills([]));
   }, [id]);
 
   const totals = useMemo(() => {
-    if (!deal) return { revenue: 0, costs: 0, profit: 0, margin: 0, scheduled: 0, received: 0, outstanding: 0, paidCosts: 0, pendingCosts: 0 };
+    if (!deal) return { revenue: 0, costs: 0, profit: 0, margin: 0, scheduled: 0, received: 0, outstanding: 0, paidCosts: 0, pendingCosts: 0, actualCosts: 0, actualPaid: 0, actualUnpaid: 0, actualProfit: 0, actualMargin: 0 };
     const revenue = Number(deal.chosen_amount || 0);
     const items = deal.cost_items || [];
     const costs = items.reduce((s, i) => s + Number(i.amount || 0), 0);
@@ -44,12 +46,40 @@ export default function DealDetail() {
     const scheduled = milestones.reduce((s, m) => s + Number(m.amount || 0), 0);
     const received = milestones.filter((m) => m.status === "Paid").reduce((s, m) => s + Number(m.amount || 0), 0);
     const outstanding = scheduled - received;
+
+    // Actual costs from vendor bills — sum line items where project_id matches this project
+    let actualCosts = 0;
+    let actualPaid = 0;
+    let actualUnpaid = 0;
+    for (const b of vendorBills) {
+      const projectLines = (b.line_items || []).filter((li) => li.project_id === deal.id);
+      const lineTotal = projectLines.reduce((s, li) => s + Number(li.amount || 0), 0);
+      actualCosts += lineTotal;
+      // Paid proportionally — bill paid_amount / total ratio × this project's share
+      const billTotal = Number(b.total || 0);
+      const paidRatio = billTotal > 0 ? Number(b.paid_amount || 0) / billTotal : 0;
+      const paidShare = lineTotal * paidRatio;
+      if (b.status === "Paid") {
+        actualPaid += lineTotal;
+      } else {
+        actualPaid += paidShare;
+        actualUnpaid += lineTotal - paidShare;
+      }
+    }
+    const actualProfit = revenue - actualCosts;
+    const actualMargin = revenue > 0 ? (actualProfit / revenue) * 100 : 0;
+
     return {
       revenue, costs, profit: revenue - costs,
       margin: revenue > 0 ? ((revenue - costs) / revenue) * 100 : 0,
       scheduled, received, outstanding, paidCosts, pendingCosts,
+      actualCosts: Math.round(actualCosts * 100) / 100,
+      actualPaid: Math.round(actualPaid * 100) / 100,
+      actualUnpaid: Math.round(actualUnpaid * 100) / 100,
+      actualProfit: Math.round(actualProfit * 100) / 100,
+      actualMargin,
     };
-  }, [deal]);
+  }, [deal, vendorBills]);
 
   const persist = async (patch) => {
     if (!deal) return;
@@ -282,6 +312,66 @@ export default function DealDetail() {
         <KpiCard label="Total Costs" value={formatCurrency(totals.costs)} hint={`${formatCurrency(totals.paidCosts)} paid · ${formatCurrency(totals.pendingCosts)} pending`} testId="kpi-costs" />
         <KpiCard label="Net Profit" value={formatCurrency(totals.profit)} hint={`Margin ${totals.margin.toFixed(1)}%`} accent={totals.profit >= 0 ? "text-emerald-700" : "text-red-700"} testId="kpi-profit" />
         <KpiCard label="Outstanding" value={formatCurrency(totals.outstanding)} hint={`${formatCurrency(totals.received)} received of ${formatCurrency(totals.scheduled)}`} accent="text-orange-700" testId="kpi-outstanding" />
+      </div>
+
+      {/* Estimated vs Actual P&L */}
+      <div className="bg-white border border-zinc-200 rounded-sm p-5 mb-8" data-testid="pnl-comparison">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700">P&amp;L Comparison</div>
+            <h3 className="font-heading text-lg font-bold tracking-tight">Estimated vs Actual</h3>
+          </div>
+          <Link to={`/payables?project=${id}`} className="text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:underline">
+            View Vendor Bills ({vendorBills.length}) →
+          </Link>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider">
+              <th className="py-2"></th>
+              <th className="py-2 text-right">Estimated (Cost Items)</th>
+              <th className="py-2 text-right">Actual (Vendor Bills)</th>
+              <th className="py-2 text-right">Variance</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-zinc-100">
+              <td className="py-3 font-bold">Revenue</td>
+              <td className="py-3 text-right font-mono">{formatCurrency(totals.revenue)}</td>
+              <td className="py-3 text-right font-mono">{formatCurrency(totals.revenue)}</td>
+              <td className="py-3 text-right font-mono text-zinc-400">—</td>
+            </tr>
+            <tr className="border-b border-zinc-100">
+              <td className="py-3 font-bold">Costs</td>
+              <td className="py-3 text-right font-mono">{formatCurrency(totals.costs)}</td>
+              <td className="py-3 text-right font-mono">{formatCurrency(totals.actualCosts)}</td>
+              <td className={`py-3 text-right font-mono font-bold ${totals.actualCosts > totals.costs ? "text-red-700" : "text-emerald-700"}`}>
+                {totals.actualCosts > totals.costs ? "+" : ""}{formatCurrency(totals.actualCosts - totals.costs)}
+              </td>
+            </tr>
+            <tr className="border-b-2 border-zinc-950 bg-zinc-50">
+              <td className="py-3 font-bold">Net Profit</td>
+              <td className={`py-3 text-right font-mono font-bold ${totals.profit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCurrency(totals.profit)}</td>
+              <td className={`py-3 text-right font-mono font-bold ${totals.actualProfit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCurrency(totals.actualProfit)}</td>
+              <td className={`py-3 text-right font-mono font-bold ${totals.actualProfit >= totals.profit ? "text-emerald-700" : "text-red-700"}`}>
+                {totals.actualProfit >= totals.profit ? "+" : ""}{formatCurrency(totals.actualProfit - totals.profit)}
+              </td>
+            </tr>
+            <tr>
+              <td className="py-2 text-[11px] uppercase tracking-wider text-zinc-500">Margin</td>
+              <td className="py-2 text-right font-mono text-[11px] text-zinc-600">{totals.margin.toFixed(1)}%</td>
+              <td className="py-2 text-right font-mono text-[11px] text-zinc-600">{totals.actualMargin.toFixed(1)}%</td>
+              <td className="py-2"></td>
+            </tr>
+          </tbody>
+        </table>
+        {vendorBills.length === 0 ? (
+          <div className="mt-3 text-[11px] text-zinc-500 italic">No vendor bills attached to this project yet. Upload one on the Payables page and link a line item to this project to see actuals here.</div>
+        ) : (
+          <div className="mt-3 text-[11px] text-zinc-500">
+            {vendorBills.length} bill{vendorBills.length > 1 ? "s" : ""} attached · {formatCurrency(totals.actualPaid)} paid · {formatCurrency(totals.actualUnpaid)} unpaid
+          </div>
+        )}
       </div>
 
       {/* Milestones */}

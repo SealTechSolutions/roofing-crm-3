@@ -2386,6 +2386,41 @@ async def dashboard_summary(current=Depends(get_current_user)):
         "maintenance_due_30d": maintenance_due_30d,
         "maintenance_overdue": maintenance_overdue,
         "maintenance_annual_revenue": round(maintenance_annual_revenue, 2),
+        **(await _payables_summary(current)),
+    }
+
+
+async def _payables_summary(current) -> dict:
+    """Sum unpaid bills, grouped by overdue / due-soon / total."""
+    query = {"is_deleted": {"$ne": True}, "status": {"$in": ["Pending", "Approved"]}}
+    if current.get("role") == "sales":
+        query["created_by_user_id"] = current["id"]
+    bills = await db.vendor_bills.find(query, {"_id": 0}).to_list(2000)
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    soon_iso = (datetime.now(timezone.utc) + timedelta(days=7)).date().isoformat()
+    out_total = 0.0
+    overdue_total = 0.0
+    due_week_total = 0.0
+    overdue_count = 0
+    due_week_count = 0
+    for b in bills:
+        balance = float(b.get("total") or 0) - float(b.get("paid_amount") or 0)
+        if balance <= 0.01:
+            continue
+        out_total += balance
+        dd = (b.get("due_date") or "")[:10]
+        if dd and dd < today_iso:
+            overdue_total += balance
+            overdue_count += 1
+        elif dd and dd <= soon_iso:
+            due_week_total += balance
+            due_week_count += 1
+    return {
+        "payables_outstanding": round(out_total, 2),
+        "payables_overdue": round(overdue_total, 2),
+        "payables_due_this_week": round(due_week_total, 2),
+        "payables_overdue_count": overdue_count,
+        "payables_due_this_week_count": due_week_count,
     }
 
 
