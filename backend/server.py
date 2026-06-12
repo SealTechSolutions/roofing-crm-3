@@ -296,6 +296,8 @@ class VendorIn(BaseModel):
     name: str
     kind: str = "Vendor"  # Vendor | Subcontractor
     category: str = "Other"
+    contact_name: str = ""
+    contact_title: str = ""
     phone: str = ""
     work_phone: str = ""
     mobile_phone: str = ""

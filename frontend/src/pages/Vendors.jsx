@@ -10,7 +10,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 
 export default function Vendors({ kind = "Vendor" }) {
   const isSub = kind === "Subcontractor";
-  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", phone: "", work_phone: "", mobile_phone: "", fax: "", email: "", tin_ein: "", address: "", address_line2: "", city: "", state: DEFAULT_STATE, zip_code: "", notes: "" };
+  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", contact_name: "", contact_title: "", phone: "", work_phone: "", mobile_phone: "", fax: "", email: "", tin_ein: "", address: "", address_line2: "", city: "", state: DEFAULT_STATE, zip_code: "", notes: "" };
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -103,7 +103,7 @@ export default function Vendors({ kind = "Vendor" }) {
           <table className="w-full text-sm" data-testid={`${kind.toLowerCase()}s-table`}>
             <thead>
               <tr className="border-b-2 border-zinc-950 text-left">
-                <Th>Name</Th><Th>Category</Th><Th>Phone</Th><Th>Email</Th><Th>Actions</Th>
+                <Th>Name</Th><Th>Category</Th><Th>Contact</Th><Th>Phone</Th><Th>Email</Th><Th>Actions</Th>
               </tr>
             </thead>
             <tbody>
@@ -111,6 +111,10 @@ export default function Vendors({ kind = "Vendor" }) {
                 <tr key={v.id} className="border-b border-zinc-100 hover:bg-zinc-50" data-testid={`${kind.toLowerCase()}-row-${v.id}`}>
                   <td className="px-6 py-3 font-bold text-zinc-950">{v.name}</td>
                   <td className="px-6 py-3 text-zinc-700 text-xs uppercase tracking-wider">{v.category}</td>
+                  <td className="px-6 py-3 text-zinc-700 text-xs">
+                    {v.contact_name || "—"}
+                    {v.contact_title && <div className="text-[10px] text-zinc-500">{v.contact_title}</div>}
+                  </td>
                   <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{v.mobile_phone || v.work_phone || v.phone}</td>
                   <td className="px-6 py-3 text-zinc-600 text-xs">{v.email}</td>
                   <td className="px-6 py-3">
@@ -136,6 +140,12 @@ export default function Vendors({ kind = "Vendor" }) {
               </Field>
               <Field label="Category">
                 <Select data-testid={`${kind.toLowerCase()}-category`} value={form.category} onChange={(v) => setForm({ ...form, category: v })} options={categories.length ? categories : ["Other"]} />
+              </Field>
+              <Field label="Contact Name">
+                <Input data-testid={`${kind.toLowerCase()}-contact-name`} value={form.contact_name} onChange={(v) => setForm({ ...form, contact_name: v })} placeholder="Primary contact person" />
+              </Field>
+              <Field label="Contact Title">
+                <Input data-testid={`${kind.toLowerCase()}-contact-title`} value={form.contact_title} onChange={(v) => setForm({ ...form, contact_title: v })} placeholder="e.g. Sales Rep, Account Mgr" />
               </Field>
               <Field label="Work Phone">
                 <Input data-testid={`${kind.toLowerCase()}-work-phone`} value={form.work_phone} onChange={(v) => setForm({ ...form, work_phone: v })} />
