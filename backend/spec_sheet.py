@@ -1,7 +1,11 @@
-"""Silicone Roof Scope spec sheet generator (SealTech-branded)."""
+"""SealTech-branded spec sheet / scope generator with per-roof-type templates.
+
+Public API:
+    build_spec_sheet(data, cover_photo_bytes=None, roof_type=None) -> bytes
+    build_silicone_spec(data, cover_photo_bytes=None)  # back-compat alias
+"""
 import os
 from io import BytesIO
-from datetime import datetime
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
@@ -42,24 +46,16 @@ def _currency(v):
         return "$0"
 
 
-SCOPE_INSPECTION = [
-    "Inspect the roof for existing leaks, deterioration, and overall substrate condition.",
-    "Identify and document any membrane separations, blisters, ponding, and seam failures.",
-    "Cut, patch, and repair damaged areas of the existing single-ply membrane as required.",
-    "Re-seal seams, flashings, and penetrations to provide a sound substrate.",
-    "Verify drains, scuppers, and edge metal are functional and watertight.",
-]
+# ---------------------------------------------------------------------------
+#  Per-roof-type scope templates
+# ---------------------------------------------------------------------------
+#  Each entry defines the document title and the two scope blocks shown on
+#  page 2 ("Inspection / Assessment" and "Installation / Restoration"). The
+#  third block, Inclusions, is always built from the project's total_sqft +
+#  color + roof_type_label.
+# ---------------------------------------------------------------------------
 
-SCOPE_COATING = [
-    "Power-wash the entire roof surface to remove all dirt, oxidation, and loose debris.",
-    "Allow substrate to fully dry before application.",
-    "Apply manufacturer-approved primer where required.",
-    "Apply base coat of silicone roof coating to manufacturer's specified mil thickness.",
-    "Reinforce all seams, fasteners, and penetrations with polyester fabric set in silicone.",
-    "Apply top coat of silicone with embedded protective granules over walls and field as specified.",
-    "Final walk-through and quality inspection with the owner or owner's representative.",
-]
-
+# Generic exclusions shared across all templates
 EXCLUSIONS = [
     "Permit fees (if required by jurisdiction).",
     "Heavy equipment (not foreseen for this project).",
@@ -67,6 +63,247 @@ EXCLUSIONS = [
     "Removal/disposal of pre-existing hazardous materials.",
     "Work outside the defined scope or roof area.",
 ]
+
+
+SILICONE_TEMPLATE = {
+    "title": "RESTORATION ROOF SCOPE",
+    "scope_1_title": "Inspection and Repairs",
+    "scope_1": [
+        "Inspect the roof for existing leaks, deterioration, and overall substrate condition.",
+        "Identify and document any membrane separations, blisters, ponding, and seam failures.",
+        "Cut, patch, and repair damaged areas of the existing single-ply membrane as required.",
+        "Re-seal seams, flashings, and penetrations to provide a sound substrate.",
+        "Verify drains, scuppers, and edge metal are functional and watertight.",
+    ],
+    "scope_2_title": "Substrate Preparation and Coating",
+    "scope_2": [
+        "Power-wash the entire roof surface to remove all dirt, oxidation, and loose debris.",
+        "Allow substrate to fully dry before application.",
+        "Apply manufacturer-approved primer where required.",
+        "Apply base coat of silicone roof coating to manufacturer's specified mil thickness.",
+        "Reinforce all seams, fasteners, and penetrations with polyester fabric set in silicone.",
+        "Apply top coat of silicone with embedded protective granules over walls and field as specified.",
+        "Final walk-through and quality inspection with the owner or owner's representative.",
+    ],
+}
+
+TPO_TEMPLATE = {
+    "title": "TPO ROOF SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Tear-Off / Prep",
+    "scope_1": [
+        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Identify wet insulation by infrared and/or core cuts; quantify replacement areas.",
+        "Tear-off existing roof down to the structural deck (or prep substrate for re-cover where approved).",
+        "Replace any deteriorated decking with new plywood or steel deck as needed.",
+        "Remove and properly dispose of all debris from the property.",
+    ],
+    "scope_2_title": "TPO Membrane Installation",
+    "scope_2": [
+        "Install polyisocyanurate insulation to achieve specified R-value, mechanically attached or fully adhered per manufacturer.",
+        "Install ½\" high-density cover board over insulation to provide a smooth, durable substrate.",
+        "Install 60-mil TPO membrane — fully adhered, mechanically attached, or RhinoBond per project specification.",
+        "Heat-weld all seams with calibrated hot-air welder; probe-test 100% of seams after cooling.",
+        "Install TPO-coated metal drip edge, gravel stop, and termination bar at all perimeters.",
+        "Flash all penetrations, curbs, walls, and corners with pre-formed or field-fabricated TPO accessories.",
+        "Install splice plates and target patches at all T-joints, drains, and irregular conditions.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+EPDM_TEMPLATE = {
+    "title": "EPDM ROOF SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Tear-Off / Prep",
+    "scope_1": [
+        "Survey existing roof and document deck condition, drains, scuppers, and curbs.",
+        "Identify wet insulation via infrared scan or core cuts; quantify replacement areas.",
+        "Tear-off existing roof to structural deck (or prep substrate for re-cover where approved).",
+        "Replace deteriorated decking with new plywood or steel deck as needed.",
+        "Remove and properly dispose of all debris.",
+    ],
+    "scope_2_title": "EPDM Membrane Installation",
+    "scope_2": [
+        "Install polyiso insulation to specified R-value plus ½\" cover board, fully adhered or mechanically attached.",
+        "Install 60-mil EPDM membrane — fully adhered with bonding adhesive, mechanically attached, or ballasted per spec.",
+        "Splice all seams with factory-applied seam tape and EPDM splice primer; roll all laps with steel roller.",
+        "Install pre-formed pipe boots, inside/outside corners, and uncured EPDM flashing at irregular penetrations.",
+        "Terminate membrane at walls and curbs with termination bar, water cut-off mastic, and counter-flashing.",
+        "Install new metal edge, drip edge, and gravel stop per SPRI ES-1 requirements.",
+        "If ballasted: install washed river rock at 10 lbs/SF minimum or per engineered spec.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+MODBIT_TEMPLATE = {
+    "title": "MODIFIED BITUMEN ROOF SCOPE",
+    "scope_1_title": "Inspection and Tear-Off / Prep",
+    "scope_1": [
+        "Survey existing roof and document blisters, splits, alligatoring, and seam failures.",
+        "Core-cut to verify insulation moisture content and existing assembly composition.",
+        "Tear-off failed cap sheet and ply membrane down to sound substrate or structural deck.",
+        "Replace deteriorated decking and wet insulation as required.",
+        "Remove and properly dispose of all debris.",
+    ],
+    "scope_2_title": "Modified Bitumen System Installation",
+    "scope_2": [
+        "Install polyiso insulation to specified R-value with mechanically attached or hot-asphalt-adhered cover board.",
+        "Install SBS or APP modified bitumen base ply — mechanically attached, torch-applied, cold-process adhered, or self-adhered per spec.",
+        "Install granulated SBS or APP modified bitumen cap sheet, fully bonded and offset from base ply laps.",
+        "Heat-weld or cold-bond all end and side laps; broom-in and inspect for full bleed-out.",
+        "Flash all penetrations, walls, and curbs with two-ply modified bitumen flashings terminated with metal counter-flashing.",
+        "Install new pitch pans filled with two-part urethane sealant where required.",
+        "Install new metal drip edge, gravel stop, and gutter line metal as specified.",
+        "Clean granules from drains and gutters; final walk-through and water test.",
+    ],
+}
+
+BUR_TEMPLATE = {
+    "title": "BUILT-UP ROOF (BUR) SCOPE",
+    "scope_1_title": "Inspection and Tear-Off / Prep",
+    "scope_1": [
+        "Survey existing built-up roof system; locate splits, bare felts, and failed flood coat.",
+        "Infrared or core-cut survey to identify wet insulation; quantify replacement areas.",
+        "Tear-off existing roof system to structural deck (or to sound base ply where approved).",
+        "Replace deteriorated decking and wet insulation with new like-for-like materials.",
+        "Remove and properly dispose of aggregate, asphalt, and felts.",
+    ],
+    "scope_2_title": "Four-Ply Built-Up System Installation",
+    "scope_2": [
+        "Install mechanically attached or hot-mopped base sheet over insulation / cover board.",
+        "Install three (3) plies of Type IV fiberglass ply sheet in Type III/IV hot asphalt at 25 ± 5 lbs/SQ per ply.",
+        "Apply flood coat of hot asphalt at 60 ± 5 lbs/SQ and immediately embed #6 gravel (400 lbs/SQ) OR apply granulated mineral cap sheet.",
+        "Install two-ply modified bitumen base flashings at all walls, curbs, and parapets, terminated with counter-flashing.",
+        "Install new pitch pans filled with two-part urethane sealant at all irregular penetrations.",
+        "Install new metal edge, gravel stop, and drip edge per SPRI ES-1.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+METAL_TEMPLATE = {
+    "title": "METAL ROOF RESTORATION SCOPE",
+    "scope_1_title": "Inspection and Repairs",
+    "scope_1": [
+        "Survey all seams, fasteners, ridge caps, valleys, and penetrations for failures.",
+        "Identify rust, oil-canning, fastener back-out, and panel deflection.",
+        "Replace all failed or backed-out fasteners with oversized neoprene-gasketed screws.",
+        "Replace severely rusted or perforated panels with matching gauge and profile.",
+        "Re-secure loose ridge caps, gable trim, and gutter line metal.",
+    ],
+    "scope_2_title": "Surface Prep and Coating System",
+    "scope_2": [
+        "Power-wash entire roof surface to remove dirt, chalk, oxidation, and loose debris; allow to fully dry.",
+        "Spot-prime all rusted areas with rust-inhibitive primer; full-prime if more than 25% rust coverage.",
+        "Apply butyl seam tape over all panel laps; embed polyester fabric in fluid-applied membrane over tape.",
+        "Treat all fastener heads with elastomeric sealant or fabric-reinforced patch.",
+        "Apply base coat of acrylic or silicone elastomeric coating to specified mil thickness.",
+        "Apply top coat of acrylic or silicone elastomeric coating at specified mil thickness across the entire field.",
+        "Final walk-through and quality inspection with the owner.",
+    ],
+}
+
+SHINGLE_TEMPLATE = {
+    "title": "ASPHALT SHINGLE ROOF SCOPE",
+    "scope_1_title": "Inspection and Tear-Off",
+    "scope_1": [
+        "Survey shingle field for granule loss, blistering, lifted tabs, and exposed nails.",
+        "Inspect valleys, ridges, hips, sidewalls, chimneys, and penetrations.",
+        "Tear-off existing shingles, felts, and accessories down to the wood deck.",
+        "Replace damaged or rotten sheathing with new like-for-like material.",
+        "Remove and properly dispose of all debris.",
+    ],
+    "scope_2_title": "New Shingle Installation",
+    "scope_2": [
+        "Install new drip edge metal at all eaves and rakes.",
+        "Install ice and water shield membrane at all eaves, valleys, sidewalls, and around penetrations.",
+        "Install synthetic underlayment over remaining field, lapped per manufacturer specification.",
+        "Install starter strip along all eaves.",
+        "Install architectural laminated asphalt shingles using six-nail pattern per manufacturer specification.",
+        "Install new pipe boot flashings, step flashing, and counter-flashing at all walls and chimneys.",
+        "Install ridge ventilation (if applicable) and matching hip / ridge cap shingles.",
+        "Final clean-up including magnetic nail sweep of property; walk-through with the owner.",
+    ],
+}
+
+TILE_TEMPLATE = {
+    "title": "TILE ROOF RESTORATION SCOPE",
+    "scope_1_title": "Inspection and Tile Lift",
+    "scope_1": [
+        "Survey tile field for cracks, slippage, broken pieces, and missing tiles.",
+        "Inspect underlayment exposure at valleys, ridges, hips, and sidewalls.",
+        "Carefully remove and stack existing tiles on the roof for reinstallation.",
+        "Tear-off and dispose of existing underlayment, valleys, and flashings.",
+        "Replace damaged sheathing as required.",
+    ],
+    "scope_2_title": "Underlayment Replacement and Tile Reinstall",
+    "scope_2": [
+        "Install one ply of 40# self-adhered underlayment or two plies of 30# felt over entire deck per code.",
+        "Install new metal valleys, drip edge, and gable trim.",
+        "Install new pipe flashings, lead jacks, and step / counter-flashing at all walls and chimneys.",
+        "Reinstall existing tiles (broken pieces replaced with matching profile/color) using approved screws or foam adhesive per code.",
+        "Re-mortar ridge and hip caps using polymer-modified mortar or approved foam adhesive system.",
+        "Sort and stage replacement tiles to minimize visible color variation.",
+        "Final clean-up of property; walk-through with the owner.",
+    ],
+}
+
+FARM_TEMPLATE = {
+    "title": "FARM (FLUID APPLIED REINFORCED MEMBRANE) SCOPE",
+    "scope_1_title": "Inspection and Substrate Prep",
+    "scope_1": [
+        "Survey substrate and document delaminations, splits, blisters, and failed flashings.",
+        "Identify wet insulation via infrared survey or core cuts; remove and replace wet areas.",
+        "Cut, patch, and repair all open seams, splits, and damaged membrane sections.",
+        "Re-secure loose flashings, metal edge, and counter-flashings.",
+        "Power-wash the entire roof surface; allow substrate to fully dry prior to application.",
+    ],
+    "scope_2_title": "Fluid Applied Reinforced Membrane Installation",
+    "scope_2": [
+        "Apply manufacturer-approved primer where required by the system specification.",
+        "Apply tack coat of fluid applied membrane at specified rate.",
+        "Fully embed reinforcing polyester fabric into wet base coat, rolling out all wrinkles and laps.",
+        "Apply intermediate coat to fully encapsulate the reinforcing fabric at specified mil thickness.",
+        "Apply top coat to manufacturer-specified dry mil thickness across the entire field.",
+        "Reinforce all penetrations, drains, scuppers, and wall transitions with additional fabric plies.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+
+# Lookup table — keys are normalized (lower-cased, alphanumeric chunks)
+# Maps roof_type → template dict
+ROOF_TEMPLATE_MAP = {
+    "silicone": SILICONE_TEMPLATE,
+    "siliconewgranules": SILICONE_TEMPLATE,
+    "tpo": TPO_TEMPLATE,
+    "epdm": EPDM_TEMPLATE,
+    "epdmwballast": EPDM_TEMPLATE,
+    "pvc": TPO_TEMPLATE,  # PVC single-ply uses substantially the same scope as TPO
+    "modbit": MODBIT_TEMPLATE,
+    "modifiedbitumen": MODBIT_TEMPLATE,
+    "bur": BUR_TEMPLATE,
+    "burbuiltup": BUR_TEMPLATE,
+    "builtup": BUR_TEMPLATE,
+    "metal": METAL_TEMPLATE,
+    "shingle": SHINGLE_TEMPLATE,
+    "asphaltshingle": SHINGLE_TEMPLATE,
+    "tile": TILE_TEMPLATE,
+    "farm": FARM_TEMPLATE,
+    "farmfluidappliedreinforcedmembrane": FARM_TEMPLATE,
+    "fluidappliedreinforcedmembrane": FARM_TEMPLATE,
+}
+
+
+def _resolve_template(roof_type: str | None) -> dict:
+    """Return the scope template matching the given roof_type label.
+
+    Falls back to the silicone template if no match is found so that existing
+    deals without a `proposed_roof_type` continue to render the original
+    restoration scope.
+    """
+    if not roof_type:
+        return SILICONE_TEMPLATE
+    key = "".join(ch for ch in str(roof_type).lower() if ch.isalnum())
+    return ROOF_TEMPLATE_MAP.get(key, SILICONE_TEMPLATE)
+
 
 TERMS = [
     ("PAYMENT TERMS.", "Proposals are valid for thirty (30) days from the date issued. Fifty percent (50%) of the total contract amount is due upon acceptance to order materials and prior to scheduling of the work, unless otherwise specified in the milestone schedule. The remaining balance is due at mid-project and/or upon substantial completion per the agreed milestone schedule."),
@@ -93,7 +330,7 @@ def _footer(canvas, doc):
     canvas.restoreState()
 
 
-def _header_block(s, doc):
+def _header_block(s, doc, template_title: str):
     elems = []
     # Logo at top-left, 50% larger
     if os.path.exists(LOGO_PATH):
@@ -106,13 +343,12 @@ def _header_block(s, doc):
     else:
         elems.append(Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"]))
 
-    # Centered title — sits midway between logo and PROJECT ADDRESS
     elems.append(Spacer(1, 0.05 * inch))
     title_centered = ParagraphStyle(
-        "title_centered", parent=s["title"], alignment=1,  # 1 = CENTER
+        "title_centered", parent=s["title"], alignment=1,
         fontSize=22, leading=26, spaceAfter=6,
     )
-    elems.append(Paragraph("RESTORATION ROOF SCOPE", title_centered))
+    elems.append(Paragraph(template_title, title_centered))
     elems.append(Spacer(1, 0.35 * inch))
 
     product_line = doc.get("product_type", "—")
@@ -121,7 +357,6 @@ def _header_block(s, doc):
         s["body"],
     )
 
-    # Build contact display ("Name  ·  Phone") if either is provided
     cname = (doc.get("contact_name") or "").strip()
     cphone = (doc.get("contact_phone") or "").strip()
     contact_display = "  ·  ".join([p for p in [cname, cphone] if p]) if (cname or cphone) else ""
@@ -185,7 +420,7 @@ def _pricing_table(s, doc):
         ["10-Year Labor & Material", _currency(doc.get("w10"))],
     ]
     t2 = Table(opt, colWidths=[4.5 * inch, 3.0 * inch])
-    t2.setStyle(t._style if hasattr(t, "_style") else TableStyle([
+    t2.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BLUE), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
         ("FONTSIZE", (0, 0), (-1, -1), 9), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
@@ -196,7 +431,6 @@ def _pricing_table(s, doc):
     elems.append(t2)
     elems.append(Spacer(1, 0.12 * inch))
 
-    # Totals
     elems.append(Paragraph("Total Investment with Optional Manufacturer Warranty", s["h2"]))
     tot = [
         ["Including 20-Year Upgraded Warranty", _currency((doc.get("opt_20") or 0) + (doc.get("w20") or 0))],
@@ -224,31 +458,39 @@ def _scope_block(s, title, items):
     return elems
 
 
-def build_silicone_spec(data: dict, cover_photo_bytes: bytes = None) -> bytes:
+def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str | None = None) -> bytes:
+    """Build a SealTech-branded scope/spec sheet for the given roof type.
+
+    `roof_type` selects which scope template to render. If omitted, falls back
+    to the existing silicone restoration scope.
+    """
+    template = _resolve_template(roof_type or data.get("roof_type_label"))
+
     buf = BytesIO()
     pdf = SimpleDocTemplate(buf, pagesize=letter,
                             leftMargin=0.5 * inch, rightMargin=0.5 * inch,
                             topMargin=0.6 * inch, bottomMargin=0.8 * inch,
-                            title="Restoration Roof Scope")
+                            title=template["title"].title())
     s = _styles()
     story = []
 
-    # ---- Page 1: Header + Pricing + Scope ----
-    story.extend(_header_block(s, data))
+    # ---- Page 1: Header + Pricing ----
+    story.extend(_header_block(s, data, template["title"]))
     story.extend(_pricing_table(s, data))
     story.append(PageBreak())
 
-    # ---- Page 2: Scope of Work + Inclusions + Photo + Exclusions ----
-    story.extend(_scope_block(s, "Inspection and Repairs", SCOPE_INSPECTION))
+    # ---- Page 2: Scope ----
+    story.extend(_scope_block(s, template["scope_1_title"], template["scope_1"]))
     story.append(Spacer(1, 0.06 * inch))
-    story.extend(_scope_block(s, "Substrate Preparation and Coating", SCOPE_COATING))
+    story.extend(_scope_block(s, template["scope_2_title"], template["scope_2"]))
     story.append(Spacer(1, 0.08 * inch))
 
     story.append(Paragraph("Inclusions", s["h2"]))
     total_sqft = data.get("total_sqft", 0) or 0
     sq = int(round(total_sqft / 100))
     color = data.get("color", "white")
-    inc_text = f"Approximately {total_sqft:,.0f} SF ({sq} SQ) {color} {data.get('roof_type_label','silicone')} coating, including walls."
+    label = data.get("roof_type_label") or (roof_type or "roof system")
+    inc_text = f"Approximately {total_sqft:,.0f} SF ({sq} SQ) {color} {label} system, including walls and flashings."
     story.append(Paragraph(inc_text, s["body"]))
     story.append(Spacer(1, 0.08 * inch))
 
@@ -327,3 +569,8 @@ def build_silicone_spec(data: dict, cover_photo_bytes: bytes = None) -> bytes:
 
     pdf.build(story, onFirstPage=_footer, onLaterPages=_footer)
     return buf.getvalue()
+
+
+# Back-compat shim — existing callers still work, just renders silicone scope.
+def build_silicone_spec(data: dict, cover_photo_bytes: bytes = None) -> bytes:
+    return build_spec_sheet(data, cover_photo_bytes=cover_photo_bytes, roof_type="Silicone")

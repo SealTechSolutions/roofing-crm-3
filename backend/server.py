@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 from storage import init_storage, put_object, get_object, APP_NAME
 from exports import to_excel, to_pdf, CATEGORIES as EXPORT_CATEGORIES
-from spec_sheet import build_silicone_spec
+from spec_sheet import build_spec_sheet
 
 
 # ----- DB -----
@@ -1945,7 +1945,7 @@ async def deal_spec_sheet(
             except Exception:
                 photo_bytes = None
 
-    pdf_bytes = build_silicone_spec(data, cover_photo_bytes=photo_bytes)
+    pdf_bytes = build_spec_sheet(data, cover_photo_bytes=photo_bytes, roof_type=deal.get("proposed_roof_type"))
     filename = f"sealtech-scope-{(deal.get('title') or 'project')}.pdf".replace(" ", "_")
     return Response(
         content=pdf_bytes,

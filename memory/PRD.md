@@ -35,10 +35,15 @@
   - Everprime (Metal, Epoxy, Bleed Block, Bleed Block SS, CS, GP, SP)
   - AF Cleaner Concentrate, EcoLevel, EverStitch 272
 
+## Spec Sheet Templates (2026-02)
+- ✅ Per-roof-type scope templates wired through `proposed_roof_type` on the deal
+- ✅ Templates: Silicone (default), TPO, EPDM (incl. ballasted), ModBit, BUR, Metal, Shingle, Tile, FARM, PVC (uses TPO scope)
+- ✅ Dynamic document title (e.g. "TPO ROOF SYSTEM SCOPE", "ASPHALT SHINGLE ROOF SCOPE")
+- ✅ Backward compatible — `build_silicone_spec` retained as alias
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics)
 - Statement of Account PDF (aging report per customer)
-- Additional Roof Type Spec Sheet templates (TPO, EPDM, ModBit, BUR, Metal, Shingle, Tile, FARM)
 
 ## Backlog (P2)
 - Stripe online pay link on invoices
