@@ -255,6 +255,27 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
   }));
   const [saving, setSaving] = useState(false);
 
+  // Whenever deal_id is set (new or existing invoice), load CO list + existing invoices for context
+  useEffect(() => {
+    if (!form.deal_id) {
+      setChangeOrders([]);
+      setExistingInvoices([]);
+      return;
+    }
+    (async () => {
+      try {
+        const d = await api.get(`/deals/${form.deal_id}`);
+        const approvedCOs = (d.data.change_orders || []).filter((co) => (co.status || "Approved") === "Approved");
+        setChangeOrders(approvedCOs);
+      } catch { setChangeOrders([]); }
+      try {
+        const invs = await api.get(`/invoices?deal_id=${form.deal_id}`);
+        // Exclude the current invoice if editing
+        setExistingInvoices((invs.data || []).filter((i) => i.id !== invoice.id));
+      } catch { setExistingInvoices([]); }
+    })();
+  }, [form.deal_id, invoice.id]);
+
   const handleDealChange = async (deal_id) => {
     setForm({ ...form, deal_id });
     if (!deal_id || !isNew) return;
@@ -262,15 +283,15 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
     try {
       const r = await api.get(`/deals/${deal_id}`);
       const d = r.data;
-      // Load existing invoices for this deal (used for Final % decision)
-      try {
-        const invs = await api.get(`/invoices?deal_id=${deal_id}`);
-        setExistingInvoices(invs.data || []);
-      } catch { setExistingInvoices([]); }
-      // Approved change orders → available to add as line items
+      // Approved change orders → auto-add as line items
       const approvedCOs = (d.change_orders || []).filter((co) => (co.status || "Approved") === "Approved");
-      setChangeOrders(approvedCOs);
       const coTotal = approvedCOs.reduce((s, co) => s + Number(co.amount || 0), 0);
+      const coLines = approvedCOs.map((co) => ({
+        description: `Change Order — ${co.description}${co.date ? ` (${co.date})` : ""}`,
+        quantity: 1,
+        unit_price: Number(co.amount || 0),
+        amount: Number(co.amount || 0),
+      }));
       const cid = d.customer_contact_id || d.contact_id;
       // Compute project total from chosen_amount or MID proposal option (typical buy point) + approved change orders
       const opts = [Number(d.proposal_option_1 || 0), Number(d.proposal_option_2 || 0), Number(d.proposal_option_3 || 0)].filter((x) => x > 0).sort((a, b) => a - b);
@@ -306,7 +327,19 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
         const tail = prop.property_zip ? `${line2} ${prop.property_zip}` : line2;
         patch.project_address = [addr1, tail].filter(Boolean).join("  ·  ");
       }
-      setForm((f) => ({ ...f, ...patch, deal_id }));
+      setForm((f) => {
+        // If existing line items are empty (default new-invoice state), replace with CO lines.
+        // Otherwise append.
+        const existing = f.line_items || [];
+        const onlyEmpty = existing.length === 1 && !existing[0].description && !Number(existing[0].unit_price);
+        const newLines = coLines.length
+          ? (onlyEmpty ? coLines : [...existing, ...coLines])
+          : existing;
+        return { ...f, ...patch, deal_id, line_items: newLines };
+      });
+      if (coLines.length > 0) {
+        toast.success(`${coLines.length} change order${coLines.length > 1 ? "s" : ""} added to invoice (${formatCurrency(coTotal)})`);
+      }
     } catch {}
   };
 

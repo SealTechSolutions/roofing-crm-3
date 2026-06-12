@@ -18,6 +18,7 @@ from io import BytesIO
 import smtplib
 import secrets
 import string
+import re
 from openpyxl import load_workbook
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, status, UploadFile, File, Form, Query, Header, Body
 from fastapi.responses import Response, StreamingResponse
@@ -424,6 +425,48 @@ class Invoice(InvoiceIn):
     created_by_user_id: Optional[str] = None
     last_sent_at: str = ""
     pdf_generated_at: str = ""
+
+
+# ----- Vendor Bill (Payables) Models -----
+class VendorBillLine(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    description: str = ""
+    project_id: Optional[str] = None
+    project_title: str = ""
+    quantity: float = 1.0
+    unit_price: float = 0.0
+    amount: float = 0.0
+
+
+class VendorBillIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    vendor_id: Optional[str] = None
+    vendor_name: str = ""  # snapshot for display
+    bill_number: str = ""
+    bill_date: str = ""
+    received_date: str = ""
+    due_date: str = ""
+    terms: str = "Due on Receipt"
+    total: float = 0.0
+    subtotal: float = 0.0
+    tax: float = 0.0
+    status: str = "Pending"  # Pending | Approved | Paid | Disputed | Void
+    notes: str = ""
+    attached_file_id: Optional[str] = None
+    parsed_by_ai: bool = False
+    line_items: List[VendorBillLine] = Field(default_factory=list)
+    # Payment tracking
+    paid_amount: float = 0.0
+    paid_date: str = ""
+    paid_method: str = ""
+    paid_reference: str = ""
+
+
+class VendorBill(VendorBillIn):
+    id: str
+    created_at: str
+    created_by_user_id: Optional[str] = None
 
 
 # ----- Auth Routes -----
@@ -1359,6 +1402,382 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
     }
 
 
+# ----- Vendor Bills (Payables) -----
+def _recalc_bill(bill: dict) -> dict:
+    """Compute subtotal/total from line items, and auto-fill due_date from terms if missing."""
+    items = bill.get("line_items") or []
+    sub = 0.0
+    for it in items:
+        if not it.get("id"):
+            it["id"] = str(uuid.uuid4())
+        try:
+            qty = float(it.get("quantity") or 0)
+            unit = float(it.get("unit_price") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+            unit = 0.0
+        amt = float(it.get("amount") or 0)
+        if not amt and qty and unit:
+            amt = round(qty * unit, 2)
+        it["quantity"] = qty
+        it["unit_price"] = unit
+        it["amount"] = round(amt, 2)
+        sub += it["amount"]
+    bill["line_items"] = items
+    # If user provided a total, keep it; else compute from line items
+    if not float(bill.get("total") or 0):
+        tax = float(bill.get("tax") or 0)
+        bill["subtotal"] = round(sub, 2)
+        bill["total"] = round(sub + tax, 2)
+    # Auto-compute due_date from terms when missing
+    if not bill.get("due_date") and bill.get("bill_date"):
+        try:
+            base = datetime.fromisoformat(bill["bill_date"][:10]).date()
+            terms = (bill.get("terms") or "").lower()
+            days = 0
+            if "net" in terms:
+                m = re.search(r"net\s*(\d+)", terms)
+                if m:
+                    days = int(m.group(1))
+            if days > 0:
+                bill["due_date"] = (base + timedelta(days=days)).isoformat()
+            else:
+                bill["due_date"] = base.isoformat()
+        except (ValueError, TypeError):
+            pass
+    return bill
+
+
+@api_router.get("/vendor-bills")
+async def list_vendor_bills(status: Optional[str] = None, vendor_id: Optional[str] = None, project_id: Optional[str] = None, current=Depends(get_current_user)):
+    query = {"is_deleted": {"$ne": True}}
+    if status:
+        query["status"] = status
+    if vendor_id:
+        query["vendor_id"] = vendor_id
+    if project_id:
+        query["line_items.project_id"] = project_id
+    if current.get("role") == "sales":
+        query["created_by_user_id"] = current["id"]
+    items = await db.vendor_bills.find(query, {"_id": 0}).sort("bill_date", -1).to_list(2000)
+    return items
+
+
+@api_router.post("/vendor-bills", response_model=VendorBill)
+async def create_vendor_bill(body: VendorBillIn, current=Depends(get_current_user)):
+    data = body.model_dump()
+    # Snapshot vendor name from vendor_id if missing
+    if data.get("vendor_id") and not data.get("vendor_name"):
+        v = await db.vendors.find_one({"id": data["vendor_id"]}, {"_id": 0})
+        if v:
+            data["vendor_name"] = v.get("name", "")
+    # Snapshot project titles on each line item
+    for li in data.get("line_items", []) or []:
+        if li.get("project_id") and not li.get("project_title"):
+            d = await db.deals.find_one({"id": li["project_id"]}, {"_id": 0})
+            if d:
+                li["project_title"] = d.get("title", "")
+    if not data.get("received_date"):
+        data["received_date"] = datetime.now(timezone.utc).date().isoformat()
+    data = _recalc_bill(data)
+    data["id"] = str(uuid.uuid4())
+    data["created_at"] = now_iso()
+    data["created_by_user_id"] = current["id"]
+    data["is_deleted"] = False
+    await db.vendor_bills.insert_one(data.copy())
+    return strip_id(data)
+
+
+@api_router.get("/vendor-bills/{bill_id}", response_model=VendorBill)
+async def get_vendor_bill(bill_id: str, current=Depends(get_current_user)):
+    doc = await db.vendor_bills.find_one({"id": bill_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Bill not found")
+    return doc
+
+
+@api_router.put("/vendor-bills/{bill_id}", response_model=VendorBill)
+async def update_vendor_bill(bill_id: str, body: VendorBillIn, current=Depends(get_current_user)):
+    existing = await db.vendor_bills.find_one({"id": bill_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Bill not found")
+    data = body.model_dump()
+    # Snapshot project titles
+    for li in data.get("line_items", []) or []:
+        if li.get("project_id") and not li.get("project_title"):
+            d = await db.deals.find_one({"id": li["project_id"]}, {"_id": 0})
+            if d:
+                li["project_title"] = d.get("title", "")
+    data["id"] = existing["id"]
+    data["created_at"] = existing["created_at"]
+    data["created_by_user_id"] = existing.get("created_by_user_id")
+    data = _recalc_bill(data)
+    await db.vendor_bills.update_one({"id": bill_id}, {"$set": data})
+    return strip_id(data)
+
+
+@api_router.delete("/vendor-bills/{bill_id}")
+async def delete_vendor_bill(bill_id: str, current=Depends(get_current_user)):
+    if is_admin(current):
+        await db.vendor_bills.delete_one({"id": bill_id})
+    else:
+        await db.vendor_bills.update_one({"id": bill_id}, {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}})
+    return {"ok": True}
+
+
+@api_router.post("/vendor-bills/parse")
+async def parse_vendor_bill(file: UploadFile = File(...), current=Depends(get_current_user)):
+    """Upload a vendor invoice (PDF/image), parse with Gemini Vision, return suggested structured data
+    + suggested vendor match + suggested project matches per line item.
+    Does NOT save anything — the frontend opens an editor pre-filled for user review."""
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(raw) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 25 MB)")
+    try:
+        from vendor_bill_parser import parse_invoice_bytes
+        parsed = await parse_invoice_bytes(raw, file.filename or "invoice.pdf", file.content_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Parse failed: {type(e).__name__}: {e}")
+
+    # Match vendor
+    suggested_vendor_id = None
+    vname = (parsed.get("vendor_name") or "").strip().lower()
+    if vname:
+        all_vendors = await db.vendors.find({"is_deleted": {"$ne": True}}, {"_id": 0, "id": 1, "name": 1}).to_list(500)
+        # Exact match first
+        for v in all_vendors:
+            if (v.get("name") or "").strip().lower() == vname:
+                suggested_vendor_id = v["id"]
+                break
+        # Substring match fallback
+        if not suggested_vendor_id:
+            for v in all_vendors:
+                vn = (v.get("name") or "").strip().lower()
+                if vn and (vn in vname or vname in vn):
+                    suggested_vendor_id = v["id"]
+                    break
+
+    # Match projects against PO number / line item description
+    suggested_project_matches = {}
+    deals = await db.deals.find({"is_deleted": {"$ne": True}}, {"_id": 0, "id": 1, "title": 1}).to_list(1000)
+    po = (parsed.get("po_number") or "").strip().lower()
+    for i, line in enumerate(parsed.get("line_items") or []):
+        desc_l = (line.get("description") or "").lower()
+        haystack = f"{desc_l} {po}".strip()
+        if not haystack:
+            continue
+        for d in deals:
+            t = (d.get("title") or "").strip().lower()
+            if not t:
+                continue
+            if t in haystack:
+                suggested_project_matches[str(i)] = d["id"]
+                break
+
+    # Upload the file to object storage so it's available as an attachment
+    attached_file_id = None
+    try:
+        ext = (file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "pdf").lower()
+        file_id = str(uuid.uuid4())
+        storage_path = f"{APP_NAME}/uploads/vendor_bill/pending/{file_id}.{ext}"
+        put_result = put_object(storage_path, raw, file.content_type or "application/pdf")
+        await db.files.insert_one({
+            "id": file_id,
+            "parent_type": "vendor_bill",
+            "parent_id": "pending",
+            "category": "Invoice",
+            "storage_path": put_result["path"],
+            "original_filename": file.filename or "invoice.pdf",
+            "content_type": file.content_type or "application/pdf",
+            "size": len(raw),
+            "is_deleted": False,
+            "uploaded_by": current["id"],
+            "created_at": now_iso(),
+        })
+        attached_file_id = file_id
+    except Exception as e:
+        logger.warning(f"Vendor bill PDF stash failed: {e}")
+        attached_file_id = None
+
+    return {
+        "parsed": parsed,
+        "suggested_vendor_id": suggested_vendor_id,
+        "suggested_project_matches": suggested_project_matches,
+        "attached_file_id": attached_file_id,
+    }
+
+
+@api_router.get("/payables/report")
+async def payables_report(current=Depends(get_current_user)):
+    """List bills due within the next 7 days plus all currently overdue, grouped by vendor."""
+    today = datetime.now(timezone.utc).date()
+    horizon = today + timedelta(days=7)
+    today_iso = today.isoformat()
+    horizon_iso = horizon.isoformat()
+
+    query = {
+        "is_deleted": {"$ne": True},
+        "status": {"$in": ["Pending", "Approved"]},
+    }
+    if current.get("role") == "sales":
+        query["created_by_user_id"] = current["id"]
+    bills = await db.vendor_bills.find(query, {"_id": 0}).to_list(2000)
+
+    overdue = []
+    due_this_week = []
+    for b in bills:
+        dd = (b.get("due_date") or "")[:10]
+        if not dd:
+            continue
+        if dd < today_iso:
+            overdue.append(b)
+        elif dd <= horizon_iso:
+            due_this_week.append(b)
+
+    def group_by_vendor(bs):
+        groups = {}
+        for b in bs:
+            key = b.get("vendor_id") or b.get("vendor_name") or "Unknown"
+            grp = groups.setdefault(key, {"vendor_id": b.get("vendor_id"), "vendor_name": b.get("vendor_name") or "Unknown", "bills": [], "total": 0.0})
+            grp["bills"].append(b)
+            grp["total"] += float(b.get("total") or 0) - float(b.get("paid_amount") or 0)
+        rows = list(groups.values())
+        for r in rows:
+            r["total"] = round(r["total"], 2)
+            r["bills"].sort(key=lambda x: (x.get("due_date") or ""))
+        rows.sort(key=lambda x: -x["total"])
+        return rows
+
+    overdue.sort(key=lambda b: (b.get("due_date") or ""))
+    due_this_week.sort(key=lambda b: (b.get("due_date") or ""))
+    return {
+        "today": today_iso,
+        "horizon": horizon_iso,
+        "overdue": group_by_vendor(overdue),
+        "due_this_week": group_by_vendor(due_this_week),
+        "overdue_count": len(overdue),
+        "due_this_week_count": len(due_this_week),
+        "overdue_total": round(sum(float(b.get("total") or 0) - float(b.get("paid_amount") or 0) for b in overdue), 2),
+        "due_this_week_total": round(sum(float(b.get("total") or 0) - float(b.get("paid_amount") or 0) for b in due_this_week), 2),
+    }
+
+
+@api_router.get("/payables/report.{fmt}")
+async def payables_report_export(fmt: str, current=Depends(get_current_user)):
+    """Export the payables report as Excel or PDF."""
+    report = await payables_report(current)
+    if fmt == "xlsx":
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Payables"
+        headers = ["Bucket", "Vendor", "Bill #", "Bill Date", "Due Date", "Terms", "Total", "Paid", "Balance"]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF", size=11)
+            cell.fill = PatternFill("solid", fgColor="B91C1C")
+            cell.alignment = Alignment(horizontal="left")
+        # Overdue
+        for grp in report["overdue"]:
+            for b in grp["bills"]:
+                ws.append(["OVERDUE", grp["vendor_name"], b.get("bill_number", ""), b.get("bill_date", ""), b.get("due_date", ""), b.get("terms", ""), float(b.get("total") or 0), float(b.get("paid_amount") or 0), round(float(b.get("total") or 0) - float(b.get("paid_amount") or 0), 2)])
+        for grp in report["due_this_week"]:
+            for b in grp["bills"]:
+                ws.append(["DUE THIS WEEK", grp["vendor_name"], b.get("bill_number", ""), b.get("bill_date", ""), b.get("due_date", ""), b.get("terms", ""), float(b.get("total") or 0), float(b.get("paid_amount") or 0), round(float(b.get("total") or 0) - float(b.get("paid_amount") or 0), 2)])
+        ws.freeze_panes = "A2"
+        for i in range(1, 10):
+            ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = 18
+        buf = BytesIO()
+        wb.save(buf)
+        return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": 'attachment; filename="sealtech-payables.xlsx"'})
+    raise HTTPException(status_code=400, detail="Use fmt=xlsx")
+
+
+@api_router.post("/payables/email")
+async def email_payables_report(body: dict = Body(default={}), current=Depends(get_current_user)):
+    """Manually trigger a 'this week's payables' email to the user (or any address provided)."""
+    to_email = (body.get("to_email") or os.environ.get("GMAIL_FROM_EMAIL") or "").strip()
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Recipient email required")
+    report = await payables_report(current)
+    # Build the email
+    try:
+        from email_sender import send_email
+        html = _render_payables_email_html(report)
+        text = _render_payables_email_text(report)
+        result = send_email(
+            to=to_email,
+            subject=f"SealTech Payables — Week of {report['today']} — {report['overdue_count']} overdue · {report['due_this_week_count']} due",
+            body_text=text,
+            body_html=html,
+        )
+        return {"ok": True, "message_id": result.get("message_id"), "to": to_email}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email failed: {type(e).__name__}: {e}")
+
+
+def _render_payables_email_text(report: dict) -> str:
+    lines = [
+        f"SealTech Payables — Week of {report['today']}",
+        "",
+        f"OVERDUE ({report['overdue_count']} bills · ${report['overdue_total']:,.2f})",
+    ]
+    for grp in report["overdue"]:
+        lines.append(f"  {grp['vendor_name']}  ${grp['total']:,.2f}")
+        for b in grp["bills"]:
+            balance = float(b.get("total") or 0) - float(b.get("paid_amount") or 0)
+            lines.append(f"    - {b.get('bill_number') or '-'}  due {b.get('due_date')}  ${balance:,.2f}")
+    lines += ["", f"DUE THIS WEEK ({report['due_this_week_count']} bills · ${report['due_this_week_total']:,.2f})"]
+    for grp in report["due_this_week"]:
+        lines.append(f"  {grp['vendor_name']}  ${grp['total']:,.2f}")
+        for b in grp["bills"]:
+            balance = float(b.get("total") or 0) - float(b.get("paid_amount") or 0)
+            lines.append(f"    - {b.get('bill_number') or '-'}  due {b.get('due_date')}  ${balance:,.2f}")
+    return "\n".join(lines)
+
+
+def _render_payables_email_html(report: dict) -> str:
+    def grp_table(grps, color="#B91C1C"):
+        if not grps:
+            return '<p style="color:#52525B; font-style:italic;">None</p>'
+        rows = []
+        for grp in grps:
+            rows.append(f'<tr style="background:#F4F4F5;"><td colspan="3" style="padding:8px 12px; font-weight:bold; color:{color};">{grp["vendor_name"]}</td><td style="padding:8px 12px; text-align:right; font-weight:bold; font-family:monospace;">${grp["total"]:,.2f}</td></tr>')
+            for b in grp["bills"]:
+                balance = float(b.get("total") or 0) - float(b.get("paid_amount") or 0)
+                rows.append(f'<tr><td style="padding:6px 12px; padding-left:24px; font-size:13px;">{b.get("bill_number") or "—"}</td><td style="padding:6px 12px; font-size:13px; color:#52525B;">{b.get("bill_date") or "—"}</td><td style="padding:6px 12px; font-size:13px; color:#52525B;">Due {b.get("due_date") or "—"}</td><td style="padding:6px 12px; text-align:right; font-family:monospace;">${balance:,.2f}</td></tr>')
+        return f'<table style="width:100%; border-collapse:collapse; margin:8px 0;"><thead><tr style="border-bottom:1px solid #E4E4E7;"><th style="text-align:left; padding:6px 12px; font-size:10px; color:#52525B; text-transform:uppercase; letter-spacing:1px;">Bill #</th><th style="text-align:left; padding:6px 12px; font-size:10px; color:#52525B; text-transform:uppercase; letter-spacing:1px;">Date</th><th style="text-align:left; padding:6px 12px; font-size:10px; color:#52525B; text-transform:uppercase; letter-spacing:1px;">Due</th><th style="text-align:right; padding:6px 12px; font-size:10px; color:#52525B; text-transform:uppercase; letter-spacing:1px;">Balance</th></tr></thead><tbody>{"".join(rows)}</tbody></table>'
+
+    return f"""<html><body style="font-family: Arial, Helvetica, sans-serif; color:#0A0A0A; max-width:720px; margin:0 auto; padding:20px;">
+<div style="border-bottom:3px solid #1D4ED8; padding-bottom:12px; margin-bottom:20px;">
+  <div style="font-size:10px; font-weight:bold; letter-spacing:3px; color:#A0703A; text-transform:uppercase;">Weekly Payables</div>
+  <h1 style="font-size:24px; margin:4px 0 0;">Bills to Pay — {report['today']}</h1>
+</div>
+<div style="display:flex; gap:16px; margin-bottom:20px;">
+  <div style="flex:1; border:1px solid #E4E4E7; padding:16px;">
+    <div style="font-size:10px; color:#52525B; text-transform:uppercase; letter-spacing:1px;">Overdue</div>
+    <div style="font-size:24px; font-weight:bold; color:#B91C1C;">${report['overdue_total']:,.2f}</div>
+    <div style="font-size:11px; color:#52525B;">{report['overdue_count']} bills</div>
+  </div>
+  <div style="flex:1; border:1px solid #E4E4E7; padding:16px;">
+    <div style="font-size:10px; color:#52525B; text-transform:uppercase; letter-spacing:1px;">Due This Week</div>
+    <div style="font-size:24px; font-weight:bold; color:#A0703A;">${report['due_this_week_total']:,.2f}</div>
+    <div style="font-size:11px; color:#52525B;">{report['due_this_week_count']} bills</div>
+  </div>
+</div>
+<h2 style="color:#B91C1C; font-size:14px; text-transform:uppercase; letter-spacing:2px; margin:20px 0 4px;">Overdue</h2>
+{grp_table(report['overdue'], color='#B91C1C')}
+<h2 style="color:#A0703A; font-size:14px; text-transform:uppercase; letter-spacing:2px; margin:24px 0 4px;">Due This Week (Next 7 Days)</h2>
+{grp_table(report['due_this_week'], color='#A0703A')}
+<p style="margin-top:24px; padding-top:16px; border-top:1px solid #E4E4E7; color:#52525B; font-size:11px;">
+  SealTech Building Solutions  -  720-715-9955  -  finance@sealtechsolutions.co
+</p>
+</body></html>"""
+
+
 # ----- Vendors -----
 @api_router.get("/vendors", response_model=List[Vendor])
 async def list_vendors(kind: Optional[str] = None, current=Depends(get_current_user)):
@@ -2052,6 +2471,9 @@ async def on_startup():
     await db.invoices.create_index("id", unique=True)
     await db.invoices.create_index("invoice_number", unique=True, sparse=True)
     await db.invoices.create_index("deal_id")
+    await db.vendor_bills.create_index("id", unique=True)
+    await db.vendor_bills.create_index("vendor_id")
+    await db.vendor_bills.create_index("due_date")
     await db.settings.create_index("key", unique=True)
 
     # Migrate deprecated status "Proposal Sent" → "Sent"
@@ -2081,6 +2503,59 @@ async def on_startup():
     else:
         # Make sure existing admin has role=admin (migration)
         await db.users.update_one({"id": existing["id"]}, {"$set": {"role": "admin"}})
+
+    # Start the weekly payables-email scheduler
+    _start_payables_scheduler()
+
+
+# ----- Friday Payables Email Scheduler -----
+_payables_scheduler = None
+
+
+def _start_payables_scheduler():
+    """Schedule the weekly payables email to admin every Friday 7:00 AM (server timezone = UTC)."""
+    global _payables_scheduler
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+    except ImportError:
+        logger.warning("APScheduler not installed — Friday payables email disabled")
+        return
+    if _payables_scheduler is not None:
+        return
+
+    async def send_friday_report():
+        try:
+            admin_email = os.environ.get("PAYABLES_REPORT_EMAIL") or os.environ.get("GMAIL_FROM_EMAIL") or os.environ.get("ADMIN_EMAIL")
+            if not admin_email:
+                logger.warning("No PAYABLES_REPORT_EMAIL or GMAIL_FROM_EMAIL configured")
+                return
+            # Find the admin user to fake a "current" context
+            admin = await db.users.find_one({"role": "admin"})
+            if not admin:
+                logger.warning("No admin user found for scheduled payables email")
+                return
+            from email_sender import send_email
+            report = await payables_report(admin)
+            if report["overdue_count"] == 0 and report["due_this_week_count"] == 0:
+                logger.info("Friday payables: nothing due, skipping email")
+                return
+            send_email(
+                to=admin_email,
+                subject=f"SealTech Payables — Week of {report['today']} — {report['overdue_count']} overdue · {report['due_this_week_count']} due",
+                body_text=_render_payables_email_text(report),
+                body_html=_render_payables_email_html(report),
+            )
+            logger.info(f"Friday payables email sent to {admin_email}")
+        except Exception as e:
+            logger.error(f"Friday payables email failed: {type(e).__name__}: {e}")
+
+    sched = AsyncIOScheduler(timezone="America/Denver")  # Aurora/Castle Rock, CO local time
+    # Friday 7:00 AM Mountain Time
+    sched.add_job(send_friday_report, CronTrigger(day_of_week="fri", hour=7, minute=0), id="payables_friday")
+    sched.start()
+    _payables_scheduler = sched
+    logger.info("Payables scheduler started — Friday 7:00 AM America/Denver")
 
 
 @app.on_event("shutdown")
