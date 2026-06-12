@@ -168,22 +168,22 @@ export default function DealDetail() {
       return;
     }
     const co = { ...newCO, id: crypto.randomUUID(), amount: Number(newCO.amount || 0) };
-    const list = [...(deal.change_orders || []), co];
+    const list = [...(deal?.change_orders || []), co];
     persist({ change_orders: list });
     setNewCO({ description: "", amount: 0, date: new Date().toISOString().slice(0, 10), status: "Approved", notes: "" });
   };
 
   const removeChangeOrder = (coId) => {
     if (!window.confirm("Remove this change order?")) return;
-    persist({ change_orders: (deal.change_orders || []).filter((co) => co.id !== coId) });
+    persist({ change_orders: (deal?.change_orders || []).filter((co) => co.id !== coId) });
   };
 
   const updateChangeOrder = (coId, patch) => {
-    const list = (deal.change_orders || []).map((co) => (co.id === coId ? { ...co, ...patch } : co));
+    const list = (deal?.change_orders || []).map((co) => (co.id === coId ? { ...co, ...patch } : co));
     persist({ change_orders: list });
   };
 
-  const changeOrderTotal = (deal.change_orders || [])
+  const changeOrderTotal = (deal?.change_orders || [])
     .filter((co) => (co.status || "Approved") === "Approved")
     .reduce((s, co) => s + Number(co.amount || 0), 0);
 
