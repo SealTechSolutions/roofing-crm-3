@@ -35,17 +35,22 @@ Single owner-operator of a small commercial roofing business, managing the full 
 - ✅ SealTech branded UI (logo, blue/orange palette, Chivo/Public Sans)
 - ✅ Backend tested: **20/20 endpoints passing** (iteration_2.json)
 
+## Implemented (2026-06)
+- ✅ Maintenance Plan tracking on Projects (toggle + annual rate + start date + auto next-due-date)
+- ✅ Visit Log per Project with Subcontractor dropdown, amount, notes
+- ✅ New "Maintenance" page in nav: searchable/filterable list, status badges (Overdue / Due Soon / Upcoming), Log Visit modal, Excel + PDF export
+- ✅ Dashboard maintenance KPIs (Plans count, ARR, Due 30d, Overdue) — all linked to /maintenance
+- ✅ Spec Sheet refinements: header normalization, CONTACT row, "(Standard Warranty Included)" suffix, Upgraded Warranty labels, footer with phone, centered+italic appreciation paragraph, photo right-sized to 1.6" so everything fits 3 pages
+
 ## Backlog (P1)
+- Email to Prospect integration (Resend / SendGrid / Gmail) — placeholder button currently MOCKED
+- Additional Roof Type Templates for Spec Sheet (TPO, EPDM, ModBit, BUR, Metal, Shingle, Tile, FARM)
 - Kanban view of deals by status (drag to update)
-- File/photo attachments per deal (drone shots, proposal PDFs, signed contracts)
-- Email proposals directly to contact from app
 - Activity timeline per deal (notes, calls, meetings)
-- Quick-add buttons (e.g., "+ Contact" inside deal modal)
 
 ## Backlog (P2)
-- Multi-user team accounts with assignment / ownership
-- Calendar view of jobs
-- Export to CSV
+- Admin Trash View (restore / permanent-delete soft-deleted records)
+- User Profile Self-Edit (name, phone, title, password)
+- Google Calendar Sync for project schedules
 - Mobile-responsive sidebar (hamburger)
 - Stripe payments / invoicing
-- Recurring maintenance contracts

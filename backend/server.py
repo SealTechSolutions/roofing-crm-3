@@ -14,6 +14,7 @@ import bcrypt
 import jwt
 import csv
 import io
+from io import BytesIO
 import secrets
 import string
 from openpyxl import load_workbook
@@ -335,6 +336,13 @@ class DealIn(BaseModel):
     warranty_10yr_add: float = 0.0
     warranty_color: str = "white"
     cover_photo_file_id: Optional[str] = None
+    # Maintenance plan tracking
+    maintenance_plan: bool = False
+    maintenance_rate: float = 0.0
+    maintenance_start_date: str = ""
+    next_maintenance_date: str = ""
+    last_maintenance_date: str = ""
+    maintenance_visits: List[dict] = Field(default_factory=list)
 
 
 class Deal(DealIn):
@@ -662,6 +670,36 @@ def normalize_deal(data: dict) -> dict:
     data["labor_cost"] = round(buckets["Labor"], 2)
     data["subcontractor_cost"] = round(buckets["Subcontractor"], 2)
     data["other_expenses"] = round(buckets["Other"], 2)
+
+    # Maintenance: derive next_maintenance_date / last_maintenance_date from visits + start date
+    visits = data.get("maintenance_visits") or []
+    cleaned_visits = []
+    for v in visits:
+        if not v.get("id"):
+            v["id"] = str(uuid.uuid4())
+        try:
+            v["amount"] = float(v.get("amount") or 0)
+        except (TypeError, ValueError):
+            v["amount"] = 0.0
+        cleaned_visits.append(v)
+    # Sort visits by date descending
+    cleaned_visits.sort(key=lambda x: x.get("visit_date", ""), reverse=True)
+    data["maintenance_visits"] = cleaned_visits
+    last_visit_date = cleaned_visits[0].get("visit_date", "") if cleaned_visits else ""
+    data["last_maintenance_date"] = last_visit_date
+
+    # Compute next_maintenance_date: last_visit + 1 year, else start_date + 1 year
+    start = data.get("maintenance_start_date", "") or ""
+    base = last_visit_date or start
+    next_due = ""
+    if base:
+        try:
+            base_dt = datetime.fromisoformat(base[:10])
+            next_dt = base_dt.replace(year=base_dt.year + 1)
+            next_due = next_dt.date().isoformat()
+        except (ValueError, TypeError):
+            next_due = ""
+    data["next_maintenance_date"] = next_due
     return data
 
 
@@ -729,6 +767,125 @@ async def delete_deal(deal_id: str, current=Depends(get_current_user)):
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Deal not found")
     return {"ok": True}
+
+
+# ----- Maintenance Plan -----
+class MaintenanceVisitIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    visit_date: str
+    amount: float = 0.0
+    subcontractor_id: Optional[str] = None
+    subcontractor_name: str = ""
+    notes: str = ""
+
+
+@api_router.post("/deals/{deal_id}/maintenance-visits", response_model=Deal)
+async def add_maintenance_visit(deal_id: str, body: MaintenanceVisitIn, current=Depends(get_current_user)):
+    existing = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if current.get("role") == "sales":
+        owns = existing.get("assigned_to_user_id") == current["id"] or existing.get("created_by_user_id") == current["id"]
+        if not owns:
+            raise HTTPException(status_code=403, detail="Not your project")
+    visit = body.model_dump()
+    visit["id"] = str(uuid.uuid4())
+    # Auto-fill subcontractor_name from id if not provided
+    if visit.get("subcontractor_id") and not visit.get("subcontractor_name"):
+        sub = await db.vendors.find_one({"id": visit["subcontractor_id"]}, {"_id": 0})
+        if sub:
+            visit["subcontractor_name"] = sub.get("name", "")
+    visits = list(existing.get("maintenance_visits") or [])
+    visits.append(visit)
+    # Re-run normalize via update_deal to recompute next_maintenance_date
+    merged = {**existing, "maintenance_visits": visits, "maintenance_plan": True}
+    # Strip server-managed before re-normalizing
+    for k in ("id", "created_at", "_id", "is_deleted", "deleted_at", "deleted_by"):
+        merged.pop(k, None)
+    cleaned = normalize_deal(merged)
+    await db.deals.update_one({"id": deal_id}, {"$set": cleaned})
+    doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    return scrub_deal(doc, current)
+
+
+@api_router.delete("/deals/{deal_id}/maintenance-visits/{visit_id}", response_model=Deal)
+async def delete_maintenance_visit(deal_id: str, visit_id: str, current=Depends(get_current_user)):
+    existing = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if current.get("role") == "sales":
+        owns = existing.get("assigned_to_user_id") == current["id"] or existing.get("created_by_user_id") == current["id"]
+        if not owns:
+            raise HTTPException(status_code=403, detail="Not your project")
+    visits = [v for v in (existing.get("maintenance_visits") or []) if v.get("id") != visit_id]
+    merged = {**existing, "maintenance_visits": visits}
+    for k in ("id", "created_at", "_id", "is_deleted", "deleted_at", "deleted_by"):
+        merged.pop(k, None)
+    cleaned = normalize_deal(merged)
+    await db.deals.update_one({"id": deal_id}, {"$set": cleaned})
+    doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    return scrub_deal(doc, current)
+
+
+@api_router.get("/maintenance")
+async def list_maintenance(current=Depends(get_current_user)):
+    """Return all projects with maintenance_plan=True, with denormalized contact + property info."""
+    query = {"is_deleted": {"$ne": True}, "maintenance_plan": True}
+    if current.get("role") == "sales":
+        query["$or"] = [{"assigned_to_user_id": current["id"]}, {"created_by_user_id": current["id"]}]
+    deals = await db.deals.find(query, {"_id": 0}).sort("next_maintenance_date", 1).to_list(2000)
+    today = datetime.now(timezone.utc).date().isoformat()
+    soon_cutoff = (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat()
+    out = []
+    for d in deals:
+        # Status
+        nxt = d.get("next_maintenance_date") or ""
+        if not nxt:
+            status = "Unscheduled"
+        elif nxt < today:
+            status = "Overdue"
+        elif nxt <= soon_cutoff:
+            status = "Due Soon"
+        else:
+            status = "Upcoming"
+        # Pull denormalized contact + property snippets
+        contact_name = ""
+        contact_phone = ""
+        if d.get("customer_contact_id") or d.get("contact_id"):
+            cid = d.get("customer_contact_id") or d.get("contact_id")
+            cust = await db.contacts.find_one({"id": cid}, {"_id": 0})
+            if cust:
+                contact_name = cust.get("contact_name", "") or ""
+                contact_phone = (cust.get("mobile_phone") or cust.get("phone") or cust.get("work_phone") or "").strip()
+        property_name = ""
+        property_address = ""
+        if d.get("property_id"):
+            prop = await db.properties.find_one({"id": d["property_id"]}, {"_id": 0})
+            if prop:
+                property_name = prop.get("property_name", "") or ""
+                addr = prop.get("property_address", "") or ""
+                city = prop.get("property_city", "") or ""
+                st = prop.get("property_state", "") or ""
+                zp = prop.get("property_zip", "") or ""
+                tail = ", ".join([p for p in [city, st] if p])
+                if zp:
+                    tail = f"{tail} {zp}".strip()
+                property_address = " · ".join([p for p in [addr, tail] if p])
+        out.append({
+            "id": d["id"],
+            "title": d.get("title", ""),
+            "contact_name": contact_name,
+            "contact_phone": contact_phone,
+            "property_name": property_name,
+            "property_address": property_address,
+            "maintenance_rate": d.get("maintenance_rate", 0),
+            "maintenance_start_date": d.get("maintenance_start_date", ""),
+            "last_maintenance_date": d.get("last_maintenance_date", ""),
+            "next_maintenance_date": nxt,
+            "status": status,
+            "visit_count": len(d.get("maintenance_visits") or []),
+        })
+    return out
 
 
 # ----- Vendors -----
@@ -1018,6 +1175,105 @@ async def export_template(category: str, current=Depends(get_current_user)):
     )
 
 
+@api_router.get("/maintenance/export.{fmt}")
+async def export_maintenance(fmt: str, current=Depends(get_current_user)):
+    """Export the maintenance customer list to Excel or PDF."""
+    rows = await list_maintenance(current)
+    headers = ["Customer", "Phone", "Property", "Property Address", "Annual Rate", "Start Date", "Last Visit", "Next Due", "Status", "Visits"]
+    data_rows = []
+    for r in rows:
+        data_rows.append([
+            r.get("contact_name", ""),
+            r.get("contact_phone", ""),
+            r.get("property_name", ""),
+            r.get("property_address", ""),
+            float(r.get("maintenance_rate", 0) or 0),
+            r.get("maintenance_start_date", ""),
+            r.get("last_maintenance_date", ""),
+            r.get("next_maintenance_date", ""),
+            r.get("status", ""),
+            r.get("visit_count", 0),
+        ])
+    if fmt == "xlsx":
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Maintenance"
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF", size=11)
+            cell.fill = PatternFill("solid", fgColor="1D4ED8")
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+        for row in data_rows:
+            ws.append(row)
+        for col_idx, hdr in enumerate(headers, 1):
+            max_len = len(str(hdr))
+            for cell in ws.iter_cols(min_col=col_idx, max_col=col_idx, min_row=1, values_only=True):
+                for v in cell:
+                    max_len = max(max_len, min(len(str(v) if v is not None else ""), 40))
+            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = max_len + 2
+        ws.freeze_panes = "A2"
+        buf = BytesIO()
+        wb.save(buf)
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": 'attachment; filename="sealtech-maintenance.xlsx"'},
+        )
+    if fmt == "pdf":
+        from reportlab.lib import colors as rl_colors
+        from reportlab.lib.pagesizes import letter as rl_letter, landscape
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle as RLPS
+        from reportlab.lib.units import inch as rl_inch
+        from reportlab.platypus import SimpleDocTemplate, Table as RLTable, TableStyle as RLTableStyle, Paragraph as RLP, Spacer as RLSpacer
+        buf = BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=landscape(rl_letter), leftMargin=0.4 * rl_inch, rightMargin=0.4 * rl_inch, topMargin=0.5 * rl_inch, bottomMargin=0.5 * rl_inch)
+        styles = getSampleStyleSheet()
+        title_style = RLPS("title", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, textColor=rl_colors.HexColor("#0A0A0A"))
+        eyebrow = RLPS("eyebrow", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, textColor=rl_colors.HexColor("#1D4ED8"), leading=10)
+        body = RLPS("body", parent=styles["Normal"], fontName="Helvetica", fontSize=8, textColor=rl_colors.HexColor("#27272A"))
+        story = [
+            RLP("SEALTECH CRM EXPORT", eyebrow),
+            RLP("Maintenance Customers", title_style),
+            RLSpacer(1, 0.15 * rl_inch),
+        ]
+        table_data = [headers]
+        for row in data_rows:
+            display = []
+            for i, v in enumerate(row):
+                if i == 4:
+                    display.append(RLP(f"${float(v):,.0f}" if v else "—", body))
+                else:
+                    display.append(RLP(str(v) if v not in (None, "") else "—", body))
+            table_data.append(display)
+        if len(table_data) == 1:
+            story.append(RLP("No maintenance plans yet.", body))
+        else:
+            tbl = RLTable(table_data, repeatRows=1)
+            tbl.setStyle(RLTableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#1D4ED8")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+                ("TOPPADDING", (0, 0), (-1, 0), 8),
+                ("GRID", (0, 0), (-1, -1), 0.25, rl_colors.HexColor("#E4E4E7")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [rl_colors.white, rl_colors.HexColor("#FAFAFA")]),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            story.append(tbl)
+        doc.build(story)
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": 'attachment; filename="sealtech-maintenance.pdf"'},
+        )
+    raise HTTPException(status_code=400, detail="Unsupported format (use xlsx or pdf)")
+
+
 # ----- Import -----
 def _parse_rows(data: bytes, filename: str):
     name = (filename or "").lower()
@@ -1186,6 +1442,14 @@ async def dashboard_summary(current=Depends(get_current_user)):
     year_start = datetime(now_utc().year, 1, 1, tzinfo=timezone.utc).isoformat()
     profit_ytd = 0.0
 
+    # Maintenance KPIs
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    soon_iso = (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat()
+    maintenance_count = 0
+    maintenance_due_30d = 0
+    maintenance_overdue = 0
+    maintenance_annual_revenue = 0.0
+
     for d in deals:
         status_v = d.get("status", "Lead")
         chosen = float(d.get("chosen_amount", 0) or 0)
@@ -1209,6 +1473,18 @@ async def dashboard_summary(current=Depends(get_current_user)):
             open_leads += 1
             pipeline_revenue += pipeline_value
 
+        # Maintenance roll-up
+        if d.get("maintenance_plan"):
+            maintenance_count += 1
+            maintenance_annual_revenue += float(d.get("maintenance_rate", 0) or 0)
+            nxt = d.get("next_maintenance_date") or ""
+            if nxt:
+                if nxt < today_iso:
+                    maintenance_overdue += 1
+                    maintenance_due_30d += 1
+                elif nxt <= soon_iso:
+                    maintenance_due_30d += 1
+
     return {
         "contacts_count": contacts_count,
         "properties_count": properties_count,
@@ -1221,6 +1497,10 @@ async def dashboard_summary(current=Depends(get_current_user)):
         "total_costs": round(total_costs, 2),
         "total_profit": round(won_revenue - total_costs, 2),
         "profit_ytd": round(profit_ytd, 2),
+        "maintenance_count": maintenance_count,
+        "maintenance_due_30d": maintenance_due_30d,
+        "maintenance_overdue": maintenance_overdue,
+        "maintenance_annual_revenue": round(maintenance_annual_revenue, 2),
     }
 
 

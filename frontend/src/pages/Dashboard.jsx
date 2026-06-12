@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, formatCurrency } from "@/lib/api";
 import { Link } from "react-router-dom";
-import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench } from "lucide-react";
 import { ExportButtons } from "@/components/ExportImport";
 
 const KPI = ({ label, value, hint, icon: Icon, testId }) => (
@@ -64,6 +64,21 @@ export default function Dashboard() {
         <KPI label="Properties" value={data.properties_count} icon={Building2} testId="kpi-properties" />
         <KPI label="Won Revenue" value={formatCurrency(data.won_revenue)} icon={DollarSign} testId="kpi-won-revenue" />
         <KPI label="Total Costs" value={formatCurrency(data.total_costs)} icon={FileSpreadsheet} testId="kpi-total-costs" />
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+        <Link to="/maintenance" className="block">
+          <KPI label="Maintenance Plans" value={data.maintenance_count || 0} hint="Active recurring customers" icon={Wrench} testId="kpi-maintenance-count" />
+        </Link>
+        <Link to="/maintenance" className="block">
+          <KPI label="Recurring Annual Revenue" value={formatCurrency(data.maintenance_annual_revenue || 0)} hint="Total annual rate across plans" icon={DollarSign} testId="kpi-maintenance-arr" />
+        </Link>
+        <Link to="/maintenance" className="block">
+          <KPI label="Maintenance Due (30 days)" value={data.maintenance_due_30d || 0} hint="Includes overdue" icon={TrendingUp} testId="kpi-maintenance-due30" />
+        </Link>
+        <Link to="/maintenance" className="block">
+          <KPI label="Maintenance Overdue" value={data.maintenance_overdue || 0} hint="Past next due date" icon={Trophy} testId="kpi-maintenance-overdue" />
+        </Link>
       </div>
 
       <div className="bg-white border border-zinc-200 rounded-sm">

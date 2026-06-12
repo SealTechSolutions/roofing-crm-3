@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
@@ -109,6 +109,43 @@ export default function DealDetail() {
     const items = [...(deal.cost_items || [])];
     items.splice(idx, 1);
     persist({ cost_items: items });
+  };
+
+  // ----- Maintenance Plan handlers -----
+  const [newVisit, setNewVisit] = useState({ visit_date: new Date().toISOString().slice(0, 10), amount: 0, subcontractor_id: "", notes: "" });
+  const subcontractors = useMemo(() => vendors.filter((v) => v.kind === "Subcontractor"), [vendors]);
+
+  const logVisit = async () => {
+    if (!newVisit.visit_date) {
+      toast.error("Visit date is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = { ...newVisit, amount: Number(newVisit.amount || 0) };
+      if (!payload.subcontractor_id) delete payload.subcontractor_id;
+      const r = await api.post(`/deals/${id}/maintenance-visits`, payload);
+      setDeal(r.data);
+      setNewVisit({ visit_date: new Date().toISOString().slice(0, 10), amount: Number(r.data.maintenance_rate || 0), subcontractor_id: "", notes: "" });
+      toast.success("Visit logged — next due date advanced");
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeVisit = async (visitId) => {
+    if (!window.confirm("Remove this visit? Next due date will recalculate.")) return;
+    setSaving(true);
+    try {
+      const r = await api.delete(`/deals/${id}/maintenance-visits/${visitId}`);
+      setDeal(r.data);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!deal) return <div className="p-8 text-xs uppercase tracking-[0.2em] text-zinc-500">Loading...</div>;
@@ -394,6 +431,147 @@ export default function DealDetail() {
         coverPhotoId={deal.cover_photo_file_id}
         onSetCover={(fileId) => persist({ cover_photo_file_id: deal.cover_photo_file_id === fileId ? null : fileId })}
       />
+
+      {/* Maintenance Plan */}
+      <Card
+        title={
+          <span className="inline-flex items-center gap-2">
+            <Wrench className="w-3.5 h-3.5 text-blue-700" /> Maintenance Plan
+          </span>
+        }
+        right={
+          <button
+            data-testid="toggle-maintenance-plan"
+            onClick={() => persist({ maintenance_plan: !deal.maintenance_plan })}
+            className={`inline-flex items-center gap-2 px-3 h-8 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-colors ${
+              deal.maintenance_plan
+                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                : "border border-zinc-300 text-zinc-700 hover:border-zinc-950"
+            }`}
+          >
+            {deal.maintenance_plan ? "✓ Plan Active" : "Enable Maintenance Plan"}
+          </button>
+        }
+      >
+        {!deal.maintenance_plan ? (
+          <div className="text-sm text-zinc-500 py-4">
+            Click <span className="font-bold">Enable Maintenance Plan</span> to track this customer's annual maintenance, set a rate, and log yearly visits.
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Annual Rate ($)</label>
+                <CellInput
+                  type="number"
+                  value={deal.maintenance_rate}
+                  onCommit={(v) => persist({ maintenance_rate: parseFloat(v || 0) })}
+                  className="font-mono border-zinc-300 mt-1"
+                  data-testid="maintenance-rate"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Plan Start Date</label>
+                <CellInput
+                  type="date"
+                  value={deal.maintenance_start_date}
+                  onCommit={(v) => persist({ maintenance_start_date: v })}
+                  className="border-zinc-300 mt-1"
+                  data-testid="maintenance-start"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Next Due (auto)</label>
+                <div className="mt-1 h-9 px-2 flex items-center text-sm font-mono font-bold text-blue-700" data-testid="maintenance-next-due">
+                  {deal.next_maintenance_date || "— set start date"}
+                </div>
+              </div>
+            </div>
+
+            {/* Log new visit */}
+            <div className="bg-zinc-50 border border-zinc-200 rounded-sm p-3 mb-4">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">Log New Visit</div>
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                <input
+                  type="date"
+                  value={newVisit.visit_date}
+                  onChange={(e) => setNewVisit({ ...newVisit, visit_date: e.target.value })}
+                  className="h-9 px-2 border border-zinc-300 rounded-sm text-sm"
+                  data-testid="new-visit-date"
+                />
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  value={newVisit.amount}
+                  onChange={(e) => setNewVisit({ ...newVisit, amount: e.target.value })}
+                  className="h-9 px-2 border border-zinc-300 rounded-sm text-sm font-mono"
+                  data-testid="new-visit-amount"
+                />
+                <select
+                  value={newVisit.subcontractor_id}
+                  onChange={(e) => setNewVisit({ ...newVisit, subcontractor_id: e.target.value })}
+                  className="h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+                  data-testid="new-visit-sub"
+                >
+                  <option value="">— Subcontractor —</option>
+                  {subcontractors.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Notes (optional)"
+                  value={newVisit.notes}
+                  onChange={(e) => setNewVisit({ ...newVisit, notes: e.target.value })}
+                  className="h-9 px-2 border border-zinc-300 rounded-sm text-sm"
+                  data-testid="new-visit-notes"
+                />
+                <button
+                  onClick={logVisit}
+                  className="h-9 inline-flex items-center justify-center gap-1 px-3 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm"
+                  data-testid="log-visit-button"
+                >
+                  <Plus className="w-3 h-3" /> Log Visit
+                </button>
+              </div>
+            </div>
+
+            {/* Visit history */}
+            {(deal.maintenance_visits || []).length === 0 ? (
+              <div className="text-sm text-zinc-500 py-3 text-center">No visits logged yet.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" data-testid="visit-history-table">
+                  <thead>
+                    <tr className="border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider">
+                      <th className="py-2 pr-3 w-36">Visit Date</th>
+                      <th className="py-2 pr-3 w-32 text-right">Amount</th>
+                      <th className="py-2 pr-3 w-44">Subcontractor</th>
+                      <th className="py-2 pr-3">Notes</th>
+                      <th className="py-2 w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(deal.maintenance_visits || []).map((v) => (
+                      <tr key={v.id} className="border-b border-zinc-100" data-testid={`visit-row-${v.id}`}>
+                        <td className="py-2 pr-3 font-mono">{v.visit_date}</td>
+                        <td className="py-2 pr-3 text-right font-mono">{formatCurrency(v.amount)}</td>
+                        <td className="py-2 pr-3 text-zinc-700">{v.subcontractor_name || "—"}</td>
+                        <td className="py-2 pr-3 text-zinc-700">{v.notes || "—"}</td>
+                        <td className="py-2 text-right">
+                          <button onClick={() => removeVisit(v.id)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm" data-testid={`delete-visit-${v.id}`}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
 
       {/* Contact + Property */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
