@@ -132,19 +132,33 @@ export default function DealDetail() {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             data-testid="generate-spec-sheet"
-            onClick={() => {
+            onClick={async () => {
               const token = localStorage.getItem("crm_token");
-              fetch(`${API}/deals/${id}/spec-sheet.pdf`, { headers: { Authorization: `Bearer ${token}` } })
-                .then((r) => { if (!r.ok) throw new Error("Spec sheet failed"); return r.blob(); })
-                .then((blob) => {
+              try {
+                toast.info("Generating spec sheet...");
+                const r = await fetch(`${API}/deals/${id}/spec-sheet.pdf`, { headers: { Authorization: `Bearer ${token}` } });
+                if (!r.ok) {
+                  const txt = await r.text();
+                  throw new Error(`Spec sheet failed (${r.status}): ${txt.slice(0,200)}`);
+                }
+                const blob = await r.blob();
+                const url = URL.createObjectURL(blob);
+                // Open in new tab so the user immediately sees the PDF — works regardless of browser download blocking
+                const newWin = window.open(url, "_blank");
+                if (!newWin) {
+                  // Fallback: trigger an attached anchor download
                   const a = document.createElement("a");
-                  const url = URL.createObjectURL(blob);
                   a.href = url;
-                  a.download = `sealtech-scope-${deal.title || "project"}.pdf`;
+                  a.download = `sealtech-scope-${(deal.title || "project").replace(/\s+/g, "_")}.pdf`;
+                  document.body.appendChild(a);
                   a.click();
-                  URL.revokeObjectURL(url);
-                })
-                .catch((e) => toast.error(e.message));
+                  document.body.removeChild(a);
+                }
+                setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                toast.success("Spec sheet ready");
+              } catch (e) {
+                toast.error(e.message || "Could not generate spec sheet");
+              }
             }}
             className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
           >
