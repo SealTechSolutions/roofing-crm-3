@@ -1177,6 +1177,13 @@ async def dashboard_summary(current=Depends(get_current_user)):
     for d in deals:
         status_v = d.get("status", "Lead")
         chosen = float(d.get("chosen_amount", 0) or 0)
+        # Pipeline value: use chosen_amount if set, otherwise the highest proposal option
+        proposal_max = max(
+            float(d.get("proposal_option_1", 0) or 0),
+            float(d.get("proposal_option_2", 0) or 0),
+            float(d.get("proposal_option_3", 0) or 0),
+        )
+        pipeline_value = chosen if chosen > 0 else proposal_max
         costs = float(d.get("materials_cost", 0) or 0) + float(d.get("labor_cost", 0) or 0) + float(d.get("subcontractor_cost", 0) or 0) + float(d.get("other_expenses", 0) or 0)
         if status_v == "Won":
             won_deals += 1
@@ -1188,7 +1195,7 @@ async def dashboard_summary(current=Depends(get_current_user)):
             lost_deals += 1
         else:
             open_leads += 1
-            pipeline_revenue += chosen
+            pipeline_revenue += pipeline_value
 
     return {
         "contacts_count": contacts_count,

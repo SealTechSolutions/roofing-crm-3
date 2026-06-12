@@ -55,7 +55,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KPI label="Open Leads" value={data.open_leads} hint={`${data.deals_count} total deals`} icon={TrendingUp} testId="kpi-open-leads" />
         <KPI label="Won Deals" value={data.won_deals} hint={`${data.lost_deals} lost`} icon={Trophy} testId="kpi-won-deals" />
-        <KPI label="Pipeline Revenue" value={formatCurrency(data.pipeline_revenue)} hint="Open + Proposal Sent" icon={DollarSign} testId="kpi-pipeline" />
+        <KPI label="Pipeline Revenue" value={formatCurrency(data.pipeline_revenue)} hint="Open deals — chosen amount or highest proposal option" icon={DollarSign} testId="kpi-pipeline" />
         <KPI label="Profit YTD" value={formatCurrency(data.profit_ytd)} hint={`Won revenue ${formatCurrency(data.won_revenue)}`} icon={FileSpreadsheet} testId="kpi-profit-ytd" />
       </div>
 
