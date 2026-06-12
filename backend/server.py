@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 from storage import init_storage, put_object, get_object, APP_NAME
 from exports import to_excel, to_pdf, CATEGORIES as EXPORT_CATEGORIES
+from spec_sheet import build_silicone_spec
 
 
 # ----- DB -----
@@ -328,6 +329,12 @@ class DealIn(BaseModel):
     cost_items: List[CostItem] = Field(default_factory=list)
     notes: str = ""
     assigned_to_user_id: Optional[str] = None
+    product_description: str = ""
+    warranty_20yr_add: float = 0.0
+    warranty_15yr_add: float = 0.0
+    warranty_10yr_add: float = 0.0
+    warranty_color: str = "white"
+    cover_photo_file_id: Optional[str] = None
 
 
 class Deal(DealIn):
@@ -767,6 +774,86 @@ async def delete_vendor(vendor_id: str, current=Depends(get_current_user)):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Vendor not found")
     return {"ok": True}
+
+
+# ----- Spec Sheet -----
+@api_router.get("/deals/{deal_id}/spec-sheet.pdf")
+async def deal_spec_sheet(
+    deal_id: str,
+    token: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    # Auth (Bearer header OR ?token= for browser links)
+    raw = None
+    if authorization and authorization.startswith("Bearer "):
+        raw = authorization[7:]
+    elif token:
+        raw = token
+    if not raw:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(raw, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["sub"]})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Build address from linked property
+    project_address = "—"
+    if deal.get("property_id"):
+        prop = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
+        if prop:
+            parts = [prop.get("property_address", ""), prop.get("property_address_line2", "")]
+            line1 = " ".join([p for p in parts if p]).strip()
+            city = prop.get("property_city", "")
+            st = prop.get("property_state", "")
+            zp = prop.get("property_zip", "")
+            line2 = ", ".join([p for p in [city, st] if p]).strip()
+            if zp:
+                line2 = f"{line2} {zp}".strip()
+            project_address = "  ·  ".join([p for p in [line1, line2] if p]).strip() or "—"
+
+    product_desc = deal.get("product_description") or f"{deal.get('proposed_roof_type','Silicone')} Roof System Over Existing"
+    color = deal.get("warranty_color") or "white"
+
+    data = {
+        "project_address": project_address,
+        "product_type": product_desc,
+        "date": datetime.now(timezone.utc).strftime("%m/%d/%Y"),
+        "opt_20": float(deal.get("proposal_option_1") or 0),
+        "opt_15": float(deal.get("proposal_option_2") or 0),
+        "opt_10": float(deal.get("proposal_option_3") or 0),
+        "w20": float(deal.get("warranty_20yr_add") or 0),
+        "w15": float(deal.get("warranty_15yr_add") or 0),
+        "w10": float(deal.get("warranty_10yr_add") or 0),
+        "total_sqft": float(deal.get("total_sqft") or 0),
+        "color": color,
+        "roof_type_label": (deal.get("proposed_roof_type") or "silicone").lower(),
+    }
+
+    # Fetch cover photo if set
+    photo_bytes = None
+    cover_id = deal.get("cover_photo_file_id")
+    if cover_id:
+        rec = await db.files.find_one({"id": cover_id, "is_deleted": False})
+        if rec:
+            try:
+                photo_bytes, _ = get_object(rec["storage_path"])
+            except Exception:
+                photo_bytes = None
+
+    pdf_bytes = build_silicone_spec(data, cover_photo_bytes=photo_bytes)
+    filename = f"sealtech-scope-{(deal.get('title') or 'project')}.pdf".replace(" ", "_")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ----- Files (Documents) -----

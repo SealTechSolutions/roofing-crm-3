@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api, formatApiError, API } from "@/lib/api";
-import { Upload, Download, Trash2, FileText, File as FileIcon, Image as ImageIcon } from "lucide-react";
+import { Upload, Download, Trash2, FileText, File as FileIcon, Image as ImageIcon, Star } from "lucide-react";
 import { toast } from "sonner";
 
 const CATEGORY_OPTIONS = [
@@ -113,6 +113,16 @@ export default function Documents({ parentType, parentId, title = "Documents" })
                 <button onClick={() => downloadFile(f)} title="Download" className="p-1.5 hover:bg-zinc-100 rounded-sm" data-testid={`download-${f.id}`}>
                   <Download className="w-4 h-4 text-zinc-700" />
                 </button>
+                {onSetCover && f.category === "Photo" && (
+                  <button
+                    onClick={() => onSetCover(f.id)}
+                    title={coverPhotoId === f.id ? "Cover photo" : "Set as cover photo"}
+                    className={`p-1.5 rounded-sm ${coverPhotoId === f.id ? "text-orange-500" : "text-zinc-400 hover:text-orange-500 hover:bg-zinc-100"}`}
+                    data-testid={`cover-${f.id}`}
+                  >
+                    <Star className={`w-4 h-4 ${coverPhotoId === f.id ? "fill-current" : ""}`} />
+                  </button>
+                )}
                 <button onClick={() => remove(f.id)} title="Delete" className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm" data-testid={`delete-doc-${f.id}`}>
                   <Trash2 className="w-4 h-4" />
                 </button>

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { api, formatCurrency, formatApiError } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2, FileText } from "lucide-react";
+import { api, formatCurrency, formatApiError, API } from "@/lib/api";
+import { ArrowLeft, Plus, Trash2, FileText, Star, Download } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
@@ -128,6 +128,28 @@ export default function DealDetail() {
           </div>
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight" data-testid="deal-title">{deal.title}</h1>
           <div className="mt-2 text-xs uppercase tracking-wider text-zinc-500">{deal.lead_source} · {deal.project_type}</div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            data-testid="generate-spec-sheet"
+            onClick={() => {
+              const token = localStorage.getItem("crm_token");
+              fetch(`${API}/deals/${id}/spec-sheet.pdf`, { headers: { Authorization: `Bearer ${token}` } })
+                .then((r) => { if (!r.ok) throw new Error("Spec sheet failed"); return r.blob(); })
+                .then((blob) => {
+                  const a = document.createElement("a");
+                  const url = URL.createObjectURL(blob);
+                  a.href = url;
+                  a.download = `sealtech-scope-${deal.title || "project"}.pdf`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                })
+                .catch((e) => toast.error(e.message));
+            }}
+            className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
+          >
+            <Download className="w-4 h-4" /> Generate Spec Sheet
+          </button>
         </div>
       </div>
 
@@ -318,7 +340,13 @@ export default function DealDetail() {
       </div>
 
       {/* Documents */}
-      <Documents parentType="project" parentId={id} title="Documents — Measurement Reports, Assessments, Scopes, Invoices, Photos" />
+      <Documents
+        parentType="project"
+        parentId={id}
+        title="Documents — Measurement Reports, Assessments, Scopes, Invoices, Photos"
+        coverPhotoId={deal.cover_photo_file_id}
+        onSetCover={(fileId) => persist({ cover_photo_file_id: deal.cover_photo_file_id === fileId ? null : fileId })}
+      />
 
       {/* Contact + Property */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
