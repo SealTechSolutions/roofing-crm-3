@@ -67,6 +67,7 @@ EXCLUSIONS = [
 
 SILICONE_TEMPLATE = {
     "title": "RESTORATION ROOF SCOPE",
+    "spread_page_2": True,  # Silicone scopes have fewer bullets; spread page 2 to fill the sheet
     "scope_1_title": "Inspection and Repairs",
     "scope_1": [
         "Inspect the roof for existing leaks, deterioration, and overall substrate condition.",
@@ -930,9 +931,17 @@ def build_spec_sheet(
     story.append(PageBreak())
 
     # ---- Page 2: Scope ----
+    spread = bool(template.get("spread_page_2")) and not template.get("tier_table")
     story.extend(_scope_block(s, template["scope_1_title"], template["scope_1"]))
-    # Tier-table templates (FARM) get more breathing room on page 2.
-    story.append(Spacer(1, 0.08 * inch if template.get("tier_table") else 0.05 * inch))
+    # Page 2 breathing room varies by template: FARM (tier_table) gets a small
+    # bump, restoration scopes with fewer bullets ("spread_page_2") get a
+    # bigger bump so the page fills out nicely.
+    if template.get("tier_table"):
+        story.append(Spacer(1, 0.08 * inch))
+    elif spread:
+        story.append(Spacer(1, 0.14 * inch))
+    else:
+        story.append(Spacer(1, 0.05 * inch))
     story.extend(_scope_block(s, template["scope_2_title"], template["scope_2"]))
 
     # Optional tier comparison table (used by FARM and similar multi-warranty systems)
@@ -985,6 +994,8 @@ def build_spec_sheet(
     # Larger breathing room after the tier table only (FARM has room to spare on page 2)
     if template.get("tier_table"):
         story.append(Spacer(1, 0.10 * inch))
+    elif spread:
+        story.append(Spacer(1, 0.12 * inch))
     else:
         story.append(Spacer(1, 0.06 * inch))
 
@@ -998,28 +1009,34 @@ def build_spec_sheet(
         label = data.get("roof_type_label") or (roof_type or "roof system")
         inc_text = f"Approximately {total_sqft:,.0f} SF ({sq} SQ) {color} {label} system, including walls and flashings."
         story.append(Paragraph(inc_text, s["body"]))
-        story.append(Spacer(1, 0.06 * inch))
+        story.append(Spacer(1, 0.10 * inch if spread else 0.06 * inch))
 
     # Cover photo (skipped when template has a tier_table — the table itself fills the visual space)
     if not template.get("tier_table"):
+        photo_h = 1.6 * inch if spread else 1.2 * inch
         if cover_photo_bytes:
             try:
-                img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=1.2 * inch, kind="proportional")
+                img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=photo_h, kind="proportional")
                 story.append(img)
             except Exception:
                 story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
         else:
-            ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[1.2 * inch])
+            ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[photo_h])
             ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
             story.append(ph)
             story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))
-        story.append(Spacer(1, 0.06 * inch))
+        story.append(Spacer(1, 0.10 * inch if spread else 0.06 * inch))
 
     story.append(Paragraph("Exclusions", s["h2"]))
     excl = "<br/>".join([f"•&nbsp;&nbsp;{e}" for e in EXCLUSIONS])
     story.append(Paragraph(excl, s["body"]))
-    # Tier-table templates (FARM) have more vertical room on page 2 — open it up.
-    story.append(Spacer(1, 0.12 * inch if template.get("tier_table") else 0.08 * inch))
+    # Tier-table templates (FARM) and restoration scopes have more vertical room on page 2 — open it up.
+    if template.get("tier_table"):
+        story.append(Spacer(1, 0.12 * inch))
+    elif spread:
+        story.append(Spacer(1, 0.14 * inch))
+    else:
+        story.append(Spacer(1, 0.08 * inch))
 
     appreciation_style = ParagraphStyle(
         "appreciation", parent=s["body"], alignment=1, fontName="Helvetica-Oblique",
@@ -1029,7 +1046,12 @@ def build_spec_sheet(
         "We are committed to delivering exceptional craftsmanship, transparency, and lasting value on every project we undertake.",
         appreciation_style,
     ))
-    story.append(Spacer(1, 0.08 * inch if template.get("tier_table") else 0.06 * inch))
+    if template.get("tier_table"):
+        story.append(Spacer(1, 0.08 * inch))
+    elif spread:
+        story.append(Spacer(1, 0.10 * inch))
+    else:
+        story.append(Spacer(1, 0.06 * inch))
 
     # Closing signature line — pulls directly from the logged-in user. No
     # auto-applied credentials: each rep is responsible for setting their own
@@ -1041,7 +1063,12 @@ def build_spec_sheet(
         [Paragraph(signer_line, s["body"]), ""],
     ], colWidths=[3.5 * inch, 4.0 * inch])
     story.append(sig)
-    story.append(Spacer(1, 0.06 * inch if template.get("tier_table") else 0.02 * inch))
+    if template.get("tier_table"):
+        story.append(Spacer(1, 0.06 * inch))
+    elif spread:
+        story.append(Spacer(1, 0.06 * inch))
+    else:
+        story.append(Spacer(1, 0.02 * inch))
 
     story.append(Paragraph("Acceptance Of Scope", s["h2"]))
     story.append(Paragraph(
@@ -1050,7 +1077,7 @@ def build_spec_sheet(
         "&quot;Owner&quot; refers to the legal owner of the property or their duly authorized representative.",
         s["body"],
     ))
-    story.append(Spacer(1, 0.06 * inch))
+    story.append(Spacer(1, 0.10 * inch if spread else 0.06 * inch))
 
     accept_rows = [
         ["By:", "________________________________", "Title:", "________________________________"],
