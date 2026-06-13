@@ -376,7 +376,7 @@ export default function Deals() {
                   <Input data-testid="deal-color" value={form.warranty_color} onChange={(v) => setForm({ ...form, warranty_color: v })} placeholder="white" />
                 </Field>
               </div>
-              <div className="text-xs text-zinc-500 mt-2">Option D→25-yr · Option A→20-yr · Option B→15-yr · Option C→10-yr. Add-ons appear in the spec sheet&apos;s optional warranty table. Leave 25-yr fields at 0 to hide that tier on non-FARM scopes.</div>
+              <div className="text-xs text-zinc-500 mt-2">Option A→25-yr · Option B→20-yr · Option C→15-yr · Option D→10-yr. Add-ons appear in the spec sheet&apos;s optional warranty table. Leave 25-yr fields at 0 to hide that tier on non-FARM scopes.</div>
             </div>
 
             <div className="pt-4 border-t border-zinc-200">
@@ -384,16 +384,16 @@ export default function Deals() {
                 {form.deal_type === "Assessment" ? "Assessment — 3 Roof System Options" : "Scope — Pricing Options"}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Field label="Option D ($) — 25-yr">
+                <Field label="Option A ($) — 25-yr">
                   <Input data-testid="deal-option-25yr" type="number" min="0" step="0.01" value={form.proposal_option_25yr} onChange={(v) => setForm({ ...form, proposal_option_25yr: v })} />
                 </Field>
-                <Field label="Option A ($) — 20-yr">
+                <Field label="Option B ($) — 20-yr">
                   <Input data-testid="deal-option-1" type="number" min="0" step="0.01" value={form.proposal_option_1} onChange={(v) => setForm({ ...form, proposal_option_1: v })} />
                 </Field>
-                <Field label="Option B ($) — 15-yr">
+                <Field label="Option C ($) — 15-yr">
                   <Input data-testid="deal-option-2" type="number" min="0" step="0.01" value={form.proposal_option_2} onChange={(v) => setForm({ ...form, proposal_option_2: v })} />
                 </Field>
-                <Field label="Option C ($) — 10-yr">
+                <Field label="Option D ($) — 10-yr">
                   <Input data-testid="deal-option-3" type="number" min="0" step="0.01" value={form.proposal_option_3} onChange={(v) => setForm({ ...form, proposal_option_3: v })} />
                 </Field>
               </div>

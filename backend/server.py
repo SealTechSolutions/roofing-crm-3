@@ -166,6 +166,39 @@ DUPLICATE_MODES = ["skip", "update", "create"]
 USER_ROLES = ["admin", "manager", "sales"]
 FINANCIAL_FIELDS = ["proposal_option_1", "proposal_option_2", "proposal_option_3", "proposal_option_25yr", "chosen_amount", "materials_cost", "labor_cost", "subcontractor_cost", "other_expenses", "payment_milestones", "cost_items"]
 
+# Late-fee policy: 1.5% per month (18% APR) on balances 30+ days past due.
+LATE_FEE_MONTHLY_RATE = 0.015
+LATE_FEE_GRACE_DAYS = 30
+LATE_FEE_POLICY_TEXT = (
+    "A late fee of 1.5% per month (18% APR) is applied to any balance more than "
+    "30 days past due. Fees compound monthly and are reflected on each Statement of Account."
+)
+
+
+def compute_late_fee(invoice: dict, as_of) -> float:
+    """Late fee for a single invoice: 1.5%/month on balance_due once it crosses 30 days past due.
+    `as_of` is a date. Returns dollars (rounded to 2dp). Returns 0 if not yet past the grace window
+    or no due_date/balance is present."""
+    try:
+        bal = float(invoice.get("balance_due") or 0)
+    except (TypeError, ValueError):
+        bal = 0.0
+    if bal <= 0.01:
+        return 0.0
+    due_raw = invoice.get("due_date") or invoice.get("invoice_date") or ""
+    if not due_raw:
+        return 0.0
+    try:
+        due = datetime.strptime(due_raw[:10], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return 0.0
+    days_past = (as_of - due).days
+    if days_past < LATE_FEE_GRACE_DAYS:
+        return 0.0
+    # 30-59 days = 1 month, 60-89 = 2 months, ...
+    months_past = days_past // 30
+    return round(bal * LATE_FEE_MONTHLY_RATE * months_past, 2)
+
 
 def proposal_mid_amount(d: dict) -> float:
     """Return the middle (median by value) of the proposal options, ignoring zeros.
