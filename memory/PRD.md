@@ -222,9 +222,24 @@
 - ✅ "Books" nav link in sidebar (`data-testid="nav-books"`); admins see Add Account / New Entity / Edit Entity controls; non-admins are read-only
 - ✅ Tested end-to-end: 11/11 pytest backend + 12/12 UI flows pass (see `/app/backend/tests/test_books.py` and `/app/test_reports/iteration_3.json`)
 
+## Books Module — Phase 2 (2026-02) ✅
+- ✅ New `/app/backend/gl.py` — double-entry posting engine
+- ✅ `post_journal(...)` is idempotent on `posting_key = "{source_type}:{source_id}:{kind}"` — re-saving an invoice / bill simply overwrites the existing GL entry (no duplicate rows)
+- ✅ Hooks: `post_invoice_issue` (DR 1100 / CR 4xxx), `post_invoice_payment` (DR 1000 / CR 1100), `post_bill_received` (DR 5000 or 5010 by `vendor.kind` / CR 2000), `post_bill_payment` (DR 2000 / CR 1000)
+- ✅ Revenue routing by roof type / invoice_type: FARM → 4030, Silicone/Restoration → 4000, New Construction → 4020, Re-Roof/Replacement → 4010 (default), Maintenance/Repair → 4100
+- ✅ COGS routing by `vendor.kind`: Subcontractor → 5010, Vendor → 5000
+- ✅ Voiding (status → Draft/Void) or deleting an invoice / bill **fully reverses** all linked journals (`is_reversed=true`), including the payment journal — KPIs adjust live
+- ✅ Hooks wrapped in try/except — a GL failure never blocks the underlying CRUD path
+- ✅ `entity_id` field added to `InvoiceIn` and `VendorBillIn`; blank = no GL posting (silent skip)
+- ✅ Read endpoints: `GET /api/books/journal-entries?entity_id=X[&include_reversed=true]`, `GET /api/books/reports/kpis?entity_id=X`, `GET /api/books/reports/kpis/all`
+- ✅ KPIs: cash_on_hand (sum of every account with `category="Bank"` — works for custom bank accounts too), open_ar, open_ap, mtd_revenue, ytd_revenue, ytd_cogs, ytd_gross_profit
+- ✅ Frontend: Entity dropdown on **Invoice editor** (`data-testid="invoice-entity-select"`) + **Vendor Bill editor** (`data-testid="bill-entity-select"`), both default to Parent (SealTech Holdings)
+- ✅ Frontend: **Dashboard "Books — Per-Entity Snapshot" strip** (`data-testid="books-kpi-strip"`) showing all 4 active entities side-by-side with Cash · Open A/R · Open A/P · MTD Revenue; auto-hides until first GL activity; clicking a row deep-links to /books with that entity pre-selected
+- ✅ Tested: 14/14 backend pytest + 4/4 UI flows pass — `/app/test_reports/iteration_4.json` and `/app/backend/tests/test_books_phase2.py`
+
 ## Backlog (P0 — next Books phases)
-- Books Phase 2: Auto-journal hooks from CRM events (Invoice posted, Vendor Bill posted, Payment received) → GL entries on `journal_entries` collection
 - Books Phase 3: Per-entity P&L + Balance Sheet reports (filterable by date range, drill-down to source doc)
+- Books Phase 3: Late-fee monthly accrual batch journal (DR 1100 AR / CR 4200 Late Fees Earned for outstanding A/R > 30 days @ 1.5%)
 - Books Phase 4: Inter-company auto-mirroring (Parent ↔ Sub-co) and Bank Reconciliation
 
 ## Backlog (P1)

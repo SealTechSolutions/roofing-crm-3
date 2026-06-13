@@ -90,11 +90,11 @@ async def post_journal(
     posted_by_user_id: Optional[str] = None,
 ) -> Optional[dict]:
     """Idempotent upsert of one journal entry. Returns the stored doc (or None if no valid lines)."""
-    clean_lines = [l for l in lines if l is not None and (l["debit"] > 0 or l["credit"] > 0)]
+    clean_lines = [ln for ln in lines if ln is not None and (ln["debit"] > 0 or ln["credit"] > 0)]
     if not clean_lines:
         return None
-    total_debit = round(sum(l["debit"] for l in clean_lines), 2)
-    total_credit = round(sum(l["credit"] for l in clean_lines), 2)
+    total_debit = round(sum(ln["debit"] for ln in clean_lines), 2)
+    total_credit = round(sum(ln["credit"] for ln in clean_lines), 2)
     if abs(total_debit - total_credit) > 0.01:
         logger.warning(
             f"GL: unbalanced entry for {source_type}:{source_id}:{kind} — "
@@ -154,8 +154,9 @@ async def post_invoice_issue(db, invoice: dict, posted_by_user_id: Optional[str]
         return None
     status = (invoice.get("status") or "").lower()
     if status in ("draft", "void", ""):
-        # If invoice is voided after being issued — reverse the issue journal
+        # If invoice is voided after being issued — reverse BOTH the issue and any payment journal
         await reverse_journals(db, source_type="invoice", source_id=invoice["id"], kind="issue")
+        await reverse_journals(db, source_type="invoice", source_id=invoice["id"], kind="payment")
         return None
     deal = None
     if invoice.get("deal_id"):
@@ -218,6 +219,7 @@ async def post_bill_received(db, bill: dict, posted_by_user_id: Optional[str] = 
     status = (bill.get("status") or "").lower()
     if status in ("void", "draft", ""):
         await reverse_journals(db, source_type="vendor_bill", source_id=bill["id"], kind="bill_received")
+        await reverse_journals(db, source_type="vendor_bill", source_id=bill["id"], kind="bill_payment")
         return None
     vendor = None
     if bill.get("vendor_id"):
@@ -275,12 +277,12 @@ AR_ACCOUNT_NUMBER = "1100"
 AP_ACCOUNT_NUMBER = "2000"
 
 
-async def _sum_for_accounts(db, entity_id: str, account_numbers, *, date_from: Optional[str] = None, date_to: Optional[str] = None, account_type: Optional[str] = None):
-    """Returns (total_debit, total_credit) for given account numbers (or all of a type) within an optional date window."""
+async def _sum_for_accounts(db, entity_id: str, account_numbers, *, date_from: Optional[str] = None, date_to: Optional[str] = None, account_type: Optional[str] = None, category: Optional[str] = None):
+    """Returns (total_debit, total_credit) for given accounts within an optional date window.
+    Filter by any combination of numbers, type, or category (e.g. all Bank accounts)."""
     match: dict = {"entity_id": entity_id, "is_reversed": {"$ne": True}}
     if date_from:
-        match["date"] = match.get("date", {})
-        match["date"]["$gte"] = date_from
+        match.setdefault("date", {})["$gte"] = date_from
     if date_to:
         match.setdefault("date", {})["$lte"] = date_to
     pipeline = [{"$match": match}, {"$unwind": "$lines"}]
@@ -289,6 +291,10 @@ async def _sum_for_accounts(db, entity_id: str, account_numbers, *, date_from: O
         line_match["lines.account_number"] = {"$in": list(account_numbers)}
     if account_type:
         line_match["lines.account_type"] = account_type
+    if category:
+        # Resolve account ids in this entity with the given category, then filter by ids
+        ids = [a["id"] async for a in db.chart_of_accounts.find({"entity_id": entity_id, "category": category}, {"id": 1, "_id": 0})]
+        line_match["lines.account_id"] = {"$in": ids}
     if line_match:
         pipeline.append({"$match": line_match})
     pipeline.append({"$group": {"_id": None, "debit": {"$sum": "$lines.debit"}, "credit": {"$sum": "$lines.credit"}}})
@@ -304,7 +310,8 @@ async def entity_kpis(db, entity_id: str) -> dict:
     month_start = today.replace(day=1).isoformat()
     year_start = today.replace(month=1, day=1).isoformat()
 
-    cash_d, cash_c = await _sum_for_accounts(db, entity_id, CASH_ACCOUNT_NUMBERS)
+    # Cash = all Asset accounts with category='Bank' (includes custom bank accounts beyond the seeded 1000/1010/1020)
+    cash_d, cash_c = await _sum_for_accounts(db, entity_id, [], category="Bank")
     ar_d, ar_c = await _sum_for_accounts(db, entity_id, [AR_ACCOUNT_NUMBER])
     ap_d, ap_c = await _sum_for_accounts(db, entity_id, [AP_ACCOUNT_NUMBER])
     rev_mtd_d, rev_mtd_c = await _sum_for_accounts(db, entity_id, [], date_from=month_start, account_type="Revenue")
