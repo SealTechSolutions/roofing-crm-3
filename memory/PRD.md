@@ -257,6 +257,19 @@
 - ✅ Click any P&L or B/S row → drilldown modal lists every journal hitting that account in the window, with deep-link to source invoice / vendor bill
 - ✅ Tested: 13/13 new + 31/31 regression pytest + full Playwright suite pass (`/app/test_reports/iteration_6.json`, `/app/backend/tests/test_books_phase4.py`)
 
+## Books Module — Period Close (2026-02) ✅
+- ✅ New `/app/backend/period_close.py` — orchestrator: preview / run / reopen / list
+- ✅ `run_close(entity, period)` in order: (1) late-fee accrual for the month → (2) depreciation entry (DR 6600 / CR 1510 = entity.monthly_depreciation, idempotent via posting_key `period_close:{entity_id}:depreciation:{period}`) → (3) generate P&L + Balance Sheet PDFs via `period_close_pdf.py` and upload to Library under `Books / Period Close Snapshots` → (4) set `entity.lock_through = YYYY-MM-31` → (5) persist a `period_closes` audit record
+- ✅ `gl.post_journal` now respects `entity.lock_through` — any CRM event with date ≤ lock_through is silently refused (warning logged); `bypass_period_lock=True` flag lets the orchestrator itself post the depreciation entry safely
+- ✅ `reopen_period(entity, period)` flips `is_reopened=true` and recomputes `entity.lock_through` to max(remaining closed period_end) — instantly re-allows postings
+- ✅ Added `6600 Depreciation Expense` (system) to DEFAULT_COA; existing entities auto-seeded on next boot
+- ✅ Entity model: new `monthly_depreciation` (editable on Entity modal) and `lock_through` (system-managed, preserved by PUT)
+- ✅ Library taxonomy adds `Books` category with `Period Close Snapshots`, `Tax & Audit Packets`, `Bank Statements` subcategories
+- ✅ New endpoints: `GET /period-close/preview`, `POST /period-close/run` (admin), `POST /period-close/reopen` (admin), `GET /period-close/list`
+- ✅ Frontend `/pages/BooksPeriodClose.jsx` — entity lock pill, period dropdown, monthly-depr readout, 4-step action checklist, snapshot totals + balanced indicator, run button, history table with Reopen
+- ✅ Books page now has 6 tabs (`coa`, `activity`, `pl`, `bs`, `latefees`, `close`); hash-routed
+- ✅ Tested: 12/12 new pytest + 100% frontend Playwright pass (`/app/test_reports/iteration_7.json`, `/app/backend/tests/test_books_period_close.py`)
+
 ## Backlog (P0 — next Books phases)
 - Books Phase 4: Inter-company auto-mirroring (Parent ↔ Sub-co via 1900 Inter-Co Receivable / 2900 Inter-Co Payable) + Bank Reconciliation
 - Manual journal-entry composer on Activity tab (DR/CR pair + memo + date) for owner draws, depreciation, year-end adjustments
