@@ -115,15 +115,14 @@ TPO_REPLACEMENT_TEMPLATE = {
     "scope_1": [
         "Survey existing roof assembly and document deck condition, slope, and drainage.",
         "Identify wet insulation by infrared and/or core cuts; quantify replacement areas.",
-        "Tear-off existing roof down to the structural deck (or prep substrate for re-cover where approved).",
+        "Remove existing membrane, insulation, flashings, base sheets, edge metal, copings, penetrations, and accessories down to the structural deck.",
+        "Remove fasteners and clean the deck of debris, adhesives, or contaminants.",
+        "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
         "Replace any deteriorated decking with new plywood or steel deck as needed.",
         "Remove and properly dispose of all debris from the property.",
     ],
     "scope_2_title": "TPO Membrane Installation",
     "scope_2": [
-        "Remove existing membrane, insulation, flashings, base sheets, edge metal, copings, penetrations, and accessories down to the structural deck.",
-        "Remove fasteners and clean the deck of debris, adhesives, or contaminants.",
-        "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
         "Install ISO insulation to achieve specified R-value, mechanically attached or fully adhered per manufacturer.",
         "Install ½\" high-density cover board over insulation to provide a smooth, durable substrate.",
         "Install 60-mil TPO membrane — fully adhered, mechanically attached, or RhinoBond per project specification.",
@@ -159,25 +158,26 @@ EPDM_OVERLAY_TEMPLATE = {
 }
 
 EPDM_REPLACEMENT_TEMPLATE = {
-    "title": "EPDM REPLACEMENT ROOF SYSTEM SCOPE",
-    "scope_1_title": "Tear-Off and Substrate Prep",
+    "title": "EPDM ROOF SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Tear-Off / Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, drains, scuppers, and curbs.",
-        "Identify wet insulation via infrared scan or core cuts; quantify replacement areas.",
-        "Tear-off existing membrane, insulation, and cover board down to the structural deck.",
-        "Replace deteriorated decking with new like-gauge plywood or steel deck as needed.",
-        "Remove failed flashings, pitch pans, drains, scuppers, and edge metal.",
-        "Remove and properly dispose of all torn-off material from the property.",
+        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Identify wet insulation by infrared and/or core cuts; quantify replacement areas.",
+        "Remove existing membrane, insulation, flashings, base sheets, edge metal, copings, penetrations, and accessories down to the structural deck.",
+        "Remove fasteners and clean the deck of debris, adhesives, or contaminants.",
+        "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
+        "Replace any deteriorated decking with new plywood or steel deck as needed.",
+        "Remove and properly dispose of all debris from the property.",
     ],
-    "scope_2_title": "New EPDM Membrane Installation",
+    "scope_2_title": "EPDM Membrane Installation",
     "scope_2": [
-        "Install polyiso insulation to specified R-value plus ½\" high-density cover board, fully adhered or mechanically attached.",
-        "Install 60-mil EPDM membrane — fully adhered with bonding adhesive, mechanically attached, or ballasted per spec.",
+        "Install ISO insulation to achieve specified R-value, mechanically attached or fully adhered per manufacturer.",
+        "Install ½\" high-density cover board over insulation to provide a smooth, durable substrate.",
+        "Install 60-mil EPDM membrane — fully adhered with bonding adhesive, mechanically attached, or ballasted per project specification.",
         "Splice all seams with factory-applied seam tape and EPDM splice primer; roll all laps with steel roller.",
         "Install pre-formed pipe boots, inside/outside corners, and uncured EPDM flashing at irregular penetrations.",
         "Terminate membrane at walls and curbs with termination bar, water cut-off mastic, and counter-flashing.",
-        "Install new metal edge, drip edge, and gravel stop per SPRI ES-1 requirements.",
-        "If ballasted: install washed river rock at 10 lbs/SF minimum or per engineered spec.",
+        "Install new code-required metal drip edge, gravel stop, and termination bar at all perimeters.",
         "Final walk-through, water-test drains, and quality inspection with the owner.",
     ],
 }
@@ -206,25 +206,25 @@ MODBIT_OVERLAY_TEMPLATE = {
 }
 
 MODBIT_REPLACEMENT_TEMPLATE = {
-    "title": "MODIFIED BITUMEN REPLACEMENT ROOF SYSTEM SCOPE",
-    "scope_1_title": "Tear-Off and Substrate Prep",
+    "title": "MODIFIED BITUMEN ROOF SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Tear-Off / Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, drains, and curbs.",
-        "Identify wet insulation via core cuts or infrared survey; quantify replacement areas.",
-        "Tear-off existing cap sheet, ply membrane, and insulation down to the structural deck.",
-        "Replace deteriorated decking and any wet insulation with new like-for-like materials.",
-        "Remove failed flashings, pitch pans, drains, and edge metal.",
-        "Remove and properly dispose of all torn-off material from the property.",
+        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Identify wet insulation by infrared and/or core cuts; quantify replacement areas.",
+        "Remove existing cap sheet, ply membrane, insulation, flashings, base sheets, edge metal, copings, penetrations, and accessories down to the structural deck.",
+        "Remove fasteners and clean the deck of debris, adhesives, or contaminants.",
+        "Inspect and repair/replace damaged decking, wood blocking, or nailers with new like-for-like material; secure loose deck panels.",
+        "Remove and properly dispose of all debris from the property.",
     ],
-    "scope_2_title": "New Modified Bitumen System Installation",
+    "scope_2_title": "Modified Bitumen System Installation",
     "scope_2": [
-        "Install polyiso insulation to specified R-value with mechanically attached or hot-asphalt-adhered cover board.",
-        "Install SBS or APP modified bitumen base ply — mechanically attached, torch-applied, cold-process adhered, or self-adhered per spec.",
-        "Install granulated SBS or APP modified bitumen cap sheet, fully bonded and offset from base ply laps.",
+        "Install ISO insulation to achieve specified R-value, mechanically attached or hot-asphalt-adhered per manufacturer.",
+        "Install ½\" high-density cover board over insulation to provide a smooth, durable substrate.",
+        "Install SBS or APP modified bitumen base ply per project specification (mechanically attached, torch-applied, cold-process, or self-adhered).",
+        "Install granulated SBS or APP modified bitumen cap sheet, fully bonded with offset laps.",
         "Heat-weld or cold-bond all end and side laps; broom-in and inspect for full bleed-out.",
-        "Flash all penetrations, walls, and curbs with two-ply modified bitumen flashings terminated with metal counter-flashing.",
-        "Install new pitch pans filled with two-part urethane sealant where required.",
-        "Install new metal drip edge, gravel stop, and gutter line metal as specified.",
+        "Flash all penetrations, walls, and curbs with two-ply modified bitumen flashings and metal counter-flashing; install new pitch pans filled with two-part urethane sealant where required.",
+        "Install new code-required metal drip edge, gravel stop, and termination bar at all perimeters.",
         "Final walk-through, water-test drains, and quality inspection with the owner.",
     ],
 }
@@ -252,26 +252,25 @@ PVC_OVERLAY_TEMPLATE = {
 }
 
 PVC_REPLACEMENT_TEMPLATE = {
-    "title": "PVC REPLACEMENT ROOF SYSTEM SCOPE",
-    "scope_1_title": "Tear-Off and Substrate Prep",
+    "title": "PVC ROOF SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Tear-Off / Prep",
     "scope_1": [
         "Survey existing roof assembly and document deck condition, slope, and drainage.",
-        "Identify wet insulation by infrared scan and/or core cuts; quantify replacement areas.",
-        "Tear-off existing membrane, insulation, and cover board down to the structural deck.",
-        "Replace deteriorated decking with new like-gauge plywood or steel deck as needed.",
-        "Remove failed flashings, pitch pans, drains, scuppers, and edge metal.",
-        "Remove and properly dispose of all torn-off material from the property.",
+        "Identify wet insulation by infrared and/or core cuts; quantify replacement areas.",
+        "Remove existing membrane, insulation, flashings, base sheets, edge metal, copings, penetrations, and accessories down to the structural deck.",
+        "Remove fasteners and clean the deck of debris, adhesives, or contaminants.",
+        "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
+        "Replace any deteriorated decking with new plywood or steel deck as needed.",
+        "Remove and properly dispose of all debris from the property.",
     ],
-    "scope_2_title": "New PVC Membrane Installation",
+    "scope_2_title": "PVC Membrane Installation",
     "scope_2": [
-        "Install polyisocyanurate insulation to specified R-value, mechanically attached or fully adhered per manufacturer.",
+        "Install ISO insulation to achieve specified R-value, mechanically attached or fully adhered per manufacturer.",
         "Install ½\" high-density cover board over insulation to provide a smooth, durable substrate.",
         "Install 60-mil PVC membrane — fully adhered, mechanically attached, or RhinoBond per project specification.",
         "Heat-weld all seams with calibrated hot-air welder; probe-test 100% of seams after cooling.",
-        "Install new PVC-coated metal drip edge, gravel stop, and termination bars at all perimeters.",
+        "Install new code-required PVC-coated metal drip edge, gravel stop, and termination bar at all perimeters.",
         "Flash all penetrations, curbs, walls, and corners with pre-formed or field-fabricated PVC accessories.",
-        "Install new pipe boots, pitch pans (filled with two-part urethane sealant), and corner patches.",
-        "Install splice plates and target patches at all T-joints, drains, and irregular conditions.",
         "Final walk-through, water-test drains, and quality inspection with the owner.",
     ],
 }
@@ -683,12 +682,12 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
     # Cover photo
     if cover_photo_bytes:
         try:
-            img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=1.4 * inch, kind="proportional")
+            img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=1.2 * inch, kind="proportional")
             story.append(img)
         except Exception:
             story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
     else:
-        ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[1.4 * inch])
+        ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[1.2 * inch])
         ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
         story.append(ph)
         story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))

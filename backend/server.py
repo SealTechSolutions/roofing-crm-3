@@ -132,6 +132,25 @@ ROOF_TYPES = [
     "TPO Replacement",
     "TPO",
 ]
+
+# CURRENT roof type dropdown — what's on the building today.
+# Excludes Over-Lay / Replacement variants (those are install-method labels, not existing surfaces).
+# Includes "None" for new construction.
+CURRENT_ROOF_TYPES = [
+    "None (new construction)",
+    "FARM (Fluid Applied Reinforced Membrane)",
+    "Silicone w/ Granules",
+    "Silicone",
+    "Tile",
+    "Shingle",
+    "Metal",
+    "BUR (Built-Up)",
+    "ModBit",
+    "EPDM w/ Ballast",
+    "EPDM",
+    "PVC",
+    "TPO",
+]
 DEAL_STATUSES = ["Lead", "Sent", "Won", "Lost", "Past Lead"]
 DEAL_TYPES = ["Assessment", "Scope"]
 VENDOR_KINDS = ["Vendor", "Subcontractor"]
@@ -699,6 +718,7 @@ async def options(current=Depends(get_current_user)):
         "project_types": PROJECT_TYPES,
         "material_categories": MATERIAL_CATEGORIES,
         "roof_types": ROOF_TYPES,
+        "current_roof_types": CURRENT_ROOF_TYPES,
         "deal_statuses": DEAL_STATUSES,
         "deal_types": DEAL_TYPES,
         "vendor_kinds": VENDOR_KINDS,

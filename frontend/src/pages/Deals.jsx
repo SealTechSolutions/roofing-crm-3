@@ -19,8 +19,8 @@ const empty = {
   lead_source: "Personal",
   referral_source: "",
   project_type: "Repair",
-  current_roof_type: "TPO",
-  proposed_roof_type: "TPO",
+  current_roof_type: "None (new construction)",
+  proposed_roof_type: "TPO Over-Lay",
   property_sqft: 0,
   perimeter_lnft: 0,
   avg_parapet_height: 0,
@@ -52,7 +52,7 @@ export default function Deals() {
   const [contacts, setContacts] = useState([]);
   const [properties, setProperties] = useState([]);
   const [users, setUsers] = useState([]);
-  const [options, setOptions] = useState({ lead_sources: [], project_types: [], roof_types: [], deal_statuses: [] });
+  const [options, setOptions] = useState({ lead_sources: [], project_types: [], roof_types: [], current_roof_types: [], deal_statuses: [] });
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
@@ -276,7 +276,7 @@ export default function Deals() {
                 <Input data-testid="deal-date-sent" type="date" value={form.date_sent} onChange={(v) => setForm({ ...form, date_sent: v })} />
               </Field>
               <Field label="Current Roof Type">
-                <Select data-testid="deal-current-roof" value={form.current_roof_type} onChange={(v) => setForm({ ...form, current_roof_type: v })} options={options.roof_types} />
+                <Select data-testid="deal-current-roof" value={form.current_roof_type} onChange={(v) => setForm({ ...form, current_roof_type: v })} options={options.current_roof_types?.length ? options.current_roof_types : options.roof_types} />
               </Field>
               <Field label="Proposed Roof Type">
                 <Select data-testid="deal-proposed-roof" value={form.proposed_roof_type} onChange={(v) => setForm({ ...form, proposed_roof_type: v })} options={options.roof_types} />
