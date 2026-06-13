@@ -1,0 +1,41 @@
+{
+  "summary": "Books Phase 4 — P&L, Balance Sheet, Late-Fee Accrual end-to-end tested. 13/13 new backend pytest tests pass (P&L shape + math, BS shape + balanced + natural-sign, journal drill-down by account_id/account_number/date_range, late-fee happy-path + idempotency + grace-period skip + admin-only). 31/31 Phase 1-3 regression tests still pass. Frontend Playwright: all 5 tabs (coa/activity/pl/bs/latefees) render with correct data-testids, hash routing works on reload, P&L row click opens drilldown-modal with date/memo/DR/CR + OPEN deep-link, BS shows balanced assets=L+E, Late-Fee tool shows entity dropdown + as-of input + Run Accrual button + result panel. No bugs blocking the feature.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Balance Sheet", "issues": ["Section subtotal row 'TOTAL ASSETS' appears twice — once at end of Assets section and once again as a big highlighted summary row right below. Visually redundant; consider removing the inline section subtotal so only the big summary row remains."]},
+      {"screen": "Late-Fee Tool", "issues": ["Uses browser-native window.confirm() instead of a shadcn AlertDialog — works but inconsistent with rest of CRM's modal UX."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_books_phase4.py",
+    "/app/test_reports/pytest/pytest_phase4.xml"
+  ],
+  "action_items": [
+    "(Cosmetic) BalanceSheetReport renders both section subtotal and big total-assets row — pick one to remove",
+    "(Cosmetic) Replace window.confirm with shadcn AlertDialog in LateFeeAccrualTool.run()"
+  ],
+  "critical_code_review_comments": [
+    "BooksReports.jsx (~417 lines) is under the 700-line threshold but contains 4 logical components — consider splitting into /pages/Books/{ProfitLoss,BalanceSheet,LateFees,Drilldown}.jsx before adding new reports (e.g. Cash Flow, AR Aging).",
+    "gl.py report_balance_sheet() calls _account_balances() twice with identical args (once for sections, once for income_rows). Single call would halve aggregation cost.",
+    "BooksCOA.jsx has no `hashchange` event listener — if user manually edits the URL hash without a reload, view state doesn't update. Tabs work via clicks (state→hash one-way sync) and via page reload (hash→state on mount), but back/forward navigation across in-page hashes is a dead-end. Add `useEffect(() => { const h = () => setView(...); window.addEventListener('hashchange', h); return () => window.removeEventListener('hashchange', h); }, [])`.",
+    "accrue_late_fees() iterates db.invoices.find(q) sequentially with awaits inside — for >1000 invoices this becomes slow. Consider batching or using asyncio.gather() with concurrency limit.",
+    "report_balance_sheet returns `totals.equity_total = equity_accounts + current_earnings` but doesn't show `current_earnings` as its own row in `sections.Equity` — front-end has to render it as a synthesized 'Current-period earnings' row, which is what BalanceSheetReport.jsx does. Documented behavior, works correctly.",
+    "Late-fee fixed rate constant (1.5%) is hardcoded in gl.py — should be configurable per entity (e.g. on the entity doc) for future jurisdictions/contracts."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_books_phase4.py (new)"
+  ],
+  "success_rate": {"backend": "100% (13/13 new + 31/31 regression)", "frontend": "100% (all tabs, hash routing, drilldown, late-fee tool verified)"},
+  "test_credentials": "admin@roofingcrm.com / admin123 (working)",
+  "seed_data_creation": "All test invoices/bills created with 'TEST_QA' prefix and DELETE'd in finally blocks. No persistent test residue.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 4 tests at /app/backend/tests/test_books_phase4.py. Late-fee accrual tested with $10k invoice due 2026-04-01 as_of 2026-06-15 → DR 1100=$150 / CR 4200=$150. Posting key is 'late_fee:{YYYY-MM}' on the journal (NOT in posting_key field directly — see gl.post_journal which builds posting_key as 'invoice:{id}:late_fee:2026-06'). Idempotency verified by checking that posting_key unique index prevents duplicates across re-runs. BS balanced check uses 0.01 epsilon. P&L sections natural balance: Revenue/Liability/Equity = credit-positive, Asset/COGS/Expense = debit-positive.",
+  "rca of the issue": "N/A — no bugs found in Phase 4 deliverable. Phase 4 ships clean."
+}

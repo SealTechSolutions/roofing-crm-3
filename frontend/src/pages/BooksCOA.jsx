@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight } from "lucide-react";
+import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2 } from "lucide-react";
+import { ProfitLossReport, BalanceSheetReport, LateFeeAccrualTool } from "@/pages/BooksReports";
 
 const ACCOUNT_TYPES = ["Asset", "Liability", "Equity", "Revenue", "COGS", "Expense", "Other"];
 
@@ -48,17 +49,17 @@ export default function BooksCOA() {
   const [showEntityEdit, setShowEntityEdit] = useState(false);
   const [showEntityNew, setShowEntityNew] = useState(false);
 
-  // Tabs: 'coa' or 'activity'
+  // Tabs: coa | activity | pl | bs | latefees
+  const VALID_VIEWS = ["coa", "activity", "pl", "bs", "latefees"];
   const [view, setView] = useState(() => {
     const fromHash = (typeof window !== "undefined" && window.location.hash || "").replace("#", "");
-    return fromHash === "activity" ? "activity" : "coa";
+    return VALID_VIEWS.includes(fromHash) ? fromHash : "coa";
   });
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (view === "activity") {
-      window.location.hash = "activity";
+    if (view !== "coa") {
+      window.location.hash = view;
     } else if (window.location.hash) {
-      // Clear hash cleanly (no trailing #) when going back to default COA tab
       const url = window.location.pathname + window.location.search;
       window.history.replaceState(null, "", url);
     }
@@ -188,7 +189,7 @@ export default function BooksCOA() {
             <BookOpen className="w-7 h-7 text-blue-700" />
             <div>
               <h1 className="text-2xl font-black uppercase tracking-wider text-zinc-900">Books</h1>
-              <div className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Chart of Accounts</div>
+              <div className="text-xs uppercase tracking-widest text-zinc-500 font-bold">Multi-Entity General Ledger</div>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -248,9 +249,12 @@ export default function BooksCOA() {
         </div>
 
         {/* Tabs */}
-        <div className="px-8 pb-0 flex items-center gap-1 border-b border-zinc-200 -mb-px">
+        <div className="px-8 pb-0 flex items-center gap-1 border-b border-zinc-200 -mb-px overflow-x-auto">
           <TabButton active={view === "coa"} onClick={() => setView("coa")} icon={BookOpen} label="Chart of Accounts" testId="tab-coa" />
           <TabButton active={view === "activity"} onClick={() => setView("activity")} icon={Activity} label="Journal Activity" testId="tab-activity" />
+          <TabButton active={view === "pl"} onClick={() => setView("pl")} icon={TrendingUp} label="P&L" testId="tab-pl" />
+          <TabButton active={view === "bs"} onClick={() => setView("bs")} icon={Scale} label="Balance Sheet" testId="tab-bs" />
+          <TabButton active={view === "latefees"} onClick={() => setView("latefees")} icon={Wand2} label="Late Fees" testId="tab-latefees" />
         </div>
 
         {/* Filters — only when on COA tab */}
@@ -443,6 +447,21 @@ export default function BooksCOA() {
       {/* Body — Journal Activity */}
       {view === "activity" && (
         <JournalFeed entityId={entityId} entities={entities} />
+      )}
+
+      {/* Body — Profit & Loss */}
+      {view === "pl" && (
+        <ProfitLossReport entityId={entityId} entityName={currentEntity?.name} />
+      )}
+
+      {/* Body — Balance Sheet */}
+      {view === "bs" && (
+        <BalanceSheetReport entityId={entityId} entityName={currentEntity?.name} />
+      )}
+
+      {/* Body — Late-Fee Accrual */}
+      {view === "latefees" && (
+        <LateFeeAccrualTool entities={entities} />
       )}
 
       {showEntityEdit && currentEntity && (

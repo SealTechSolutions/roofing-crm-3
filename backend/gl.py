@@ -336,3 +336,219 @@ async def ensure_indexes(db):
     await db.journal_entries.create_index("posting_key", unique=True)
     await db.journal_entries.create_index([("entity_id", 1), ("date", -1)])
     await db.journal_entries.create_index([("source_type", 1), ("source_id", 1)])
+
+
+# ---------- P&L / Balance Sheet Reports ----------
+
+async def _account_balances(db, entity_id: str, *, date_from: Optional[str] = None, date_to: Optional[str] = None) -> List[dict]:
+    """Return one row per account in the entity's COA with debit/credit totals from journal lines in the window."""
+    match: dict = {"entity_id": entity_id, "is_reversed": {"$ne": True}}
+    if date_from:
+        match.setdefault("date", {})["$gte"] = date_from
+    if date_to:
+        match.setdefault("date", {})["$lte"] = date_to
+    pipeline = [
+        {"$match": match},
+        {"$unwind": "$lines"},
+        {"$group": {
+            "_id": "$lines.account_id",
+            "account_number": {"$first": "$lines.account_number"},
+            "account_name": {"$first": "$lines.account_name"},
+            "account_type": {"$first": "$lines.account_type"},
+            "debit": {"$sum": "$lines.debit"},
+            "credit": {"$sum": "$lines.credit"},
+        }},
+    ]
+    out = []
+    async for row in db.journal_entries.aggregate(pipeline):
+        out.append({
+            "account_id": row["_id"],
+            "account_number": row.get("account_number"),
+            "account_name": row.get("account_name"),
+            "account_type": row.get("account_type"),
+            "debit": round(float(row.get("debit") or 0), 2),
+            "credit": round(float(row.get("credit") or 0), 2),
+        })
+    return out
+
+
+def _natural_balance(account_type: str, debit: float, credit: float) -> float:
+    """Compute the natural-side balance for an account based on its type."""
+    if account_type in ("Asset", "COGS", "Expense"):
+        return round(debit - credit, 2)
+    # Liability, Equity, Revenue (and "Other" defaults to credit-positive)
+    return round(credit - debit, 2)
+
+
+async def report_profit_loss(db, entity_id: str, date_from: Optional[str], date_to: Optional[str]) -> dict:
+    """Build a P&L (Income Statement) for an entity over a date range."""
+    rows = await _account_balances(db, entity_id, date_from=date_from, date_to=date_to)
+    sections = {"Revenue": [], "COGS": [], "Expense": [], "Other": []}
+    for r in rows:
+        t = r["account_type"]
+        if t in sections:
+            sections[t].append({**r, "balance": _natural_balance(t, r["debit"], r["credit"])})
+    for k in sections:
+        sections[k].sort(key=lambda x: x["account_number"] or "")
+    total_revenue = round(sum(a["balance"] for a in sections["Revenue"]), 2)
+    total_cogs = round(sum(a["balance"] for a in sections["COGS"]), 2)
+    gross_profit = round(total_revenue - total_cogs, 2)
+    total_expense = round(sum(a["balance"] for a in sections["Expense"]), 2)
+    total_other = round(sum(a["balance"] for a in sections["Other"]), 2)
+    net_income = round(gross_profit - total_expense + total_other, 2)
+    return {
+        "entity_id": entity_id,
+        "date_from": date_from,
+        "date_to": date_to,
+        "sections": sections,
+        "totals": {
+            "revenue": total_revenue,
+            "cogs": total_cogs,
+            "gross_profit": gross_profit,
+            "gross_margin_pct": round((gross_profit / total_revenue * 100), 2) if total_revenue else 0,
+            "operating_expense": total_expense,
+            "other_income_expense": total_other,
+            "net_income": net_income,
+            "net_margin_pct": round((net_income / total_revenue * 100), 2) if total_revenue else 0,
+        },
+    }
+
+
+async def report_balance_sheet(db, entity_id: str, as_of: Optional[str]) -> dict:
+    """Build a Balance Sheet as of a date. Equity includes net income earned through as_of."""
+    # All journals through as_of for B/S accounts
+    rows = await _account_balances(db, entity_id, date_to=as_of)
+    sections = {"Asset": [], "Liability": [], "Equity": []}
+    for r in rows:
+        t = r["account_type"]
+        if t in sections:
+            sections[t].append({**r, "balance": _natural_balance(t, r["debit"], r["credit"])})
+    for k in sections:
+        sections[k].sort(key=lambda x: x["account_number"] or "")
+
+    # Net income line for retained earnings — sum all Rev - COGS - Expense + Other up to as_of
+    income_rows = await _account_balances(db, entity_id, date_to=as_of)
+    rev = sum(_natural_balance("Revenue", r["debit"], r["credit"]) for r in income_rows if r["account_type"] == "Revenue")
+    cogs = sum(_natural_balance("COGS", r["debit"], r["credit"]) for r in income_rows if r["account_type"] == "COGS")
+    opex = sum(_natural_balance("Expense", r["debit"], r["credit"]) for r in income_rows if r["account_type"] == "Expense")
+    other = sum(_natural_balance("Other", r["debit"], r["credit"]) for r in income_rows if r["account_type"] == "Other")
+    current_earnings = round(rev - cogs - opex + other, 2)
+
+    total_assets = round(sum(a["balance"] for a in sections["Asset"]), 2)
+    total_liabilities = round(sum(a["balance"] for a in sections["Liability"]), 2)
+    total_equity_accts = round(sum(a["balance"] for a in sections["Equity"]), 2)
+    total_equity = round(total_equity_accts + current_earnings, 2)
+    out_of_balance = round(total_assets - (total_liabilities + total_equity), 2)
+    return {
+        "entity_id": entity_id,
+        "as_of": as_of,
+        "sections": sections,
+        "current_earnings": current_earnings,
+        "totals": {
+            "assets": total_assets,
+            "liabilities": total_liabilities,
+            "equity_accounts": total_equity_accts,
+            "equity_total": total_equity,
+            "liab_plus_equity": round(total_liabilities + total_equity, 2),
+            "out_of_balance": out_of_balance,
+            "balanced": abs(out_of_balance) < 0.01,
+        },
+    }
+
+
+# ---------- Late-Fee Accrual Batch ----------
+
+LATE_FEE_MONTHLY_RATE = 0.015  # 1.5% per month (18% APR)
+LATE_FEE_GRACE_DAYS = 30
+LATE_FEE_REVENUE_ACCT = "4200"
+LATE_FEE_AR_ACCT = "1100"
+
+
+def _days_between(d1: str, d2: str) -> int:
+    try:
+        a = datetime.fromisoformat(d1[:10])
+        b = datetime.fromisoformat(d2[:10])
+        return (b - a).days
+    except Exception:
+        return 0
+
+
+async def accrue_late_fees(
+    db,
+    *,
+    entity_id: Optional[str] = None,
+    as_of: Optional[str] = None,
+    posted_by_user_id: Optional[str] = None,
+) -> dict:
+    """Walk eligible unpaid invoices and post a 1.5% monthly late-fee accrual journal per invoice.
+
+    - Eligible: invoice has entity_id, status != Void/Draft, balance_due > 0, days_overdue > 30
+    - Per-invoice fee = balance_due * 1.5% (one month's worth)
+    - Idempotent on posting_key `late_fee:{invoice_id}:{YYYY-MM}` — re-running same month overwrites
+    """
+    today_str = as_of or datetime.now(timezone.utc).date().isoformat()
+    period = today_str[:7]  # YYYY-MM
+
+    q: dict = {
+        "is_deleted": {"$ne": True},
+        "entity_id": {"$exists": True, "$nin": [None, ""]},
+    }
+    if entity_id:
+        q["entity_id"] = entity_id
+
+    accrued_invoices = 0
+    accrued_total = 0.0
+    skipped = 0
+    entities_touched = set()
+
+    async for inv in db.invoices.find(q):
+        status = (inv.get("status") or "").lower()
+        if status in ("void", "draft"):
+            skipped += 1
+            continue
+        balance = round(float(inv.get("balance_due") or (float(inv.get("total") or 0) - float(inv.get("amount_paid") or 0))), 2)
+        if balance <= 0:
+            skipped += 1
+            continue
+        due_date = inv.get("due_date") or inv.get("invoice_date")
+        if not due_date:
+            skipped += 1
+            continue
+        days_overdue = _days_between(due_date, today_str)
+        if days_overdue <= LATE_FEE_GRACE_DAYS:
+            skipped += 1
+            continue
+        fee = round(balance * LATE_FEE_MONTHLY_RATE, 2)
+        if fee <= 0:
+            skipped += 1
+            continue
+        ent = inv["entity_id"]
+        entities_touched.add(ent)
+        lines = [
+            await _build_line(db, ent, LATE_FEE_AR_ACCT, debit=fee, credit=0, memo=f"Late fee — Invoice {inv.get('invoice_number','')}"),
+            await _build_line(db, ent, LATE_FEE_REVENUE_ACCT, debit=0, credit=fee, memo=f"1.5% late fee accrual ({period})"),
+        ]
+        memo = f"Late-fee accrual {period} · Invoice {inv.get('invoice_number','')} · {days_overdue}d overdue · balance ${balance:,.2f}"
+        # idempotent: source_type='invoice', source_id=inv['id'], kind=f"late_fee:{period}"
+        posted = await post_journal(
+            db,
+            entity_id=ent,
+            source_type="invoice",
+            source_id=inv["id"],
+            kind=f"late_fee:{period}",
+            lines=lines,
+            memo=memo,
+            posting_date=today_str,
+            posted_by_user_id=posted_by_user_id,
+        )
+        if posted:
+            accrued_invoices += 1
+            accrued_total += fee
+    return {
+        "as_of": today_str,
+        "period": period,
+        "entities_touched": len(entities_touched),
+        "invoices_accrued": accrued_invoices,
+        "invoices_skipped": skipped,
+        "total_late_fees": round(accrued_total, 2),
+    }

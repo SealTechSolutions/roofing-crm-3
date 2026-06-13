@@ -336,6 +336,11 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
     @router.get("/journal-entries")
     async def list_journal_entries(
         entity_id: Optional[str] = None,
+        account_id: Optional[str] = None,
+        account_number: Optional[str] = None,
+        source_id: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
         limit: int = 100,
         include_reversed: bool = False,
         current=Depends(get_current_user),
@@ -343,6 +348,18 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
         q: dict = {}
         if entity_id:
             q["entity_id"] = entity_id
+        if source_id:
+            q["source_id"] = source_id
+        if date_from or date_to:
+            q["date"] = {}
+            if date_from:
+                q["date"]["$gte"] = date_from
+            if date_to:
+                q["date"]["$lte"] = date_to
+        if account_id:
+            q["lines.account_id"] = account_id
+        if account_number:
+            q["lines.account_number"] = account_number
         if not include_reversed:
             q["is_reversed"] = {"$ne": True}
         out = []
@@ -367,5 +384,34 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
             kpi["is_parent"] = e.get("is_parent", False)
             out.append(kpi)
         return out
+
+    @router.get("/reports/profit-loss")
+    async def report_profit_loss_endpoint(
+        entity_id: str,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        current=Depends(get_current_user),
+    ):
+        from gl import report_profit_loss
+        return await report_profit_loss(db, entity_id, date_from, date_to)
+
+    @router.get("/reports/balance-sheet")
+    async def report_balance_sheet_endpoint(
+        entity_id: str,
+        as_of: Optional[str] = None,
+        current=Depends(get_current_user),
+    ):
+        from gl import report_balance_sheet
+        return await report_balance_sheet(db, entity_id, as_of)
+
+    # ---------- Late-Fee Accrual Batch ----------
+    @router.post("/late-fees/accrue")
+    async def late_fees_accrue(
+        entity_id: Optional[str] = None,
+        as_of: Optional[str] = None,
+        current=Depends(require_admin),
+    ):
+        from gl import accrue_late_fees
+        return await accrue_late_fees(db, entity_id=entity_id, as_of=as_of, posted_by_user_id=current.get("id"))
 
     return router

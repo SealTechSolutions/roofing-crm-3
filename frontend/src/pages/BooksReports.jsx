@@ -1,0 +1,416 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { api, formatApiError } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
+import { ChevronRight, Printer, AlertTriangle, Play } from "lucide-react";
+
+const fmtMoney = (n) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n || 0);
+const fmtMoneyExact = (n) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(n || 0);
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const monthStartISO = () => {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+};
+const yearStartISO = () => new Date().getFullYear() + "-01-01";
+
+// =========================================================
+// P&L Report
+// =========================================================
+export function ProfitLossReport({ entityId, entityName }) {
+  const [dateFrom, setDateFrom] = useState(yearStartISO());
+  const [dateTo, setDateTo] = useState(todayISO());
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [drill, setDrill] = useState(null); // {account_id, account_name}
+
+  const load = async () => {
+    if (!entityId) return;
+    setLoading(true);
+    try {
+      const r = await api.get(
+        `/books/reports/profit-loss?entity_id=${entityId}&date_from=${dateFrom}&date_to=${dateTo}`
+      );
+      setData(r.data);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [entityId, dateFrom, dateTo]);
+
+  if (!entityId) return <div className="p-8 text-zinc-500 text-sm">Select an entity.</div>;
+
+  return (
+    <div className="px-8 py-6" data-testid="pl-report">
+      <ReportToolbar
+        title="Profit & Loss"
+        subtitle={`${entityName || ""} · ${dateFrom} → ${dateTo}`}
+      >
+        <DateRangeQuick
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
+        />
+        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="border border-zinc-300 px-2 py-1.5 text-xs" data-testid="pl-date-from" />
+        <span className="text-zinc-400 text-xs">→</span>
+        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="border border-zinc-300 px-2 py-1.5 text-xs" data-testid="pl-date-to" />
+        <button onClick={() => window.print()} className="ml-auto px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-zinc-300 hover:border-blue-700 hover:text-blue-700 transition-colors flex items-center gap-2">
+          <Printer className="w-3.5 h-3.5" /> Print
+        </button>
+      </ReportToolbar>
+
+      {loading && <div className="text-sm text-zinc-500">Loading...</div>}
+      {!loading && data && (
+        <div className="bg-white border border-zinc-200">
+          <ReportSection label="Revenue" rows={data.sections.Revenue} total={data.totals.revenue} entityId={entityId} dateFrom={dateFrom} dateTo={dateTo} onDrill={setDrill} />
+          <ReportSection label="Cost of Goods Sold" rows={data.sections.COGS} total={data.totals.cogs} entityId={entityId} dateFrom={dateFrom} dateTo={dateTo} onDrill={setDrill} />
+          <SubtotalRow label="Gross Profit" value={data.totals.gross_profit} hint={`Gross Margin ${data.totals.gross_margin_pct}%`} tone="emerald" testId="pl-gross-profit" />
+          <ReportSection label="Operating Expense" rows={data.sections.Expense} total={data.totals.operating_expense} entityId={entityId} dateFrom={dateFrom} dateTo={dateTo} onDrill={setDrill} />
+          <ReportSection label="Other Income / Expense" rows={data.sections.Other} total={data.totals.other_income_expense} entityId={entityId} dateFrom={dateFrom} dateTo={dateTo} onDrill={setDrill} />
+          <SubtotalRow label="Net Income" value={data.totals.net_income} hint={`Net Margin ${data.totals.net_margin_pct}%`} tone="blue" big testId="pl-net-income" />
+        </div>
+      )}
+
+      {drill && (
+        <DrilldownModal
+          entityId={entityId}
+          account={drill}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onClose={() => setDrill(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// =========================================================
+// Balance Sheet
+// =========================================================
+export function BalanceSheetReport({ entityId, entityName }) {
+  const [asOf, setAsOf] = useState(todayISO());
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [drill, setDrill] = useState(null);
+
+  const load = async () => {
+    if (!entityId) return;
+    setLoading(true);
+    try {
+      const r = await api.get(`/books/reports/balance-sheet?entity_id=${entityId}&as_of=${asOf}`);
+      setData(r.data);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [entityId, asOf]);
+
+  if (!entityId) return <div className="p-8 text-zinc-500 text-sm">Select an entity.</div>;
+
+  return (
+    <div className="px-8 py-6" data-testid="bs-report">
+      <ReportToolbar title="Balance Sheet" subtitle={`${entityName || ""} · as of ${asOf}`}>
+        <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">As of</span>
+        <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} className="border border-zinc-300 px-2 py-1.5 text-xs" data-testid="bs-as-of" />
+        <button onClick={() => window.print()} className="ml-auto px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-zinc-300 hover:border-blue-700 hover:text-blue-700 transition-colors flex items-center gap-2">
+          <Printer className="w-3.5 h-3.5" /> Print
+        </button>
+      </ReportToolbar>
+
+      {loading && <div className="text-sm text-zinc-500">Loading...</div>}
+      {!loading && data && (
+        <div className="bg-white border border-zinc-200">
+          <ReportSection label="Assets" rows={data.sections.Asset} total={data.totals.assets} entityId={entityId} dateTo={asOf} onDrill={setDrill} />
+          <SubtotalRow label="Total Assets" value={data.totals.assets} tone="blue" big testId="bs-total-assets" />
+          <ReportSection label="Liabilities" rows={data.sections.Liability} total={data.totals.liabilities} entityId={entityId} dateTo={asOf} onDrill={setDrill} />
+          <ReportSection label="Equity" rows={data.sections.Equity} total={data.totals.equity_accounts} entityId={entityId} dateTo={asOf} onDrill={setDrill} />
+          <div className="px-5 py-2 border-t border-zinc-200 flex items-center justify-between text-sm bg-zinc-50">
+            <span className="italic text-zinc-700">Current-period earnings</span>
+            <span className="font-mono font-bold">{fmtMoney(data.current_earnings)}</span>
+          </div>
+          <SubtotalRow label="Total Equity" value={data.totals.equity_total} tone="emerald" testId="bs-total-equity" />
+          <SubtotalRow label="Total Liabilities + Equity" value={data.totals.liab_plus_equity} tone="blue" big testId="bs-total-leq" />
+          {!data.totals.balanced && (
+            <div className="px-5 py-3 bg-rose-50 border-t border-rose-200 text-xs flex items-center gap-2 text-rose-800 font-bold">
+              <AlertTriangle className="w-4 h-4" />
+              Out of balance by {fmtMoneyExact(data.totals.out_of_balance)} — check journals or reverse a duplicate.
+            </div>
+          )}
+        </div>
+      )}
+
+      {drill && (
+        <DrilldownModal entityId={entityId} account={drill} dateTo={asOf} onClose={() => setDrill(null)} />
+      )}
+    </div>
+  );
+}
+
+// =========================================================
+// Late-Fee Accrual Tool
+// =========================================================
+export function LateFeeAccrualTool({ entities }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const [entityId, setEntityId] = useState("");  // "" = all entities
+  const [asOf, setAsOf] = useState(todayISO());
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  if (!isAdmin) {
+    return <div className="p-8 text-zinc-500 text-sm">Admin only — Late-Fee accrual must be approved before posting to the GL.</div>;
+  }
+
+  const run = async () => {
+    if (!window.confirm(`Accrue 1.5% late fees for invoices > 30 days overdue as of ${asOf}?\n\nThis is idempotent — re-running for the same month overwrites the previous accrual.`)) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const params = new URLSearchParams({ as_of: asOf });
+      if (entityId) params.set("entity_id", entityId);
+      const r = await api.post(`/books/late-fees/accrue?${params}`);
+      setResult(r.data);
+      toast.success(`Accrued ${fmtMoney(r.data.total_late_fees)} across ${r.data.invoices_accrued} invoices`);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="px-8 py-6 max-w-3xl" data-testid="late-fee-tool">
+      <div className="bg-white border border-zinc-200">
+        <div className="px-5 py-4 border-b border-zinc-200">
+          <h2 className="font-heading text-lg font-bold tracking-tight">Month-End Late Fee Accrual</h2>
+          <p className="text-xs text-zinc-500 mt-1">
+            Posts a 1.5% monthly fee (DR 1100 A/R ↔ CR 4200 Late Fees Earned) on every unpaid invoice past its 30-day grace period.
+            Run once per month after closing.
+          </p>
+        </div>
+        <div className="p-5 grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Entity (blank = all entities)</label>
+            <select
+              data-testid="late-fee-entity"
+              value={entityId}
+              onChange={(e) => setEntityId(e.target.value)}
+              className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+            >
+              <option value="">— All Entities —</option>
+              {entities.map((e) => (
+                <option key={e.id} value={e.id}>{e.name}{e.is_parent ? "  (Parent)" : ""}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">As-of Date</label>
+            <input
+              data-testid="late-fee-as-of"
+              type="date"
+              value={asOf}
+              onChange={(e) => setAsOf(e.target.value)}
+              className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+            />
+          </div>
+        </div>
+        <div className="px-5 py-3 border-t border-zinc-200 flex items-center justify-between">
+          <div className="text-[11px] text-zinc-500">
+            Rule: balance × 1.5% per month, >30 days overdue. Posting key includes the month so re-runs are safe.
+          </div>
+          <button
+            data-testid="late-fee-run-btn"
+            onClick={run}
+            disabled={busy}
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            <Play className="w-3.5 h-3.5" />
+            {busy ? "Running..." : "Run Accrual"}
+          </button>
+        </div>
+      </div>
+
+      {result && (
+        <div className="mt-4 bg-emerald-50 border border-emerald-200 p-5" data-testid="late-fee-result">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 mb-3">Last Run Summary</div>
+          <div className="grid grid-cols-4 gap-4">
+            <ResultCell label="Period" value={result.period} />
+            <ResultCell label="Invoices Accrued" value={result.invoices_accrued} />
+            <ResultCell label="Total Accrued" value={fmtMoney(result.total_late_fees)} accent />
+            <ResultCell label="Skipped" value={result.invoices_skipped} hint="paid / no entity / not yet overdue" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =========================================================
+// Building blocks
+// =========================================================
+function ReportToolbar({ title, subtitle, children }) {
+  return (
+    <div className="mb-4">
+      <div className="flex items-baseline gap-4 mb-3 print:mb-1">
+        <h1 className="text-xl font-black uppercase tracking-wider text-zinc-900">{title}</h1>
+        <div className="text-xs uppercase tracking-widest text-zinc-500 font-bold">{subtitle}</div>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap print:hidden">{children}</div>
+    </div>
+  );
+}
+
+function DateRangeQuick({ dateFrom, dateTo, onChange }) {
+  const presets = [
+    { label: "MTD", from: monthStartISO(), to: todayISO() },
+    { label: "YTD", from: yearStartISO(), to: todayISO() },
+    { label: "Last 30d", from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10), to: todayISO() },
+    { label: "All", from: "2020-01-01", to: "2099-12-31" },
+  ];
+  return (
+    <div className="flex items-center gap-1">
+      {presets.map((p) => (
+        <button
+          key={p.label}
+          onClick={() => onChange(p.from, p.to)}
+          className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-widest border transition-colors ${
+            dateFrom === p.from && dateTo === p.to
+              ? "border-blue-700 text-blue-700 bg-blue-50"
+              : "border-zinc-300 text-zinc-600 hover:border-blue-700 hover:text-blue-700"
+          }`}
+          data-testid={`preset-${p.label.toLowerCase().replace(/[^a-z0-9]/g, "")}`}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReportSection({ label, rows, total, entityId, dateFrom, dateTo, onDrill }) {
+  if (!rows?.length) return null;
+  return (
+    <div className="border-b border-zinc-200">
+      <div className="px-5 py-2 bg-zinc-50 text-[10px] font-bold uppercase tracking-widest text-zinc-700">{label}</div>
+      {rows.map((r) => (
+        <button
+          key={r.account_id}
+          onClick={() => onDrill({ account_id: r.account_id, account_number: r.account_number, account_name: r.account_name })}
+          className="w-full px-5 py-1.5 flex items-center justify-between hover:bg-blue-50 transition-colors text-sm"
+          data-testid={`pl-row-${r.account_number}`}
+        >
+          <span className="font-mono text-xs text-zinc-700">
+            <span className="text-zinc-400 mr-2">{r.account_number}</span>
+            {r.account_name}
+          </span>
+          <span className="font-mono font-bold text-zinc-900">{fmtMoney(r.balance)}</span>
+        </button>
+      ))}
+      <div className="px-5 py-1.5 flex items-center justify-between text-sm border-t border-zinc-100 bg-zinc-50/60">
+        <span className="font-bold text-xs uppercase tracking-wider text-zinc-700">Total {label}</span>
+        <span className="font-mono font-black text-zinc-900">{fmtMoney(total)}</span>
+      </div>
+    </div>
+  );
+}
+
+function SubtotalRow({ label, value, hint, tone = "zinc", big = false, testId }) {
+  const tones = {
+    blue: "bg-blue-50 border-blue-200 text-blue-900",
+    emerald: "bg-emerald-50 border-emerald-200 text-emerald-900",
+    zinc: "bg-zinc-100 border-zinc-200 text-zinc-900",
+  };
+  return (
+    <div className={`px-5 ${big ? "py-4" : "py-2.5"} flex items-center justify-between border-t-2 ${tones[tone]}`} data-testid={testId}>
+      <div>
+        <div className={`font-black uppercase tracking-wider ${big ? "text-base" : "text-xs"}`}>{label}</div>
+        {hint && <div className="text-[10px] text-zinc-600 mt-0.5">{hint}</div>}
+      </div>
+      <div className={`font-mono font-black ${big ? "text-2xl" : "text-base"}`}>{fmtMoney(value)}</div>
+    </div>
+  );
+}
+
+function ResultCell({ label, value, hint, accent }) {
+  return (
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{label}</div>
+      <div className={`font-mono font-black mt-0.5 ${accent ? "text-emerald-700 text-xl" : "text-zinc-900 text-base"}`}>{value}</div>
+      {hint && <div className="text-[10px] text-zinc-400 mt-0.5">{hint}</div>}
+    </div>
+  );
+}
+
+function DrilldownModal({ entityId, account, dateFrom, dateTo, onClose }) {
+  const [entries, setEntries] = useState(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams({ entity_id: entityId, account_id: account.account_id, limit: "200" });
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    api.get(`/books/journal-entries?${params}`).then((r) => setEntries(r.data || [])).catch(() => setEntries([]));
+  }, [entityId, account, dateFrom, dateTo]);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" data-testid="drilldown-modal">
+      <div className="bg-white max-w-3xl w-full max-h-[80vh] flex flex-col">
+        <div className="px-5 py-3 border-b border-zinc-200 flex items-center justify-between">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Account Drill-Down</div>
+            <div className="font-bold text-zinc-900 mt-0.5">
+              <span className="font-mono text-zinc-400 mr-2">{account.account_number}</span>
+              {account.account_name}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-900 text-2xl leading-none" data-testid="close-drilldown">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1">
+          {entries === null && <div className="p-8 text-sm text-zinc-500">Loading...</div>}
+          {entries && entries.length === 0 && <div className="p-8 text-sm text-zinc-500">No journal entries hit this account in range.</div>}
+          {entries && entries.length > 0 && (
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-50 text-[10px] uppercase tracking-widest text-zinc-500 font-bold sticky top-0">
+                <tr>
+                  <th className="text-left px-4 py-2 w-28">Date</th>
+                  <th className="text-left px-4 py-2">Memo</th>
+                  <th className="text-right px-4 py-2 w-24">DR</th>
+                  <th className="text-right px-4 py-2 w-24">CR</th>
+                  <th className="text-right px-4 py-2 w-28"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((j) => {
+                  const line = (j.lines || []).find((l) => l.account_id === account.account_id);
+                  if (!line) return null;
+                  const sourcePath = j.source_type === "vendor_bill" ? `/payables?focus=${j.source_id}` : `/invoices?focus=${j.source_id}`;
+                  return (
+                    <tr key={j.id} className="border-t border-zinc-100">
+                      <td className="px-4 py-2 font-mono text-xs text-zinc-600">{j.date}</td>
+                      <td className="px-4 py-2 text-zinc-800 truncate" title={j.memo}>{j.memo}</td>
+                      <td className="px-4 py-2 text-right font-mono text-xs font-bold text-blue-700">{line.debit > 0 ? fmtMoney(line.debit) : ""}</td>
+                      <td className="px-4 py-2 text-right font-mono text-xs font-bold text-emerald-700">{line.credit > 0 ? fmtMoney(line.credit) : ""}</td>
+                      <td className="px-4 py-2 text-right">
+                        <Link to={sourcePath} onClick={onClose} className="text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:text-blue-900 inline-flex items-center gap-1">
+                          Open <ChevronRight className="w-3 h-3" />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
