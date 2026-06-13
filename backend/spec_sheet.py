@@ -859,13 +859,24 @@ def _scope_block(s, title, items):
     return elems
 
 
-def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str | None = None, current_roof_type: str | None = None) -> bytes:
+def build_spec_sheet(
+    data: dict,
+    cover_photo_bytes: bytes = None,
+    roof_type: str | None = None,
+    current_roof_type: str | None = None,
+    signer_name: str | None = None,
+    signer_credentials: str | None = None,
+) -> bytes:
     """Build a SealTech-branded scope/spec sheet for the given roof type.
 
     `roof_type` selects which scope template to render. If `current_roof_type`
     indicates no existing roof (e.g. "None (new construction)"), the
     new-construction variant of the system is used when available.
     Falls back to the existing silicone restoration scope otherwise.
+
+    `signer_name` + `signer_credentials` populate the closing signature block
+    (e.g. "Darren Oliver, CSI, IIBEC / SealTech Building Solutions"). If not
+    provided, falls back to the founder/GM's signature for back-compat.
     """
     template = _resolve_template(
         roof_type or data.get("roof_type_label"),
@@ -1020,8 +1031,17 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
     ))
     story.append(Spacer(1, 0.08 * inch if template.get("tier_table") else 0.06 * inch))
 
+    # Closing signature line — pulls from logged-in user when supplied, else
+    # falls back to the founder/GM signature.
+    sn = (signer_name or "").strip() or "Darren Oliver"
+    sc = (signer_credentials or "").strip()
+    # If the caller didn't pass credentials, keep the historical "CSI, IIBEC"
+    # only when also using the default signer; otherwise show name alone.
+    if not sc and (signer_name or "").strip() == "":
+        sc = "CSI, IIBEC"
+    signer_line = f"<b>{sn}{', ' + sc if sc else ''}</b><br/>SealTech Building Solutions"
     sig = Table([
-        [Paragraph("<b>Darren Oliver, CSI, IIBEC</b><br/>SealTech Building Solutions", s["body"]), ""],
+        [Paragraph(signer_line, s["body"]), ""],
     ], colWidths=[3.5 * inch, 4.0 * inch])
     story.append(sig)
     story.append(Spacer(1, 0.06 * inch if template.get("tier_table") else 0.02 * inch))

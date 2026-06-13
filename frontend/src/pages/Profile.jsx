@@ -16,7 +16,7 @@ export default function Profile() {
         </div>
         <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight">My Profile</h1>
         <div className="mt-2 text-xs uppercase tracking-wider text-zinc-500">
-          Edit your name, job title, phone, and password
+          Edit your name, job title, credentials, phone, and password
         </div>
       </div>
 
@@ -31,6 +31,7 @@ function ProfileSection({ user, onSaved }) {
   const [name, setName] = useState(user?.name || "");
   const [title, setTitle] = useState(user?.title || "");
   const [phone, setPhone] = useState(user?.phone || "");
+  const [credentials, setCredentials] = useState(user?.credentials || "");
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
@@ -40,7 +41,7 @@ function ProfileSection({ user, onSaved }) {
     }
     setSaving(true);
     try {
-      await api.put("/auth/me", { name: name.trim(), title: title.trim(), phone: phone.trim() });
+      await api.put("/auth/me", { name: name.trim(), title: title.trim(), phone: phone.trim(), credentials: credentials.trim() });
       await onSaved();
       toast.success("Profile updated");
     } catch (e) {
@@ -49,6 +50,11 @@ function ProfileSection({ user, onSaved }) {
       setSaving(false);
     }
   };
+
+  // Live signature preview matches the spec sheet exactly
+  const sigName = name.trim() || "Darren Oliver";
+  const sigCreds = credentials.trim() || (name.trim() ? "" : "CSI, IIBEC");
+  const sigLine = sigCreds ? `${sigName}, ${sigCreds}` : sigName;
 
   return (
     <div className="bg-white border border-zinc-200 rounded-sm p-6 mb-6">
@@ -90,6 +96,25 @@ function ProfileSection({ user, onSaved }) {
             data-testid="profile-phone"
           />
         </Field>
+        <Field label="Credentials" hint="Letters after your name on the scope signature (e.g., CSI, IIBEC). Leave blank to omit.">
+          <input
+            value={credentials}
+            onChange={(e) => setCredentials(e.target.value)}
+            placeholder="e.g., CSI, IIBEC"
+            className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm focus:border-blue-700 focus:outline-none"
+            data-testid="profile-credentials"
+          />
+        </Field>
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1.5">
+            Scope Signature Preview
+          </label>
+          <div className="border border-zinc-200 rounded-sm bg-zinc-50 px-3 py-2 text-sm leading-snug" data-testid="signature-preview">
+            <div className="font-bold text-zinc-950">{sigLine}</div>
+            <div className="text-zinc-600 text-xs">SealTech Building Solutions</div>
+          </div>
+          <div className="mt-1 text-[11px] text-zinc-500 leading-snug">This is exactly how your name will print at the bottom of every scope PDF you generate.</div>
+        </div>
       </div>
       <div className="flex items-center justify-between gap-3 pt-4 border-t border-zinc-100">
         <div className="text-[10px] uppercase tracking-wider text-zinc-500">

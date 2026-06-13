@@ -228,6 +228,7 @@ class UserOut(BaseModel):
     role: str = "admin"
     phone: str = ""
     title: str = ""
+    credentials: str = ""
 
 
 class UserCreateReq(BaseModel):
@@ -236,6 +237,7 @@ class UserCreateReq(BaseModel):
     role: str = "sales"  # admin | manager | sales
     phone: str = ""
     title: str = ""
+    credentials: str = ""
 
 
 class UserUpdateReq(BaseModel):
@@ -243,6 +245,7 @@ class UserUpdateReq(BaseModel):
     role: Optional[str] = None
     phone: Optional[str] = None
     title: Optional[str] = None
+    credentials: Optional[str] = None
 
 
 class TokenOut(BaseModel):
@@ -571,7 +574,7 @@ async def login(body: LoginReq):
         access_token=token,
         user=UserOut(
             id=user["id"], email=email, name=user.get("name", ""), role=user.get("role", "admin"),
-            phone=user.get("phone", ""), title=user.get("title", ""),
+            phone=user.get("phone", ""), title=user.get("title", ""), credentials=user.get("credentials", ""),
         ),
     )
 
@@ -581,17 +584,19 @@ async def me(current=Depends(get_current_user)):
     return UserOut(
         id=current["id"], email=current["email"], name=current.get("name", ""),
         role=current.get("role", "admin"), phone=current.get("phone", ""), title=current.get("title", ""),
+        credentials=current.get("credentials", ""),
     )
 
 
 
 class ProfileUpdateReq(BaseModel):
-    """Self-edit: a logged-in user updates their OWN profile (name / title / phone).
+    """Self-edit: a logged-in user updates their OWN profile (name / title / phone / credentials).
     Email and role are intentionally NOT mutable here — those require admin."""
     model_config = ConfigDict(extra="ignore")
     name: Optional[str] = None
     title: Optional[str] = None
     phone: Optional[str] = None
+    credentials: Optional[str] = None
 
 
 class ChangePasswordReq(BaseModel):
@@ -667,13 +672,14 @@ async def create_user(body: UserCreateReq, current=Depends(require_admin)):
         "role": body.role,
         "phone": body.phone or "",
         "title": body.title or "",
+        "credentials": body.credentials or "",
         "password_hash": hash_password(generated),
         "created_at": now_iso(),
         "created_by": current["id"],
     }
     await db.users.insert_one(doc)
     return {
-        "user": {"id": user_id, "email": email, "name": body.name, "role": body.role, "phone": doc["phone"], "title": doc["title"]},
+        "user": {"id": user_id, "email": email, "name": body.name, "role": body.role, "phone": doc["phone"], "title": doc["title"], "credentials": doc["credentials"]},
         "generated_password": generated,
     }
 
@@ -2707,6 +2713,8 @@ async def deal_spec_sheet(
         cover_photo_bytes=photo_bytes,
         roof_type=deal.get("proposed_roof_type"),
         current_roof_type=deal.get("current_roof_type"),
+        signer_name=(user.get("name") or "").strip(),
+        signer_credentials=(user.get("credentials") or "").strip(),
     )
     filename = f"sealtech-scope-{(deal.get('title') or 'project')}.pdf".replace(" ", "_")
     return Response(
@@ -3607,16 +3615,24 @@ async def on_startup():
         await db.users.insert_one({
             "id": str(uuid.uuid4()),
             "email": admin_email,
-            "name": "Admin",
+            "name": "Darren Oliver",
             "role": "admin",
             "phone": "",
             "title": "Owner",
+            "credentials": "CSI, IIBEC",
             "password_hash": hash_password(admin_password),
             "created_at": now_iso(),
         })
     else:
         # Make sure existing admin has role=admin (migration)
-        await db.users.update_one({"id": existing["id"]}, {"$set": {"role": "admin"}})
+        migrate = {"role": "admin"}
+        # One-time: backfill default name "Admin" → "Darren Oliver"
+        if (existing.get("name") or "").strip() in ("", "Admin"):
+            migrate["name"] = "Darren Oliver"
+        # One-time: backfill credentials so the scope signature continues to render correctly
+        if not (existing.get("credentials") or "").strip():
+            migrate["credentials"] = "CSI, IIBEC"
+        await db.users.update_one({"id": existing["id"]}, {"$set": migrate})
 
     # Start the weekly payables-email scheduler
     _start_payables_scheduler()
