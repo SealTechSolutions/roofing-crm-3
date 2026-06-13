@@ -237,6 +237,15 @@
 - ✅ Frontend: **Dashboard "Books — Per-Entity Snapshot" strip** (`data-testid="books-kpi-strip"`) showing all 4 active entities side-by-side with Cash · Open A/R · Open A/P · MTD Revenue; auto-hides until first GL activity; clicking a row deep-links to /books with that entity pre-selected
 - ✅ Tested: 14/14 backend pytest + 4/4 UI flows pass — `/app/test_reports/iteration_4.json` and `/app/backend/tests/test_books_phase2.py`
 
+## Books Module — Journal Activity Feed (2026-02) ✅
+- ✅ Books page now has tabs (data-testid `tab-coa` / `tab-activity`); hash-driven state (#activity) survives reloads and shareable URLs
+- ✅ `JournalFeed` component on the Activity tab pulls `/api/books/journal-entries?entity_id=X&include_reversed=...` and displays every GL event with kind badge (Invoice Issued / Payment Received / Bill Received / Bill Paid), date, memo, ALL DR/CR lines with color-coded numbers, and total
+- ✅ Filter by event kind + Include-reversed toggle; running totals shown in the header counter (DR/CR)
+- ✅ Reversed entries render at 50% opacity with strikethrough + red "REVERSED" badge
+- ✅ "Open Invoice / Open Bill" deep-link on each row → `/invoices?focus=<id>` or `/payables?focus=<id>` (focus param ready for future scroll-to-row)
+- ✅ Empty state: friendly message when an entity has no GL activity yet
+- ✅ Tested: 6/6 new + 14/14 Phase 2 regression + 12/12 frontend flows pass (`/app/test_reports/iteration_5.json`, `/app/backend/tests/test_books_phase3.py`)
+
 ## Backlog (P0 — next Books phases)
 - Books Phase 3: Per-entity P&L + Balance Sheet reports (filterable by date range, drill-down to source doc)
 - Books Phase 3: Late-fee monthly accrual batch journal (DR 1100 AR / CR 4200 Late Fees Earned for outstanding A/R > 30 days @ 1.5%)

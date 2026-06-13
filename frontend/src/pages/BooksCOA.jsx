@@ -54,7 +54,14 @@ export default function BooksCOA() {
     return fromHash === "activity" ? "activity" : "coa";
   });
   useEffect(() => {
-    if (typeof window !== "undefined") window.location.hash = view === "activity" ? "activity" : "";
+    if (typeof window === "undefined") return;
+    if (view === "activity") {
+      window.location.hash = "activity";
+    } else if (window.location.hash) {
+      // Clear hash cleanly (no trailing #) when going back to default COA tab
+      const url = window.location.pathname + window.location.search;
+      window.history.replaceState(null, "", url);
+    }
   }, [view]);
 
   const currentEntity = useMemo(() => entities.find((e) => e.id === entityId) || null, [entities, entityId]);
@@ -701,7 +708,9 @@ function JournalFeed({ entityId, entities }) {
           {filtered.map((j) => {
             const kind = KIND_LABELS[j.kind] || { label: j.kind, tone: "bg-zinc-100 text-zinc-700", icon: Activity };
             const KindIcon = kind.icon;
-            const sourcePath = j.source_type === "vendor_bill" ? "/payables" : "/invoices";
+            const sourcePath = j.source_type === "vendor_bill"
+              ? `/payables?focus=${encodeURIComponent(j.source_id)}`
+              : `/invoices?focus=${encodeURIComponent(j.source_id)}`;
             return (
               <div
                 key={j.id}
