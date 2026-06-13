@@ -245,6 +245,8 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
         if not e:
             raise HTTPException(status_code=404, detail="Entity not found")
         update = body.model_dump()
+        # Never silently reactivate a deactivated entity via plain edit — preserve current is_active
+        update["is_active"] = e.get("is_active", True)
         await db.entities.update_one({"id": entity_id}, {"$set": update})
         merged = {**e, **update}
         return _clean(merged)
@@ -298,11 +300,12 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
             raise HTTPException(status_code=404, detail="Account not found")
         # System accounts: allow rename/description/category but lock number+type+is_contra
         update = body.model_dump()
+        # entity_id is immutable — cannot move an account between entities (would corrupt ledgers)
+        update["entity_id"] = existing["entity_id"]
         if existing.get("system"):
             update["number"] = existing["number"]
             update["type"] = existing["type"]
             update["is_contra"] = existing.get("is_contra", False)
-            update["entity_id"] = existing["entity_id"]
         else:
             # number-uniqueness check if number changed
             if update["number"] != existing.get("number"):

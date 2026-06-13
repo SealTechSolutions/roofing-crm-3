@@ -209,13 +209,32 @@
 - ✅ Inclusions text now preserves the **FARM** acronym (e.g. "white FARM (fluid applied reinforced membrane) system")
 - ✅ FARM tier comparison table on Page 2 bumped to **10pt / 13pt-leading** with bigger cell padding; Page 2 spacers opened up so the section uses most of the page
 
+## Books Module — Phase 1 (2026-02) ✅
+- ✅ New `/app/backend/books.py` module exposing `make_router(db, get_current_user, require_admin)`
+- ✅ Routes: `GET/POST/PUT/DELETE /api/books/entities`, `GET/POST/PUT/DELETE /api/books/accounts`, `GET /api/books/account-types`
+- ✅ `seed_default_entities(db)` runs on startup and is idempotent — seeds 4 default entities (SealTech Holdings (Parent, LLC); Western States Contracting Services, Inc. (C-Corp); SLO & Steady, LLC; Darren Oliver, LLC) plus a 44-line default Chart of Accounts per entity
+- ✅ DEFAULT_COA covers 1000s Assets, 2000s Liabilities, 3000s Equity, 4000s Revenue (incl. inter-co), 5000s COGS, 6000s Opex, 9000s Other; `system` flag locks down core accounts (AR/AP/Sales/COGS/Inter-Co/Retained Earnings/Late Fees Earned)
+- ✅ `is_contra` flag for Allowance for Doubtful Accounts + Accumulated Depreciation
+- ✅ Unique index `(entity_id, number)` on `chart_of_accounts`
+- ✅ Soft-delete pattern: entities and accounts go inactive instead of hard-delete; `include_inactive=true` flag retrieves them
+- ✅ Edit endpoint never silently reactivates a deactivated entity; account `entity_id` is immutable on update (ledger integrity)
+- ✅ Frontend `/app/frontend/src/pages/BooksCOA.jsx` — entity switcher (localStorage persisted), accounts grouped by Type with SYSTEM/CONTRA badges, inline edit, full add/edit Entity modal with all metadata fields (legal_name, EIN, address, remit-to)
+- ✅ "Books" nav link in sidebar (`data-testid="nav-books"`); admins see Add Account / New Entity / Edit Entity controls; non-admins are read-only
+- ✅ Tested end-to-end: 11/11 pytest backend + 12/12 UI flows pass (see `/app/backend/tests/test_books.py` and `/app/test_reports/iteration_3.json`)
+
+## Backlog (P0 — next Books phases)
+- Books Phase 2: Auto-journal hooks from CRM events (Invoice posted, Vendor Bill posted, Payment received) → GL entries on `journal_entries` collection
+- Books Phase 3: Per-entity P&L + Balance Sheet reports (filterable by date range, drill-down to source doc)
+- Books Phase 4: Inter-company auto-mirroring (Parent ↔ Sub-co) and Bank Reconciliation
+
 ## Backlog (P1)
-- Subcontractor scorecards (quality / on-time metrics)
-- Statement of Account PDF (aging report per customer)
+- Subcontractor scorecards (quality / on-time metrics) — DONE
+- Statement of Account PDF (aging report per customer) — DONE
 
 ## Backlog (P2)
 - Stripe online pay link on invoices
-- Admin Trash view (restore / hard-delete)
-- User profile self-edit (name, phone, title, password)
+- In-app Scope Editor (override any spec-sheet bullet before PDF)
+- Admin Trash view (restore / hard-delete soft-deleted records, incl. inactive entities/accounts)
 - Google Calendar 2-way sync for project schedules
-- Refactor `server.py` (~3000 lines) into `/app/backend/routes/` modules
+- Smart auto-attachment suggestions in Email Scope modal (pre-select Library docs by proposed_roof_type)
+- Refactor `server.py` (~4,500 lines) into `/app/backend/routes/` modules
