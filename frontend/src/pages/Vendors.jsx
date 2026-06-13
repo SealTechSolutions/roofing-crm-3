@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { api, formatApiError } from "@/lib/api";
-import { Plus, Pencil, Trash2, Truck, HardHat, FolderOpen } from "lucide-react";
+import { api, formatApiError, formatCurrency } from "@/lib/api";
+import { Plus, Pencil, Trash2, Truck, HardHat, FolderOpen, BarChart3, Star, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
@@ -20,6 +20,7 @@ export default function Vendors({ kind = "Vendor" }) {
   const [loading, setLoading] = useState(false);
   const [docsFor, setDocsFor] = useState(null);
   const [confirmTarget, setConfirmTarget] = useState(null);
+  const [scorecardsOpen, setScorecardsOpen] = useState(false);
 
   const load = () => api.get(`/vendors?kind=${encodeURIComponent(kind)}`).then((r) => setItems(r.data));
   useEffect(() => {
@@ -83,6 +84,16 @@ export default function Vendors({ kind = "Vendor" }) {
         <div className="flex items-center gap-2 flex-wrap">
           <ExportButtons category={isSub ? "subcontractors" : "vendors"} />
           <ImportButton category={isSub ? "subcontractors" : "vendors"} onImported={load} />
+          {isSub && (
+            <button
+              data-testid="open-scorecards-button"
+              onClick={() => setScorecardsOpen(true)}
+              className="inline-flex items-center gap-2 bg-white border border-zinc-300 text-zinc-950 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-zinc-50 rounded-sm transition-colors"
+              title="Track on-time delivery + quality ratings + total $ awarded per crew"
+            >
+              <BarChart3 className="w-4 h-4" /> Scorecards
+            </button>
+          )}
           <button
             data-testid={`new-${kind.toLowerCase()}-button`}
             onClick={openCreate}
@@ -221,6 +232,357 @@ export default function Vendors({ kind = "Vendor" }) {
           <Documents parentType={isSub ? "subcontractor" : "vendor"} parentId={docsFor.id} title="Files" />
         </Modal>
       )}
+
+      {scorecardsOpen && (
+        <ScorecardsModal subs={items} onClose={() => setScorecardsOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+
+// ---------- Subcontractor Scorecards modal ----------
+function ScorecardsModal({ subs, onClose }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [jobsModal, setJobsModal] = useState(null); // { sub, rows }
+  const [logModal, setLogModal] = useState(null);   // pre-fill sub
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api.get("/subcontractor-scorecards");
+      setRows(r.data);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, []);
+
+  const openJobs = async (sub) => {
+    try {
+      const r = await api.get(`/sub-jobs?subcontractor_id=${sub.subcontractor_id}`);
+      setJobsModal({ sub, rows: r.data });
+    } catch (e) { toast.error(formatApiError(e?.response?.data?.detail) || e.message); }
+  };
+
+  const totals = rows.reduce((acc, r) => ({
+    awarded: acc.awarded + r.total_awarded,
+    jobs: acc.jobs + r.total_jobs,
+    issues: acc.issues + r.issues_total,
+  }), { awarded: 0, jobs: 0, issues: 0 });
+
+  const gradeColor = (g) => {
+    if (g.startsWith("A+")) return "bg-emerald-100 text-emerald-900 border-emerald-300";
+    if (g.startsWith("A")) return "bg-emerald-50 text-emerald-800 border-emerald-200";
+    if (g.startsWith("B")) return "bg-blue-50 text-blue-800 border-blue-200";
+    if (g.startsWith("C")) return "bg-amber-50 text-amber-900 border-amber-200";
+    if (g.startsWith("D")) return "bg-red-50 text-red-800 border-red-300";
+    return "bg-zinc-50 text-zinc-500 border-zinc-200";
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-start sm:items-center justify-center p-4 overflow-y-auto" data-testid="scorecards-modal">
+      <div className="bg-white border border-zinc-200 rounded-sm w-full max-w-6xl my-8">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <BarChart3 className="w-4 h-4 text-blue-700" />
+              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700">Performance</div>
+            </div>
+            <h2 className="font-heading text-2xl font-black tracking-tight">Subcontractor Scorecards</h2>
+            <div className="text-xs text-zinc-500 mt-1">On-time delivery, quality ratings, and total $ awarded per crew. Log a completed job to update the metrics.</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setLogModal({})} className="inline-flex items-center gap-1.5 bg-blue-700 text-white px-3 h-9 text-[10px] font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm" data-testid="log-job-button"><ClipboardList className="w-3.5 h-3.5" /> Log Job</button>
+            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-950 text-xs uppercase tracking-wider font-bold" data-testid="scorecards-close">Close</button>
+          </div>
+        </div>
+
+        <div className="p-6">
+          {loading ? (
+            <div className="text-sm text-zinc-500 py-12 text-center">Loading scorecards…</div>
+          ) : rows.length === 0 ? (
+            <div className="bg-zinc-50 border border-zinc-200 rounded-sm p-6 text-sm text-zinc-600">
+              No subcontractors on file yet. Add a crew, then come back to log their jobs.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="border border-zinc-200 rounded-sm p-3">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">Total Awarded ($)</div>
+                  <div className="font-bold font-mono text-xl text-zinc-950 mt-0.5" data-testid="total-awarded">{formatCurrency(totals.awarded)}</div>
+                </div>
+                <div className="border border-zinc-200 rounded-sm p-3">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">Logged Jobs</div>
+                  <div className="font-bold font-mono text-xl text-zinc-950 mt-0.5" data-testid="total-jobs">{totals.jobs}</div>
+                </div>
+                <div className="border border-zinc-200 rounded-sm p-3">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">Total Issues / Callbacks</div>
+                  <div className={`font-bold font-mono text-xl mt-0.5 ${totals.issues > 0 ? "text-red-700" : "text-emerald-700"}`} data-testid="total-issues">{totals.issues}</div>
+                </div>
+              </div>
+              <div className="border border-zinc-200 rounded-sm overflow-hidden">
+                <table className="w-full text-sm" data-testid="scorecards-table">
+                  <thead className="bg-zinc-50 border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider">
+                    <tr>
+                      <th className="py-3 px-3">Subcontractor</th>
+                      <th className="py-3 px-3 text-center">Jobs</th>
+                      <th className="py-3 px-3 text-center">On-Time %</th>
+                      <th className="py-3 px-3 text-center">Avg Quality</th>
+                      <th className="py-3 px-3 text-right">Total Awarded</th>
+                      <th className="py-3 px-3 text-center">Issues</th>
+                      <th className="py-3 px-3 text-center">Last Done</th>
+                      <th className="py-3 px-3">Grade</th>
+                      <th className="py-3 px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {rows.map((r) => {
+                      const ot = r.on_time_pct;
+                      const q = r.avg_quality;
+                      return (
+                        <tr key={r.subcontractor_id} className="hover:bg-zinc-50" data-testid={`scorecard-row-${r.subcontractor_id}`}>
+                          <td className="py-3 px-3">
+                            <div className="font-bold">{r.subcontractor_name}</div>
+                            {r.category && <div className="text-[10px] text-zinc-500 uppercase tracking-wider">{r.category}</div>}
+                          </td>
+                          <td className="py-3 px-3 text-center font-mono">
+                            <div className="font-bold">{r.total_jobs}</div>
+                            {r.scheduled_jobs > 0 && <div className="text-[10px] text-zinc-500">{r.scheduled_jobs} upcoming</div>}
+                          </td>
+                          <td className="py-3 px-3 text-center font-mono">
+                            {r.completed_jobs === 0 ? <span className="text-zinc-400">—</span> : (
+                              <span className={`font-bold ${ot >= 90 ? "text-emerald-700" : ot >= 70 ? "text-amber-700" : "text-red-700"}`}>{ot.toFixed(0)}%</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            {r.rated_jobs === 0 ? <span className="text-zinc-400">—</span> : (
+                              <div className="inline-flex items-center gap-1">
+                                <Star className={`w-3 h-3 ${q >= 4 ? "fill-amber-400 text-amber-400" : "fill-zinc-300 text-zinc-300"}`} />
+                                <span className="font-mono font-bold">{q.toFixed(1)}</span>
+                                <span className="text-[10px] text-zinc-500">/ 5</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-bold">{formatCurrency(r.total_awarded)}</td>
+                          <td className="py-3 px-3 text-center font-mono">
+                            {r.issues_total > 0 ? <span className="text-red-700 font-bold">{r.issues_total}</span> : <span className="text-zinc-400">0</span>}
+                          </td>
+                          <td className="py-3 px-3 text-center text-[11px] text-zinc-600 font-mono">{r.last_completed || "—"}</td>
+                          <td className="py-3 px-3">
+                            <span className={`inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-wider border rounded-sm ${gradeColor(r.grade)}`}>{r.grade}</span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1 justify-end">
+                              <button
+                                onClick={() => openJobs(r)}
+                                className="border border-zinc-300 px-2.5 h-7 text-[10px] font-bold uppercase tracking-wider hover:bg-zinc-50 rounded-sm"
+                                data-testid={`view-jobs-${r.subcontractor_id}`}
+                              >History</button>
+                              <button
+                                onClick={() => setLogModal({ subcontractor_id: r.subcontractor_id, subcontractor_name: r.subcontractor_name })}
+                                className="bg-blue-700 text-white px-2.5 h-7 text-[10px] font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm"
+                                data-testid={`log-job-${r.subcontractor_id}`}
+                              >Log Job</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {jobsModal && (
+        <SubJobsHistoryModal sub={jobsModal.sub} initialRows={jobsModal.rows} onClose={() => setJobsModal(null)} onChange={load} />
+      )}
+      {logModal && (
+        <LogSubJobModal preset={logModal} subs={subs} onClose={() => setLogModal(null)} onSaved={() => { setLogModal(null); load(); }} />
+      )}
+    </div>
+  );
+}
+
+
+function SubJobsHistoryModal({ sub, initialRows, onClose, onChange }) {
+  const [rows, setRows] = useState(initialRows || []);
+  const reload = async () => {
+    try {
+      const r = await api.get(`/sub-jobs?subcontractor_id=${sub.subcontractor_id}`);
+      setRows(r.data);
+      onChange();
+    } catch (e) { toast.error(formatApiError(e?.response?.data?.detail) || e.message); }
+  };
+
+  const remove = async (j) => {
+    if (!window.confirm(`Delete this job log entry? (${j.work_description || "no description"})`)) return;
+    try {
+      await api.delete(`/sub-jobs/${j.id}`);
+      toast.success("Job log deleted");
+      reload();
+    } catch (e) { toast.error(formatApiError(e?.response?.data?.detail) || e.message); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-start justify-center p-4 overflow-y-auto" data-testid="sub-jobs-history-modal">
+      <div className="bg-white border border-zinc-200 rounded-sm w-full max-w-5xl my-8">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-1">Job History</div>
+            <h3 className="font-heading text-xl font-black tracking-tight">{sub.subcontractor_name}</h3>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-950 text-xs uppercase tracking-wider font-bold">Close</button>
+        </div>
+        <div className="p-6">
+          {rows.length === 0 ? (
+            <div className="text-sm text-zinc-500 text-center py-8">No jobs logged for this crew yet.</div>
+          ) : (
+            <div className="border border-zinc-200 rounded-sm overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-zinc-50 border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider">
+                  <tr>
+                    <th className="py-2 px-3">Work / Project</th>
+                    <th className="py-2 px-3">Scheduled</th>
+                    <th className="py-2 px-3">Completed</th>
+                    <th className="py-2 px-3 text-center">Status</th>
+                    <th className="py-2 px-3 text-center">Quality</th>
+                    <th className="py-2 px-3 text-right">Awarded</th>
+                    <th className="py-2 px-3 text-center">On-Time</th>
+                    <th className="py-2 px-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {rows.map((j) => (
+                    <tr key={j.id} className="hover:bg-zinc-50">
+                      <td className="py-2 px-3">
+                        <div className="font-bold text-xs">{j.work_description || "—"}</div>
+                        {j.deal_title && <div className="text-[10px] text-zinc-500">{j.deal_title}</div>}
+                      </td>
+                      <td className="py-2 px-3 font-mono text-xs">{j.scheduled_date || "—"}</td>
+                      <td className="py-2 px-3 font-mono text-xs">{j.completed_date || "—"}</td>
+                      <td className="py-2 px-3 text-center text-[10px] uppercase tracking-wider">{j.status}</td>
+                      <td className="py-2 px-3 text-center font-mono">{j.quality_rating ? `${j.quality_rating}/5` : "—"}</td>
+                      <td className="py-2 px-3 text-right font-mono">{formatCurrency(j.contract_amount)}</td>
+                      <td className="py-2 px-3 text-center text-[10px]">
+                        {j.on_time === true ? <span className="text-emerald-700 font-bold">YES</span> : j.on_time === false ? <span className="text-red-700 font-bold">LATE</span> : <span className="text-zinc-400">—</span>}
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <button onClick={() => remove(j)} className="p-1 hover:bg-red-100 text-red-700 rounded-sm" title="Delete log entry"><Trash2 className="w-3 h-3" /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function LogSubJobModal({ preset, subs, onClose, onSaved }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({
+    subcontractor_id: preset?.subcontractor_id || "",
+    deal_id: "",
+    work_description: "",
+    scheduled_date: today,
+    completed_date: "",
+    status: "Scheduled",
+    quality_rating: "",
+    issues_count: 0,
+    contract_amount: 0,
+    notes: "",
+  });
+  const [deals, setDeals] = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get("/deals").then((r) => setDeals(r.data)).catch(() => {});
+  }, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.subcontractor_id) { toast.error("Pick a subcontractor"); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        quality_rating: form.quality_rating ? Number(form.quality_rating) : null,
+        contract_amount: Number(form.contract_amount || 0),
+        issues_count: Number(form.issues_count || 0),
+        completed_date: form.completed_date || null,
+      };
+      await api.post("/sub-jobs", payload);
+      toast.success("Job logged");
+      onSaved();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4 overflow-y-auto" data-testid="log-sub-job-modal">
+      <form onSubmit={submit} className="bg-white border border-zinc-200 rounded-sm w-full max-w-2xl my-8">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-1">Log Subcontractor Job</div>
+            <h3 className="font-heading text-xl font-black tracking-tight">{preset?.subcontractor_name || "New Job Entry"}</h3>
+          </div>
+          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-zinc-950 text-xs uppercase tracking-wider font-bold">Close</button>
+        </div>
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Subcontractor *">
+            <Select data-testid="log-sub-id" value={form.subcontractor_id} onChange={(v) => setForm({ ...form, subcontractor_id: v })} options={[{ value: "", label: "— Pick —" }, ...subs.map((s) => ({ value: s.id, label: s.name }))]} />
+          </Field>
+          <Field label="Project">
+            <Select data-testid="log-deal-id" value={form.deal_id} onChange={(v) => setForm({ ...form, deal_id: v })} options={[{ value: "", label: "— None —" }, ...deals.map((d) => ({ value: d.id, label: d.title }))]} />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Work Description">
+              <Input data-testid="log-work-desc" value={form.work_description} onChange={(v) => setForm({ ...form, work_description: v })} placeholder="e.g., Tear-off & deck prep" />
+            </Field>
+          </div>
+          <Field label="Scheduled Date">
+            <Input data-testid="log-scheduled" type="date" value={form.scheduled_date} onChange={(v) => setForm({ ...form, scheduled_date: v })} />
+          </Field>
+          <Field label="Completed Date">
+            <Input data-testid="log-completed" type="date" value={form.completed_date} onChange={(v) => setForm({ ...form, completed_date: v })} />
+          </Field>
+          <Field label="Status">
+            <Select data-testid="log-status" value={form.status} onChange={(v) => setForm({ ...form, status: v })} options={["Scheduled", "In Progress", "Completed", "Cancelled"].map((s) => ({ value: s, label: s }))} />
+          </Field>
+          <Field label="Quality Rating (1-5)">
+            <Select data-testid="log-quality" value={form.quality_rating} onChange={(v) => setForm({ ...form, quality_rating: v })} options={[{ value: "", label: "— Not Rated —" }, { value: "5", label: "5 — Excellent" }, { value: "4", label: "4 — Good" }, { value: "3", label: "3 — OK" }, { value: "2", label: "2 — Below Avg" }, { value: "1", label: "1 — Poor" }]} />
+          </Field>
+          <Field label="Contract Amount ($)">
+            <Input data-testid="log-amount" type="number" step="0.01" min="0" value={form.contract_amount} onChange={(v) => setForm({ ...form, contract_amount: v })} />
+          </Field>
+          <Field label="Issues / Callbacks">
+            <Input data-testid="log-issues" type="number" min="0" step="1" value={form.issues_count} onChange={(v) => setForm({ ...form, issues_count: v })} />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Notes">
+              <textarea data-testid="log-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={3} className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm" />
+            </Field>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-zinc-200">
+          <button type="button" onClick={onClose} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50">Cancel</button>
+          <button type="submit" disabled={saving} data-testid="save-sub-job" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm disabled:opacity-50">{saving ? "Saving..." : "Save Job"}</button>
+        </div>
+      </form>
     </div>
   );
 }

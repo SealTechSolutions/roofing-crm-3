@@ -2854,6 +2854,206 @@ async def delete_vendor(vendor_id: str, current=Depends(get_current_user)):
     return {"ok": True}
 
 
+# ----- Subcontractor Job Logs & Scorecards -----
+SUB_JOB_STATUSES = ["Scheduled", "In Progress", "Completed", "Cancelled"]
+
+
+class SubJobLogIn(BaseModel):
+    """One logged job assignment for a subcontractor. Drives the scorecard metrics
+    (on-time %, average quality, $ awarded)."""
+    model_config = ConfigDict(extra="ignore")
+    subcontractor_id: str
+    deal_id: Optional[str] = None
+    work_description: str = ""
+    scheduled_date: Optional[str] = None  # yyyy-mm-dd
+    completed_date: Optional[str] = None  # yyyy-mm-dd, set when status moves to Completed
+    status: str = "Scheduled"
+    quality_rating: Optional[int] = None  # 1-5, nullable until rated
+    issues_count: int = 0  # punch-list / callback issues raised on this job
+    contract_amount: float = 0.0
+    notes: str = ""
+
+
+def _normalize_sub_job(doc: dict) -> dict:
+    if doc.get("status") not in SUB_JOB_STATUSES:
+        doc["status"] = "Scheduled"
+    qr = doc.get("quality_rating")
+    if qr is not None:
+        try:
+            qr = int(qr)
+            doc["quality_rating"] = max(1, min(5, qr))
+        except (TypeError, ValueError):
+            doc["quality_rating"] = None
+    try:
+        doc["issues_count"] = max(0, int(doc.get("issues_count") or 0))
+    except (TypeError, ValueError):
+        doc["issues_count"] = 0
+    try:
+        doc["contract_amount"] = float(doc.get("contract_amount") or 0)
+    except (TypeError, ValueError):
+        doc["contract_amount"] = 0.0
+    # If marked Completed without a completed_date, stamp it today
+    if doc.get("status") == "Completed" and not doc.get("completed_date"):
+        doc["completed_date"] = datetime.now(timezone.utc).date().isoformat()
+    # Derived on_time flag (only meaningful once completed)
+    sched = doc.get("scheduled_date") or ""
+    done = doc.get("completed_date") or ""
+    on_time = None
+    if doc.get("status") == "Completed" and sched and done:
+        try:
+            on_time = datetime.strptime(done[:10], "%Y-%m-%d").date() <= datetime.strptime(sched[:10], "%Y-%m-%d").date()
+        except ValueError:
+            on_time = None
+    doc["on_time"] = on_time
+    return doc
+
+
+@api_router.get("/sub-jobs")
+async def list_sub_jobs(
+    subcontractor_id: Optional[str] = Query(None),
+    deal_id: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    current=Depends(get_current_user),
+):
+    q = {"is_deleted": {"$ne": True}}
+    if subcontractor_id:
+        q["subcontractor_id"] = subcontractor_id
+    if deal_id:
+        q["deal_id"] = deal_id
+    if status_filter:
+        q["status"] = status_filter
+    rows = await db.sub_job_logs.find(q, {"_id": 0}).sort("scheduled_date", -1).to_list(1000)
+    return rows
+
+
+@api_router.post("/sub-jobs")
+async def create_sub_job(body: SubJobLogIn, current=Depends(get_current_user)):
+    sub = await db.vendors.find_one({"id": body.subcontractor_id, "kind": "Subcontractor"}, {"_id": 0})
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subcontractor not found")
+    deal_title = ""
+    if body.deal_id:
+        d = await db.deals.find_one({"id": body.deal_id, "is_deleted": {"$ne": True}}, {"_id": 0, "title": 1})
+        if d:
+            deal_title = d.get("title", "")
+    doc = body.model_dump()
+    doc["id"] = str(uuid.uuid4())
+    doc["subcontractor_name"] = sub.get("name", "")
+    doc["deal_title"] = deal_title
+    doc["created_at"] = now_iso()
+    doc["created_by"] = current["id"]
+    doc = _normalize_sub_job(doc)
+    await db.sub_job_logs.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.put("/sub-jobs/{job_id}")
+async def update_sub_job(job_id: str, body: SubJobLogIn, current=Depends(get_current_user)):
+    existing = await db.sub_job_logs.find_one({"id": job_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Sub job not found")
+    updated = {**existing, **body.model_dump(exclude_none=False)}
+    # Re-hydrate denormalized fields if subcontractor_id changed
+    if body.subcontractor_id != existing.get("subcontractor_id"):
+        sub = await db.vendors.find_one({"id": body.subcontractor_id, "kind": "Subcontractor"}, {"_id": 0})
+        updated["subcontractor_name"] = sub.get("name", "") if sub else existing.get("subcontractor_name", "")
+    if body.deal_id and body.deal_id != existing.get("deal_id"):
+        d = await db.deals.find_one({"id": body.deal_id}, {"_id": 0, "title": 1})
+        updated["deal_title"] = d.get("title", "") if d else ""
+    updated["updated_at"] = now_iso()
+    updated = _normalize_sub_job(updated)
+    updated.pop("_id", None)
+    await db.sub_job_logs.update_one({"id": job_id}, {"$set": updated})
+    return updated
+
+
+@api_router.delete("/sub-jobs/{job_id}")
+async def delete_sub_job(job_id: str, current=Depends(get_current_user)):
+    if is_admin(current):
+        await db.sub_job_logs.delete_one({"id": job_id})
+    else:
+        await db.sub_job_logs.update_one({"id": job_id}, {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}})
+    return {"ok": True}
+
+
+def _scorecard_rating(metrics: dict) -> str:
+    """Roll-up grade based on on-time % and average quality. Friendly badge label."""
+    if metrics["completed_jobs"] == 0:
+        return "No History"
+    on_time_pct = metrics["on_time_pct"]
+    avg_q = metrics["avg_quality"] or 0
+    if on_time_pct >= 90 and avg_q >= 4.5:
+        return "A+ — Top Performer"
+    if on_time_pct >= 80 and avg_q >= 4.0:
+        return "A — Strong"
+    if on_time_pct >= 70 and avg_q >= 3.5:
+        return "B — Solid"
+    if on_time_pct >= 60 or avg_q >= 3.0:
+        return "C — Needs Review"
+    return "D — Caution"
+
+
+@api_router.get("/subcontractor-scorecards")
+async def subcontractor_scorecards(current=Depends(get_current_user)):
+    """Aggregated scorecard for every subcontractor. Includes only Completed jobs in
+    quality/on-time stats; total awarded counts all non-cancelled jobs."""
+    # Pull all subs first so we report zeros for subs with no jobs yet
+    subs = await db.vendors.find({"kind": "Subcontractor"}, {"_id": 0}).sort("name", 1).to_list(2000)
+    # Pull every non-deleted job
+    jobs = await db.sub_job_logs.find({"is_deleted": {"$ne": True}}, {"_id": 0}).to_list(20000)
+    by_sub = {s["id"]: [] for s in subs}
+    for j in jobs:
+        sid = j.get("subcontractor_id")
+        if sid in by_sub:
+            by_sub[sid].append(j)
+        else:
+            by_sub.setdefault(sid, []).append(j)
+
+    out = []
+    for sub in subs:
+        rows = by_sub.get(sub["id"], [])
+        completed = [r for r in rows if r.get("status") == "Completed"]
+        scheduled = [r for r in rows if r.get("status") == "Scheduled"]
+        in_progress = [r for r in rows if r.get("status") == "In Progress"]
+        cancelled = [r for r in rows if r.get("status") == "Cancelled"]
+        completed_with_dates = [r for r in completed if r.get("on_time") is not None]
+        on_time_count = sum(1 for r in completed_with_dates if r.get("on_time") is True)
+        on_time_pct = round((on_time_count / len(completed_with_dates)) * 100, 1) if completed_with_dates else 0.0
+        rated = [r for r in completed if r.get("quality_rating") is not None]
+        avg_q = round(sum(r["quality_rating"] for r in rated) / len(rated), 2) if rated else 0.0
+        total_awarded = round(sum(float(r.get("contract_amount") or 0) for r in rows if r.get("status") != "Cancelled"), 2)
+        issues_total = sum(int(r.get("issues_count") or 0) for r in rows)
+        # Last completed job date
+        last_done = None
+        for r in completed:
+            d = r.get("completed_date") or r.get("scheduled_date") or ""
+            if d and (last_done is None or d > last_done):
+                last_done = d
+        metrics = {
+            "subcontractor_id": sub["id"],
+            "subcontractor_name": sub.get("name", ""),
+            "category": sub.get("category", ""),
+            "total_jobs": len(rows),
+            "completed_jobs": len(completed),
+            "scheduled_jobs": len(scheduled),
+            "in_progress_jobs": len(in_progress),
+            "cancelled_jobs": len(cancelled),
+            "on_time_pct": on_time_pct,
+            "on_time_count": on_time_count,
+            "rated_jobs": len(rated),
+            "avg_quality": avg_q,
+            "total_awarded": total_awarded,
+            "issues_total": issues_total,
+            "last_completed": last_done,
+        }
+        metrics["grade"] = _scorecard_rating(metrics)
+        out.append(metrics)
+    # Sort: graded subs first (by on_time desc, then avg_q desc), then no-history at bottom
+    out.sort(key=lambda m: (m["completed_jobs"] == 0, -m["on_time_pct"], -(m["avg_quality"] or 0), m["subcontractor_name"]))
+    return out
+
+
 # ----- Spec Sheet -----
 @api_router.get("/deals/{deal_id}/spec-sheet.pdf")
 async def deal_spec_sheet(
