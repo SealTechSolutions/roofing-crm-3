@@ -93,6 +93,22 @@
 - ✅ Rate-card legend & helper text updated to call out that 25-yr + Hail Rider are FARM-only.
 - ✅ Gemini PDF verification: Silicone scope confirmed to render exactly 3 rows per pricing table with no 25-year tier anywhere.
 
+## Document Library + Email Scope w/ Attachments (2026-02)
+- ✅ New **Document Library** (`/library` page in sidebar) with 6 categories × 20 sub-categories:
+     • SealTech Documents: Property Owner Guides · Assessment & Reporting Documents · Insurance & Storm Education · Brochures
+     • Western Colloid: Specifications · Safety Data · Brochures
+     • Everest Systems: Specifications · Safety Data · Brochures
+     • Certificates & Credentials: Insurance / COI · W-9 · Business License · Manufacturer Certifications
+     • Contracts & Legal: Master Service Agreement · Lien Waivers · Change Orders · Terms & Conditions
+     • Manufacturer Warranties: Sample Warranties · Issued Warranties · Warranty Reference
+- ✅ Endpoints: `GET /library/taxonomy`, `GET/POST/PUT/DELETE /library/files`, `GET /library/files/{id}/download?token=`
+- ✅ File storage via existing Emergent Object Storage (50MB max, validated category/subcategory, soft-delete)
+- ✅ Frontend Library page: category sidebar with per-folder counts, search box, click-to-expand sub-categories, upload modal (category/subcategory/file/display-name/description), per-row Download + Delete actions
+- ✅ Refactored `deal_spec_sheet` to share an internal `_build_spec_pdf_for_deal()` helper so the scope PDF can be built without going through HTTP
+- ✅ New `POST /api/deals/{deal_id}/spec-sheet/email` endpoint: builds the scope PDF + attaches any chosen Library file IDs + sends through Gmail (supports the `from_email` alias whitelist)
+- ✅ New **"Email to Prospect"** button on DealDetail (replaces the "coming soon" stub) opens a 2-column modal: left = email composition (From/To/CC/custom message), right = Library file picker (filter by category, multi-select with checkboxes). Bottom bar shows "Will send scope PDF + N library docs = N+1 total attachments".
+- ✅ End-to-end verified via curl: scope PDF + 1 selected library doc → 2 attachments emailed from `projects@sealtechsolutions.co` with real Gmail Message-ID returned
+
 ## Multi-Alias Gmail "From" (2026-02)
 - ✅ New env `GMAIL_FROM_ALIASES` (comma-separated) controls which Send-As aliases are allowed; default address is still `GMAIL_FROM_EMAIL`
 - ✅ Currently configured aliases: `finance@sealtechsolutions.co` (default), `projects@sealtechsolutions.co`, `darren@sealtechsolutions.co`

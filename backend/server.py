@@ -160,7 +160,17 @@ MILESTONE_STATUSES = ["Pending", "Invoiced", "Paid"]
 COST_ITEM_STATUSES = ["Pending", "Paid"]
 CONTACT_TYPES = ["Owner", "Property Manager", "Tenant", "Other"]
 DOCUMENT_CATEGORIES = ["Measurement Report", "Assessment", "Scope", "Proposal", "Invoice", "Photo", "Insurance/COI", "W-9", "Other"]
-PARENT_TYPES = ["project", "vendor", "subcontractor", "contact", "property"]
+PARENT_TYPES = ["project", "vendor", "subcontractor", "contact", "property", "library"]
+
+# Document Library taxonomy — shared resource folder for all users.
+LIBRARY_TAXONOMY = [
+    {"category": "SealTech Documents", "subcategories": ["Property Owner Guides", "Assessment & Reporting Documents", "Insurance & Storm Education", "Brochures"]},
+    {"category": "Western Colloid", "subcategories": ["Specifications", "Safety Data", "Brochures"]},
+    {"category": "Everest Systems", "subcategories": ["Specifications", "Safety Data", "Brochures"]},
+    {"category": "Certificates & Credentials", "subcategories": ["Insurance / COI", "W-9", "Business License", "Manufacturer Certifications"]},
+    {"category": "Contracts & Legal", "subcategories": ["Master Service Agreement", "Lien Waivers", "Change Orders", "Terms & Conditions"]},
+    {"category": "Manufacturer Warranties", "subcategories": ["Sample Warranties", "Issued Warranties", "Warranty Reference"]},
+]
 IMPORT_CATEGORIES = ["contacts", "properties", "projects", "vendors", "subcontractors"]
 DUPLICATE_MODES = ["skip", "update", "create"]
 USER_ROLES = ["admin", "manager", "sales"]
@@ -2873,6 +2883,248 @@ async def email_aliases(current=Depends(get_current_user)):
         return {"aliases": [], "default": "", "error": str(e)}
 
 
+# ----- Document Library -----
+@api_router.get("/library/taxonomy")
+async def library_taxonomy(current=Depends(get_current_user)):
+    return {"taxonomy": LIBRARY_TAXONOMY}
+
+
+def _valid_library_subcat(category: str, subcategory: str) -> bool:
+    for cat in LIBRARY_TAXONOMY:
+        if cat["category"] == category:
+            return subcategory in cat["subcategories"]
+    return False
+
+
+@api_router.post("/library/files")
+async def upload_library_file(
+    file: UploadFile = File(...),
+    category: str = Form(...),
+    subcategory: str = Form(...),
+    display_name: str = Form(""),
+    description: str = Form(""),
+    current=Depends(get_current_user),
+):
+    if not _valid_library_subcat(category, subcategory):
+        raise HTTPException(status_code=400, detail="Invalid category/subcategory")
+    ext = (file.filename.rsplit(".", 1)[-1] if "." in file.filename else "bin").lower()
+    file_id = str(uuid.uuid4())
+    safe_cat = category.replace(" ", "_").replace("&", "and")
+    safe_sub = subcategory.replace(" ", "_").replace("&", "and").replace("/", "_")
+    storage_path = f"{APP_NAME}/library/{safe_cat}/{safe_sub}/{file_id}.{ext}"
+    data = await file.read()
+    if len(data) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+    try:
+        result = put_object(storage_path, data, file.content_type or "application/octet-stream")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+    doc = {
+        "id": file_id,
+        "category": category,
+        "subcategory": subcategory,
+        "display_name": (display_name.strip() or file.filename),
+        "description": description.strip(),
+        "storage_path": result["path"],
+        "original_filename": file.filename,
+        "content_type": file.content_type or "application/octet-stream",
+        "size": len(data),
+        "is_deleted": False,
+        "uploaded_by": current["id"],
+        "uploader_name": current.get("name", ""),
+        "created_at": now_iso(),
+    }
+    await db.library_files.insert_one(doc.copy())
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/library/files")
+async def list_library_files(
+    category: Optional[str] = Query(None),
+    subcategory: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    current=Depends(get_current_user),
+):
+    q = {"is_deleted": False}
+    if category:
+        q["category"] = category
+    if subcategory:
+        q["subcategory"] = subcategory
+    if search:
+        s = search.strip()
+        q["$or"] = [
+            {"display_name": {"$regex": s, "$options": "i"}},
+            {"description": {"$regex": s, "$options": "i"}},
+            {"original_filename": {"$regex": s, "$options": "i"}},
+        ]
+    rows = await db.library_files.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    return rows
+
+
+@api_router.put("/library/files/{file_id}")
+async def update_library_file(file_id: str, body: dict = Body(...), current=Depends(get_current_user)):
+    existing = await db.library_files.find_one({"id": file_id, "is_deleted": False}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="File not found")
+    update = {}
+    if "display_name" in body:
+        update["display_name"] = (body["display_name"] or "").strip() or existing["display_name"]
+    if "description" in body:
+        update["description"] = (body["description"] or "").strip()
+    if "category" in body and "subcategory" in body:
+        if not _valid_library_subcat(body["category"], body["subcategory"]):
+            raise HTTPException(status_code=400, detail="Invalid category/subcategory")
+        update["category"] = body["category"]
+        update["subcategory"] = body["subcategory"]
+    update["updated_at"] = now_iso()
+    await db.library_files.update_one({"id": file_id}, {"$set": update})
+    return {**existing, **update}
+
+
+@api_router.delete("/library/files/{file_id}")
+async def delete_library_file(file_id: str, current=Depends(get_current_user)):
+    await db.library_files.update_one({"id": file_id}, {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}})
+    return {"ok": True}
+
+
+@api_router.get("/library/files/{file_id}/download")
+async def download_library_file(
+    file_id: str,
+    token: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    raw = None
+    if authorization and authorization.startswith("Bearer "):
+        raw = authorization[7:]
+    elif token:
+        raw = token
+    if not raw:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(raw, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["sub"]})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    rec = await db.library_files.find_one({"id": file_id, "is_deleted": False})
+    if not rec:
+        raise HTTPException(status_code=404, detail="File not found")
+    data, content_type = get_object(rec["storage_path"])
+    return Response(
+        content=data,
+        media_type=rec.get("content_type") or content_type,
+        headers={"Content-Disposition": f'attachment; filename="{rec["original_filename"]}"'},
+    )
+
+
+# ----- Email Scope (with optional Library attachments) -----
+@api_router.post("/deals/{deal_id}/spec-sheet/email")
+async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=Depends(get_current_user)):
+    """Email the scope PDF to the customer with optional Library file attachments.
+    Body: { to_email, cc_email, from_email, library_file_ids: [str], message }
+    """
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Project not found")
+    to_email = (body.get("to_email") or "").strip()
+    cc_email = (body.get("cc_email") or "").strip()
+    from_email = (body.get("from_email") or "").strip() or None
+    custom_message = (body.get("message") or "").strip()
+    if not to_email:
+        # Auto-populate from primary contact if available
+        cid = deal.get("primary_contact_id")
+        if cid:
+            c = await db.contacts.find_one({"id": cid}, {"_id": 0, "email": 1})
+            if c and c.get("email"):
+                to_email = c["email"]
+    if not to_email:
+        raise HTTPException(status_code=400, detail="No recipient email — please provide one.")
+
+    # Build the spec-sheet PDF using the shared helper
+    pdf_bytes = await _build_spec_pdf_for_deal(deal, current)
+
+    # Compose attachment list — scope PDF first, then any library files picked by user
+    project_label = (deal.get("title") or "scope").replace(" ", "_")
+    attachments = [{"filename": f"{project_label}-scope.pdf", "data": pdf_bytes, "mime": "application/pdf"}]
+
+    lib_ids = body.get("library_file_ids") or []
+    if isinstance(lib_ids, list) and lib_ids:
+        for fid in lib_ids:
+            rec = await db.library_files.find_one({"id": fid, "is_deleted": False})
+            if not rec:
+                continue
+            try:
+                data, ct = get_object(rec["storage_path"])
+                attachments.append({"filename": rec.get("original_filename") or "document.pdf", "data": data, "mime": rec.get("content_type") or ct or "application/octet-stream"})
+            except Exception:
+                continue
+
+    cust_company = ""
+    cid = deal.get("primary_contact_id")
+    if cid:
+        c = await db.contacts.find_one({"id": cid}, {"_id": 0, "company_name": 1, "contact_name": 1})
+        if c:
+            cust_company = c.get("company_name") or c.get("contact_name") or ""
+
+    subject = f"Roofing Proposal — {deal.get('title') or 'Project'}"
+    intro = custom_message if custom_message else (
+        f"Please find attached the roofing proposal for {deal.get('title') or 'your project'}. "
+        f"The scope details our recommended system, pricing tiers, and standard inclusions/exclusions."
+    )
+    body_text = (
+        f"Hello {(cust_company or '')},\n\n"
+        f"{intro}\n\n"
+        f"  Attachments: {len(attachments)} file{'s' if len(attachments) > 1 else ''}\n\n"
+        f"If you have any questions, please reply to this email or call us at 720-715-9955.\n\n"
+        f"Thank you,\n"
+        f"SealTech Building Solutions\n"
+        f"720-715-9955  ·  info@sealtechbuildingsolutions.com"
+    )
+    body_html = f"""
+    <html><body style="font-family: Arial, Helvetica, sans-serif; color: #0A0A0A; max-width: 620px;">
+      <p style="margin: 0 0 16px;">Hello {cust_company or ''},</p>
+      <p style="margin: 0 0 16px;">{intro.replace(chr(10), '<br/>')}</p>
+      <p style="margin: 0 0 16px; color: #52525B; font-size: 13px;"><b>Attachments:</b> {len(attachments)} file{'s' if len(attachments) > 1 else ''}</p>
+      <p style="margin: 16px 0;">If you have any questions, please reply to this email or call us at 720-715-9955.</p>
+      <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
+        <b style="color: #0A0A0A;">SealTech Building Solutions</b><br/>
+        720-715-9955  ·  info@sealtechbuildingsolutions.com  ·  www.sealtechbuildingsolutions.com
+      </p>
+    </body></html>
+    """
+
+    try:
+        from email_sender import send_email, EmailNotConfigured
+        result = send_email(
+            to=to_email,
+            cc=cc_email,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+            reply_to=os.environ.get("GMAIL_FROM_EMAIL") or None,
+            attachments=attachments,
+            from_email=from_email,
+        )
+    except EmailNotConfigured as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except smtplib.SMTPAuthenticationError as e:
+        raise HTTPException(status_code=500, detail=f"Gmail authentication failed. ({e.smtp_code})")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email send failed: {type(e).__name__}: {e}")
+
+    return {
+        "ok": True,
+        "message": f"Scope emailed to {to_email}" + (f" (cc: {cc_email})" if cc_email else "") + f" with {len(attachments)} attachment{'s' if len(attachments) > 1 else ''}",
+        "to_email": to_email,
+        "cc_email": cc_email,
+        "from_email": from_email,
+        "attachments_count": len(attachments),
+        "message_id": result.get("message_id"),
+    }
+
+
 # ----- Subcontractor Job Logs & Scorecards -----
 SUB_JOB_STATUSES = ["Scheduled", "In Progress", "Completed", "Cancelled"]
 
@@ -3100,6 +3352,19 @@ async def deal_spec_sheet(
     if not deal:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    pdf_bytes = await _build_spec_pdf_for_deal(deal, user)
+    filename = f"sealtech-scope-{(deal.get('title') or 'project')}.pdf".replace(" ", "_")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
+    """Shared PDF builder used by /spec-sheet.pdf (download) and
+    /spec-sheet/email (send-with-attachments)."""
+
     # Build address from linked property
     project_address = "—"
     if deal.get("property_id"):
@@ -3210,12 +3475,7 @@ async def deal_spec_sheet(
         signer_name=(user.get("name") or "").strip(),
         signer_credentials=(user.get("credentials") or "").strip(),
     )
-    filename = f"sealtech-scope-{(deal.get('title') or 'project')}.pdf".replace(" ", "_")
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return pdf_bytes
 
 
 # ----- Files (Documents) -----

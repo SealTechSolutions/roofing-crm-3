@@ -18,6 +18,7 @@ export default function DealDetail() {
   const [options, setOptions] = useState({});
   const [saving, setSaving] = useState(false);
   const [vendorBills, setVendorBills] = useState([]);  // actual bills linked to this project
+  const [emailScopeOpen, setEmailScopeOpen] = useState(false);
 
   const reload = async () => {
     const r = await api.get(`/deals/${id}`);
@@ -300,7 +301,7 @@ export default function DealDetail() {
           </button>
           <button
             data-testid="email-spec-sheet"
-            onClick={() => toast.info("Email to prospect — coming soon. Connect an email provider (Resend / SendGrid / Gmail) to enable.")}
+            onClick={() => setEmailScopeOpen(true)}
             className="inline-flex items-center gap-2 border border-zinc-300 text-zinc-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:border-zinc-950 rounded-sm transition-colors"
           >
             <Mail className="w-4 h-4" /> Email to Prospect
@@ -865,6 +866,10 @@ export default function DealDetail() {
           <div className="text-sm text-zinc-800 whitespace-pre-wrap" data-testid="deal-notes-view">{deal.notes}</div>
         </div>
       )}
+
+      {emailScopeOpen && (
+        <EmailScopeModal dealId={id} dealTitle={deal.title} primaryContactEmail={contact?.email || ""} onClose={() => setEmailScopeOpen(false)} />
+      )}
     </div>
   );
 }
@@ -930,3 +935,119 @@ const CellSelect = ({ value, onCommit, options = [], className = "", ...rest }) 
     ))}
   </select>
 );
+
+
+function EmailScopeModal({ dealId, dealTitle, primaryContactEmail, onClose }) {
+  const [to, setTo] = useState(primaryContactEmail || "");
+  const [cc, setCc] = useState("");
+  const [message, setMessage] = useState("");
+  const [aliases, setAliases] = useState([]);
+  const [fromEmail, setFromEmail] = useState("");
+  const [taxonomy, setTaxonomy] = useState([]);
+  const [libFiles, setLibFiles] = useState([]);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [filterCat, setFilterCat] = useState("");
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    api.get("/email-aliases").then((r) => { setAliases(r.data?.aliases || []); setFromEmail(r.data?.default || ""); }).catch(() => {});
+    api.get("/library/taxonomy").then((r) => setTaxonomy(r.data?.taxonomy || [])).catch(() => {});
+    api.get("/library/files").then((r) => setLibFiles(r.data || [])).catch(() => {});
+  }, []);
+
+  const toggleId = (id) => setSelectedIds((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  const filtered = filterCat ? libFiles.filter((f) => f.category === filterCat) : libFiles;
+
+  const send = async () => {
+    if (!to.trim()) { toast.error("Recipient email required"); return; }
+    setSending(true);
+    try {
+      const r = await api.post(`/deals/${dealId}/spec-sheet/email`, {
+        to_email: to.trim(),
+        cc_email: cc.trim(),
+        from_email: fromEmail,
+        message: message.trim(),
+        library_file_ids: selectedIds,
+      });
+      toast.success(r.data?.message || "Scope emailed");
+      onClose();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto" data-testid="email-scope-modal">
+      <div className="bg-white border border-zinc-200 rounded-sm w-full max-w-3xl my-8">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-1">Email Scope</div>
+            <h3 className="font-heading text-xl font-black tracking-tight">{dealTitle}</h3>
+            <div className="text-xs text-zinc-500 mt-1">Scope PDF is auto-attached. Add Library docs (brochures, specs, certs, contracts) as additional attachments.</div>
+          </div>
+          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-zinc-950 text-xs uppercase tracking-wider font-bold">Close</button>
+        </div>
+        <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Left — email composition */}
+          <div className="space-y-3">
+            {aliases.length > 1 && (
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">From</label>
+                <select value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm bg-white" data-testid="scope-from-email">
+                  {aliases.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">To *</label>
+              <input value={to} onChange={(e) => setTo(e.target.value)} className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm" data-testid="scope-to-email" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">CC</label>
+              <input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="(optional)" className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm" data-testid="scope-cc-email" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Custom Message (optional)</label>
+              <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder="Override the default email body. Leave blank for the standard proposal blurb." className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm" data-testid="scope-message" />
+            </div>
+          </div>
+
+          {/* Right — library picker */}
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Library Attachments ({selectedIds.length} selected)</div>
+              <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="h-7 px-2 border border-zinc-300 rounded-sm text-xs bg-white" data-testid="scope-lib-filter">
+                <option value="">All categories</option>
+                {taxonomy.map((c) => <option key={c.category} value={c.category}>{c.category}</option>)}
+              </select>
+            </div>
+            <div className="border border-zinc-200 rounded-sm max-h-72 overflow-y-auto">
+              {filtered.length === 0 ? (
+                <div className="text-center text-xs text-zinc-500 py-8">No library docs match.</div>
+              ) : filtered.map((f) => (
+                <label key={f.id} className="flex items-start gap-2 px-3 py-2 border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer" data-testid={`scope-lib-${f.id}`}>
+                  <input type="checkbox" checked={selectedIds.includes(f.id)} onChange={() => toggleId(f.id)} className="mt-1" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold truncate">{f.display_name}</div>
+                    <div className="text-[10px] text-zinc-500 truncate">{f.category} / {f.subcategory}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-zinc-200 flex justify-between items-center gap-2">
+          <div className="text-[11px] text-zinc-500">
+            Will send <b>scope PDF</b> + <b>{selectedIds.length}</b> library doc{selectedIds.length === 1 ? "" : "s"} = <b>{selectedIds.length + 1}</b> total attachment{selectedIds.length === 0 ? "" : "s"}
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50">Cancel</button>
+            <button type="button" onClick={send} disabled={sending} className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 disabled:opacity-50 rounded-sm" data-testid="scope-send"><Mail className="w-4 h-4" /> {sending ? "Sending..." : "Send Scope"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
