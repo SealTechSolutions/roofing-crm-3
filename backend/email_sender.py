@@ -34,6 +34,21 @@ def _config():
     return username, password, from_email, from_name
 
 
+def get_from_aliases() -> list:
+    """Return the list of allowed FROM addresses for this Gmail account.
+    Always includes the auth username + default FROM at minimum, then any extras
+    from `GMAIL_FROM_ALIASES` (comma-separated)."""
+    username = os.environ.get("GMAIL_USERNAME", "").strip()
+    default_from = os.environ.get("GMAIL_FROM_EMAIL", "").strip() or username
+    extras = os.environ.get("GMAIL_FROM_ALIASES", "")
+    out = []
+    for v in [default_from, username, *[x.strip() for x in extras.split(",")]]:
+        v = v.strip()
+        if v and v not in out:
+            out.append(v)
+    return out
+
+
 def send_email(
     to: str,
     subject: str,
@@ -42,13 +57,23 @@ def send_email(
     cc: Optional[str] = None,
     attachments: Optional[List[dict]] = None,
     reply_to: Optional[str] = None,
+    from_email: Optional[str] = None,
 ) -> dict:
     """Send an email via Gmail SMTP.
 
     attachments: list of dicts like {"filename": "invoice.pdf", "data": bytes, "mime": "application/pdf"}
+    from_email: optional override; must be an allowed alias from `GMAIL_FROM_ALIASES`.
     Returns: {"ok": True, "to": ..., "cc": ..., "message_id": ...}
     """
-    username, password, from_email, from_name = _config()
+    username, password, default_from, from_name = _config()
+    # Apply alias override if provided and whitelisted
+    if from_email:
+        allowed = get_from_aliases()
+        if from_email.strip() not in allowed:
+            raise ValueError(f"FROM address '{from_email}' is not in GMAIL_FROM_ALIASES whitelist")
+        from_email = from_email.strip()
+    else:
+        from_email = default_from
 
     if not to or not to.strip():
         raise ValueError("Recipient email is required")

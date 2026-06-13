@@ -669,13 +669,22 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
 function EmailInvoiceModal({ invoice, onClose, onSent }) {
   const [to, setTo] = useState(invoice.bill_to_email || "");
   const [cc, setCc] = useState(invoice.cc_email || "");
+  const [aliases, setAliases] = useState([]);
+  const [fromEmail, setFromEmail] = useState("");
   const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    api.get("/email-aliases").then((r) => {
+      setAliases(r.data?.aliases || []);
+      setFromEmail(r.data?.default || (r.data?.aliases?.[0] || ""));
+    }).catch(() => {});
+  }, []);
 
   const send = async () => {
     if (!to.trim()) { toast.error("Recipient email required"); return; }
     setSending(true);
     try {
-      const r = await api.post(`/invoices/${invoice.id}/email`, { to_email: to, cc_email: cc });
+      const r = await api.post(`/invoices/${invoice.id}/email`, { to_email: to, cc_email: cc, from_email: fromEmail });
       if (r.data?.mocked) {
         toast.warning(`Invoice marked Sent (email provider not yet configured — would send to ${to}${cc ? ` cc: ${cc}` : ""})`);
       } else {
@@ -698,6 +707,14 @@ function EmailInvoiceModal({ invoice, onClose, onSent }) {
           <div className="text-xs text-zinc-500 mt-1">{invoice.bill_to_company || invoice.bill_to_name} · {formatCurrency(invoice.balance_due)} due</div>
         </div>
         <div className="p-5 space-y-3">
+          {aliases.length > 1 && (
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">From</label>
+              <select value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white" data-testid="email-from">
+                {aliases.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">To</label>
             <input type="email" value={to} onChange={(e) => setTo(e.target.value)} className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm" placeholder="customer@example.com" data-testid="email-to" />
@@ -707,7 +724,7 @@ function EmailInvoiceModal({ invoice, onClose, onSent }) {
             <input type="email" value={cc} onChange={(e) => setCc(e.target.value)} className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm" placeholder="you@yourcompany.com" data-testid="email-cc" />
           </div>
           <div className="bg-blue-50 border border-blue-200 rounded-sm p-3 text-[11px] text-blue-900">
-            Sending from <b>finance@sealtechsolutions.co</b> via Gmail. PDF invoice will be attached automatically. Replies go to your finance inbox.
+            Sending from <b>{fromEmail || "finance@sealtechsolutions.co"}</b> via Gmail. PDF invoice will be attached automatically.
           </div>
         </div>
         <div className="px-5 py-4 border-t border-zinc-200 flex justify-end gap-2">
@@ -857,13 +874,22 @@ function StatementsModal({ onClose }) {
 function EmailStatementModal({ customer, onClose, onSent }) {
   const [toEmail, setToEmail] = useState(customer.email || "");
   const [ccEmail, setCcEmail] = useState("");
+  const [aliases, setAliases] = useState([]);
+  const [fromEmail, setFromEmail] = useState("");
   const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    api.get("/email-aliases").then((r) => {
+      setAliases(r.data?.aliases || []);
+      setFromEmail(r.data?.default || (r.data?.aliases?.[0] || ""));
+    }).catch(() => {});
+  }, []);
 
   const send = async () => {
     if (!toEmail.trim()) { toast.error("Enter a recipient email"); return; }
     setSending(true);
     try {
-      const r = await api.post(`/contacts/${customer.customer_id}/statement/email`, { to_email: toEmail.trim(), cc_email: ccEmail.trim() });
+      const r = await api.post(`/contacts/${customer.customer_id}/statement/email`, { to_email: toEmail.trim(), cc_email: ccEmail.trim(), from_email: fromEmail });
       toast.success(r.data.message || "Statement sent");
       onSent();
     } catch (e) {
@@ -884,6 +910,14 @@ function EmailStatementModal({ customer, onClose, onSent }) {
           <div className="text-xs text-zinc-500 mt-1">Open balance: <span className="font-bold text-zinc-950 font-mono">{formatCurrency(customer.open_balance)}</span> across {customer.invoice_count} invoice{customer.invoice_count === 1 ? "" : "s"}</div>
         </div>
         <div className="space-y-3">
+          {aliases.length > 1 && (
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">From</label>
+              <select value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm bg-white" data-testid="statement-from-email">
+                {aliases.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">To *</label>
             <input value={toEmail} onChange={(e) => setToEmail(e.target.value)} className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm" data-testid="statement-to-email" />

@@ -93,6 +93,14 @@
 - ✅ Rate-card legend & helper text updated to call out that 25-yr + Hail Rider are FARM-only.
 - ✅ Gemini PDF verification: Silicone scope confirmed to render exactly 3 rows per pricing table with no 25-year tier anywhere.
 
+## Multi-Alias Gmail "From" (2026-02)
+- ✅ New env `GMAIL_FROM_ALIASES` (comma-separated) controls which Send-As aliases are allowed; default address is still `GMAIL_FROM_EMAIL`
+- ✅ Currently configured aliases: `finance@sealtechsolutions.co` (default), `projects@sealtechsolutions.co`, `darren@sealtechsolutions.co`
+- ✅ `send_email()` accepts an optional `from_email` kwarg and validates it against the whitelist (raises ValueError on rejection)
+- ✅ New endpoint `GET /api/email-aliases` returns the list + default for the frontend
+- ✅ **Invoice email modal** and **Statement email modal** now show a "From" dropdown when ≥ 2 aliases are configured; selection is forwarded as `from_email` to the backend
+- ✅ End-to-end verified: real invoice sent from `projects@sealtechsolutions.co` returned a 200 + real Gmail Message-ID; bad alias correctly rejected with descriptive error
+
 ## "Calculate Warranties" Auto-Calc (2026-02)
 - ✅ New **Calculate Warranties** button (Calculator icon) next to the Warranty Add-Ons section header on the Deal form
 - ✅ One click auto-fills all 4 warranty add-on fields from the project's computed SqFt using the standard per-SQ rates with minimums:

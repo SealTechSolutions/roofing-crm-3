@@ -1678,6 +1678,7 @@ async def email_purchase_order(deal_id: str, vendor_id: str, body: dict = Body(d
 
     to_email = (body.get("to_email") or po["vendor"].get("email") or "").strip()
     cc_email = (body.get("cc_email") or "").strip()
+    from_email = (body.get("from_email") or "").strip() or None
     if not to_email:
         raise HTTPException(status_code=400, detail="No recipient email — please provide one or set the vendor's email.")
 
@@ -1718,6 +1719,7 @@ async def email_purchase_order(deal_id: str, vendor_id: str, body: dict = Body(d
             body_html=body_html,
             reply_to=os.environ.get("GMAIL_FROM_EMAIL") or None,
             attachments=[{"filename": f"PO_{po_num}.pdf", "data": pdf_bytes, "mime": "application/pdf"}],
+            from_email=from_email,
         )
     except EmailNotConfigured as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2089,6 +2091,7 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
         raise HTTPException(status_code=404, detail="Invoice not found")
     to_email = (body.get("to_email") or inv.get("bill_to_email") or "").strip()
     cc_email = (body.get("cc_email") or inv.get("cc_email") or "").strip()
+    from_email = (body.get("from_email") or "").strip() or None
     if not to_email:
         raise HTTPException(status_code=400, detail="No recipient email — please provide one.")
 
@@ -2162,6 +2165,7 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
             body_html=body_html,
             reply_to=os.environ.get("GMAIL_FROM_EMAIL") or None,
             attachments=[{"filename": f"{inv_num}.pdf", "data": pdf_bytes, "mime": "application/pdf"}],
+            from_email=from_email,
         )
     except EmailNotConfigured as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2313,6 +2317,7 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
         raise HTTPException(status_code=404, detail="Customer not found")
     to_email = (body.get("to_email") or contact.get("email") or "").strip()
     cc_email = (body.get("cc_email") or "").strip()
+    from_email = (body.get("from_email") or "").strip() or None
     if not to_email:
         raise HTTPException(status_code=400, detail="No recipient email — please provide one.")
 
@@ -2402,6 +2407,7 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
             body_html=body_html,
             reply_to=os.environ.get("GMAIL_FROM_EMAIL") or None,
             attachments=[{"filename": fname, "data": pdf_bytes, "mime": "application/pdf"}],
+            from_email=from_email,
         )
     except EmailNotConfigured as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2852,6 +2858,19 @@ async def delete_vendor(vendor_id: str, current=Depends(get_current_user)):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Vendor not found")
     return {"ok": True}
+
+
+@api_router.get("/email-aliases")
+async def email_aliases(current=Depends(get_current_user)):
+    """List of allowed sender addresses (Gmail aliases) for invoice / statement / PO emails.
+    Front-end uses this to populate a 'From' dropdown."""
+    try:
+        from email_sender import get_from_aliases
+        aliases = get_from_aliases()
+        default = (os.environ.get("GMAIL_FROM_EMAIL") or "").strip() or (aliases[0] if aliases else "")
+        return {"aliases": aliases, "default": default}
+    except Exception as e:
+        return {"aliases": [], "default": "", "error": str(e)}
 
 
 # ----- Subcontractor Job Logs & Scorecards -----
