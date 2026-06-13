@@ -86,6 +86,13 @@
 - ✅ Spec sheet `_pricing_table` adds a **25-Year row at the top** of all three non-FARM pricing tables (Base Investment, [OPTIONAL] Manufacturer Warranty, and Total Investment with Optional Manufacturer Warranty) when either `opt_25` or `w25` is > 0; typography tightens automatically (8pt / 5pt padding) so the page still holds at exactly 3 pages
 - ✅ All 13 templates verified at 3 pages with and without the 25-yr row populated
 
+## 25-Year Tier Locked to FARM Only (2026-02 — corrected)
+- ✅ Spec sheet `_pricing_table`: 25-yr row now only renders when `tier_table` is set (i.e., FARM). For every non-FARM template (Silicone, TPO Over-Lay/Replacement, EPDM Over-Lay/Replacement, ModBit Over-Lay/Replacement, PVC Over-Lay/Replacement, Metal, Shingle, Tile, BUR), the three tables always show exactly 3 rows (20/15/10) — even if `opt_25` or `w25` are populated on the deal record.
+- ✅ Deal form: Option A ($) — 25-yr and 25-Yr Warranty Add ($) inputs are now conditionally hidden unless the deal's `proposed_roof_type` contains "FARM" or "Fluid Applied". Grid auto-collapses from 4 cols → 3 cols when 25-yr is hidden.
+- ✅ Calculate Warranties button: when scope is non-FARM, it skips Hail Rider on the 20-yr add-on AND clears any stale 25-yr value to 0; toast confirms "25-yr skipped — FARM only".
+- ✅ Rate-card legend & helper text updated to call out that 25-yr + Hail Rider are FARM-only.
+- ✅ Gemini PDF verification: Silicone scope confirmed to render exactly 3 rows per pricing table with no 25-year tier anywhere.
+
 ## "Calculate Warranties" Auto-Calc (2026-02)
 - ✅ New **Calculate Warranties** button (Calculator icon) next to the Warranty Add-Ons section header on the Deal form
 - ✅ One click auto-fills all 4 warranty add-on fields from the project's computed SqFt using the standard per-SQ rates with minimums:

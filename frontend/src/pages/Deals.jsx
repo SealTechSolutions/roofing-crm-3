@@ -364,22 +364,31 @@ export default function Deals() {
                     const sqft = (parseFloat(form.property_sqft || 0)) + (parseFloat(form.perimeter_lnft || 0) * parseFloat(form.avg_parapet_height || 0));
                     if (sqft <= 0) { toast.error("Enter Property SqFt / Perimeter / Parapet first so we know the SQ count."); return; }
                     const sq = sqft / 100;
-                    const rider = 3.5 * sq;  // Hail Rider — only added to 20-yr and 25-yr
+                    const isFarmScope = /farm|fluid applied/i.test(form.proposed_roof_type || "");
+                    const rider = 3.5 * sq;  // Hail Rider only on FARM 20/25-yr
                     const w10 = Math.max(9.0 * sq, 1250);
                     const w15 = Math.max(12.0 * sq, 1500);
-                    const w20 = Math.max(15.0 * sq, 1750) + rider;
+                    const w20 = Math.max(15.0 * sq, 1750) + (isFarmScope ? rider : 0);
                     const w25 = Math.max(17.5 * sq, 2000) + rider;
-                    setForm({
+                    const next = {
                       ...form,
-                      warranty_25yr_add: Math.round(w25 * 100) / 100,
                       warranty_20yr_add: Math.round(w20 * 100) / 100,
                       warranty_15yr_add: Math.round(w15 * 100) / 100,
                       warranty_10yr_add: Math.round(w10 * 100) / 100,
-                    });
-                    toast.success(`Warranties calculated for ${sq.toFixed(1)} SQ (incl. Hail Rider on 20/25-yr)`);
+                    };
+                    if (isFarmScope) {
+                      next.warranty_25yr_add = Math.round(w25 * 100) / 100;
+                    } else {
+                      // Non-FARM scopes do not offer 25-yr — clear it so old values don't linger.
+                      next.warranty_25yr_add = 0;
+                    }
+                    setForm(next);
+                    toast.success(isFarmScope
+                      ? `FARM warranties calculated for ${sq.toFixed(1)} SQ (incl. Hail Rider on 20/25-yr)`
+                      : `Warranties calculated for ${sq.toFixed(1)} SQ (25-yr skipped — FARM only)`);
                   }}
                   className="inline-flex items-center gap-2 bg-white border border-blue-700 text-blue-700 px-3 h-8 text-[10px] font-bold uppercase tracking-wider hover:bg-blue-50 rounded-sm transition-colors"
-                  title="Auto-fill all 4 warranty add-on fields from Total SqFt using the standard per-square rates + Hail Rider on 20/25-yr"
+                  title="Auto-fill warranty add-ons from Total SqFt using the standard per-square rates. 25-yr + Hail Rider are FARM-only."
                 >
                   <Calculator className="w-3.5 h-3.5" /> Calculate Warranties
                 </button>
@@ -387,31 +396,39 @@ export default function Deals() {
               <Field label="Product Description (override)">
                 <Input data-testid="deal-product-desc" value={form.product_description} onChange={(v) => setForm({ ...form, product_description: v })} placeholder="e.g., Silicone Roof System w/Granules Over Single-Ply Investment" />
               </Field>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-3">
-                <Field label="25-Yr Warranty Add ($)">
-                  <Input data-testid="deal-w25" type="number" min="0" step="100" value={form.warranty_25yr_add} onChange={(v) => setForm({ ...form, warranty_25yr_add: v })} />
-                </Field>
-                <Field label="20-Yr Warranty Add ($)">
-                  <Input data-testid="deal-w20" type="number" min="0" step="100" value={form.warranty_20yr_add} onChange={(v) => setForm({ ...form, warranty_20yr_add: v })} />
-                </Field>
-                <Field label="15-Yr Warranty Add ($)">
-                  <Input data-testid="deal-w15" type="number" min="0" step="100" value={form.warranty_15yr_add} onChange={(v) => setForm({ ...form, warranty_15yr_add: v })} />
-                </Field>
-                <Field label="10-Yr Warranty Add ($)">
-                  <Input data-testid="deal-w10" type="number" min="0" step="100" value={form.warranty_10yr_add} onChange={(v) => setForm({ ...form, warranty_10yr_add: v })} />
-                </Field>
-                <Field label="Coating Color">
-                  <Input data-testid="deal-color" value={form.warranty_color} onChange={(v) => setForm({ ...form, warranty_color: v })} placeholder="white" />
-                </Field>
-              </div>
+              {(() => {
+                const isFarm = /farm|fluid applied/i.test(form.proposed_roof_type || "");
+                return (
+                  <>
+                    <div className={`grid grid-cols-2 sm:grid-cols-3 gap-4 mt-3 ${isFarm ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+                      {isFarm && (
+                        <Field label="25-Yr Warranty Add ($)" hint="FARM only">
+                          <Input data-testid="deal-w25" type="number" min="0" step="100" value={form.warranty_25yr_add} onChange={(v) => setForm({ ...form, warranty_25yr_add: v })} />
+                        </Field>
+                      )}
+                      <Field label="20-Yr Warranty Add ($)">
+                        <Input data-testid="deal-w20" type="number" min="0" step="100" value={form.warranty_20yr_add} onChange={(v) => setForm({ ...form, warranty_20yr_add: v })} />
+                      </Field>
+                      <Field label="15-Yr Warranty Add ($)">
+                        <Input data-testid="deal-w15" type="number" min="0" step="100" value={form.warranty_15yr_add} onChange={(v) => setForm({ ...form, warranty_15yr_add: v })} />
+                      </Field>
+                      <Field label="10-Yr Warranty Add ($)">
+                        <Input data-testid="deal-w10" type="number" min="0" step="100" value={form.warranty_10yr_add} onChange={(v) => setForm({ ...form, warranty_10yr_add: v })} />
+                      </Field>
+                      <Field label="Coating Color">
+                        <Input data-testid="deal-color" value={form.warranty_color} onChange={(v) => setForm({ ...form, warranty_color: v })} placeholder="white" />
+                      </Field>
+                    </div>
+                  </>
+                );
+              })()}
               <div className="text-xs text-zinc-500 mt-2">
                 <b>Standard rates</b> (per SQ, $-minimum):&nbsp;
                 <span className="font-mono">10-Yr&nbsp;$9.00/$1,250</span> &middot;
                 <span className="font-mono">15-Yr&nbsp;$12.00/$1,500</span> &middot;
-                <span className="font-mono">20-Yr&nbsp;$15.00/$1,750</span> &middot;
-                <span className="font-mono">25-Yr&nbsp;$17.50/$2,000</span>.&nbsp;
-                <b>Hail Rider</b> <span className="font-mono">$3.50/SQ</span> auto-added to <b>20-Yr</b> and <b>25-Yr</b> only (not available on 10/15).&nbsp;
-                Option A→25-yr · Option B→20-yr · Option C→15-yr · Option D→10-yr. Add-ons appear in the spec sheet&apos;s optional warranty table.
+                <span className="font-mono">20-Yr&nbsp;$15.00/$1,750</span>.&nbsp;
+                <b>Hail Rider</b> <span className="font-mono">$3.50/SQ</span> + 25-Yr (<span className="font-mono">$17.50/$2,000</span>) are <b>FARM only</b>.&nbsp;
+                Option B→20-yr · Option C→15-yr · Option D→10-yr (Option A→25-yr appears only when Proposed Roof Type is FARM).
               </div>
             </div>
 
@@ -419,20 +436,27 @@ export default function Deals() {
               <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">
                 {form.deal_type === "Assessment" ? "Assessment — 3 Roof System Options" : "Scope — Pricing Options"}
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Field label="Option A ($) — 25-yr">
-                  <Input data-testid="deal-option-25yr" type="number" min="0" step="0.01" value={form.proposal_option_25yr} onChange={(v) => setForm({ ...form, proposal_option_25yr: v })} />
-                </Field>
-                <Field label="Option B ($) — 20-yr">
-                  <Input data-testid="deal-option-1" type="number" min="0" step="0.01" value={form.proposal_option_1} onChange={(v) => setForm({ ...form, proposal_option_1: v })} />
-                </Field>
-                <Field label="Option C ($) — 15-yr">
-                  <Input data-testid="deal-option-2" type="number" min="0" step="0.01" value={form.proposal_option_2} onChange={(v) => setForm({ ...form, proposal_option_2: v })} />
-                </Field>
-                <Field label="Option D ($) — 10-yr">
-                  <Input data-testid="deal-option-3" type="number" min="0" step="0.01" value={form.proposal_option_3} onChange={(v) => setForm({ ...form, proposal_option_3: v })} />
-                </Field>
-              </div>
+              {(() => {
+                const isFarm = /farm|fluid applied/i.test(form.proposed_roof_type || "");
+                return (
+                  <div className={`grid gap-4 ${isFarm ? "grid-cols-2 md:grid-cols-4" : "grid-cols-1 md:grid-cols-3"}`}>
+                    {isFarm && (
+                      <Field label="Option A ($) — 25-yr">
+                        <Input data-testid="deal-option-25yr" type="number" min="0" step="0.01" value={form.proposal_option_25yr} onChange={(v) => setForm({ ...form, proposal_option_25yr: v })} />
+                      </Field>
+                    )}
+                    <Field label="Option B ($) — 20-yr">
+                      <Input data-testid="deal-option-1" type="number" min="0" step="0.01" value={form.proposal_option_1} onChange={(v) => setForm({ ...form, proposal_option_1: v })} />
+                    </Field>
+                    <Field label="Option C ($) — 15-yr">
+                      <Input data-testid="deal-option-2" type="number" min="0" step="0.01" value={form.proposal_option_2} onChange={(v) => setForm({ ...form, proposal_option_2: v })} />
+                    </Field>
+                    <Field label="Option D ($) — 10-yr">
+                      <Input data-testid="deal-option-3" type="number" min="0" step="0.01" value={form.proposal_option_3} onChange={(v) => setForm({ ...form, proposal_option_3: v })} />
+                    </Field>
+                  </div>
+                );
+              })()}
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Chosen Amount ($)">
                   <Input data-testid="deal-chosen-amount" type="number" min="0" step="0.01" value={form.chosen_amount} onChange={(v) => setForm({ ...form, chosen_amount: v })} />
