@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
 import MaterialTakeoff from "@/components/MaterialTakeoff";
+import { ScopePreview } from "@/pages/Deals";
 
 export default function DealDetail() {
   const { id } = useParams();
@@ -534,6 +535,9 @@ export default function DealDetail() {
         <Card title="Roof Spec & Measurements">
           <Row label="Current Roof" value={deal.current_roof_type} />
           <Row label="Proposed Roof" value={deal.proposed_roof_type} bold />
+          <div className="pl-1 pb-2">
+            <ScopePreview currentRoof={deal.current_roof_type} proposedRoof={deal.proposed_roof_type} />
+          </div>
           <Row label="Project Type" value={deal.project_type} />
           <Row label="Lead Source" value={deal.lead_source} />
           {deal.lead_source === "Referral" && deal.referral_source && (

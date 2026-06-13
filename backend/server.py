@@ -738,6 +738,53 @@ async def options(current=Depends(get_current_user)):
     }
 
 
+
+
+@api_router.get("/options/scope-preview")
+async def preview_scope_title(
+    proposed: str = Query("", description="Proposed roof type"),
+    current: str = Query("", description="Current roof type"),
+    current_user=Depends(get_current_user),
+):
+    """Resolve which spec-sheet template would render for a given proposed/current combo.
+
+    Returns the template title and the Product Type line, so the deal form can show
+    a "Will generate: ..." chip before the user clicks Generate.
+    """
+    from spec_sheet import _resolve_template
+    template = _resolve_template(proposed or None, current or None)
+    # Derive product_type using the same logic as the spec sheet route
+    PRODUCT_TYPE_DEFAULTS = {
+        "TPO Over-Lay": "TPO Roof System Over Existing TPO Over-Lay",
+        "TPO Replacement": "TPO Roof System Replacing TPO",
+        "EPDM Over-Lay": "EPDM Roof System Over Existing EPDM Over-Lay",
+        "EPDM Replacement": "EPDM Roof System Replacing EPDM",
+        "ModBit Over-Lay": "Modified Bitumen Roof System Over Existing Modified Bitumen Over-Lay",
+        "ModBit Replacement": "Modified Bitumen Roof System Replacing Modified Bitumen",
+        "PVC Over-Lay": "PVC Roof System Over Existing PVC Over-Lay",
+        "PVC Replacement": "PVC Roof System Replacing PVC",
+    }
+    NEW_CONSTRUCTION_LABELS = {
+        "TPO": "TPO", "TPO Over-Lay": "TPO", "TPO Replacement": "TPO",
+        "EPDM": "EPDM", "EPDM Over-Lay": "EPDM", "EPDM Replacement": "EPDM", "EPDM w/ Ballast": "EPDM",
+        "PVC": "PVC", "PVC Over-Lay": "PVC", "PVC Replacement": "PVC",
+        "ModBit": "Modified Bitumen", "ModBit Over-Lay": "Modified Bitumen", "ModBit Replacement": "Modified Bitumen",
+        "BUR (Built-Up)": "Built-Up Roof",
+    }
+    is_new = bool(current) and (current.strip().lower().startswith("none") or "new construction" in current.lower())
+    if is_new and proposed in NEW_CONSTRUCTION_LABELS:
+        product_desc = f"{NEW_CONSTRUCTION_LABELS[proposed]} Roof System on New Construction"
+    elif proposed in PRODUCT_TYPE_DEFAULTS:
+        product_desc = PRODUCT_TYPE_DEFAULTS[proposed]
+    else:
+        product_desc = f"{proposed} Roof System Over Existing {current}".strip() if proposed else ""
+    return {
+        "title": template.get("title", ""),
+        "product_type": product_desc,
+        "is_new_construction": is_new,
+    }
+
+
 # ----- Contacts -----
 @api_router.get("/contacts", response_model=List[Contact])
 async def list_contacts(current=Depends(get_current_user)):

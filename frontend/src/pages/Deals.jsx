@@ -1,12 +1,56 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, formatApiError, formatCurrency } from "@/lib/api";
-import { Plus, Pencil, Trash2, ArrowUpRight, Archive } from "lucide-react";
+import { Plus, Pencil, Trash2, ArrowUpRight, Archive, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { StatusPill } from "@/pages/Dashboard";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import ConfirmDialog from "@/components/ConfirmDialog";
+
+
+/** Live preview chip that shows which spec-sheet template will render
+    for the current/proposed roof type combo. */
+export function ScopePreview({ currentRoof, proposedRoof }) {
+  const [preview, setPreview] = useState(null);
+  const proposed = proposedRoof || "";
+  useEffect(() => {
+    if (!proposed) return undefined;
+    let cancelled = false;
+    const handle = async () => {
+      try {
+        const r = await api.get("/options/scope-preview", {
+          params: { proposed, current: currentRoof || "" },
+        });
+        if (cancelled) return;
+        setPreview(r.data);
+      } catch (e) {
+        if (cancelled) return;
+        setPreview(null);
+      }
+    };
+    const t = setTimeout(handle, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [currentRoof, proposed]);
+
+  if (!proposed || !preview?.title) return null;
+  const newCx = preview.is_new_construction;
+  return (
+    <div
+      className={`mt-2 inline-flex items-start gap-2 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-sm border ${
+        newCx ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-blue-50 text-blue-800 border-blue-200"
+      }`}
+      data-testid="scope-preview-chip"
+    >
+      <FileText className="w-3 h-3 mt-px flex-shrink-0" />
+      <div className="leading-snug">
+        <div>Will generate:</div>
+        <div className="font-black tracking-[0.05em] mt-0.5">{preview.title}</div>
+      </div>
+    </div>
+  );
+}
+
 
 const empty = {
   title: "",
@@ -280,6 +324,7 @@ export default function Deals() {
               </Field>
               <Field label="Proposed Roof Type">
                 <Select data-testid="deal-proposed-roof" value={form.proposed_roof_type} onChange={(v) => setForm({ ...form, proposed_roof_type: v })} options={options.roof_types} />
+                <ScopePreview currentRoof={form.current_roof_type} proposedRoof={form.proposed_roof_type} />
               </Field>
               <Field label="Assigned To">
                 <Select data-testid="deal-assigned-to" value={form.assigned_to_user_id || ""} onChange={(v) => setForm({ ...form, assigned_to_user_id: v })} options={userOpts} />
@@ -326,7 +371,7 @@ export default function Deals() {
                   <Input data-testid="deal-color" value={form.warranty_color} onChange={(v) => setForm({ ...form, warranty_color: v })} placeholder="white" />
                 </Field>
               </div>
-              <div className="text-xs text-zinc-500 mt-2">Option A→20-yr · Option B→15-yr · Option C→10-yr. Add-ons appear in the spec sheet's optional warranty table.</div>
+              <div className="text-xs text-zinc-500 mt-2">Option A→20-yr · Option B→15-yr · Option C→10-yr. Add-ons appear in the spec sheet&apos;s optional warranty table.</div>
             </div>
 
             <div className="pt-4 border-t border-zinc-200">
