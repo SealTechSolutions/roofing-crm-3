@@ -532,24 +532,60 @@ TILE_TEMPLATE = {
 
 FARM_TEMPLATE = {
     "title": "FARM (FLUID APPLIED REINFORCED MEMBRANE) SCOPE",
-    "scope_1_title": "Inspection and Substrate Prep",
+    "scope_1_title": "Inspection and Prep",
     "scope_1": [
-        "Survey substrate and document delaminations, splits, blisters, and failed flashings.",
-        "Identify wet insulation via infrared survey or core cuts; remove and replace wet areas.",
-        "Cut, patch, and repair all open seams, splits, and damaged membrane sections.",
-        "Re-secure loose flashings, metal edge, and counter-flashings.",
-        "Power-wash the entire roof surface; allow substrate to fully dry prior to application.",
+        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Identify wet insulation by infrared and/or core cuts; quantify replacement/ventilation areas.",
+        "Remove all roof debris, power wash existing membrane (if required), and allow to dry.",
     ],
-    "scope_2_title": "Fluid Applied Reinforced Membrane Installation",
+    "scope_2_title": "FARM Application",
     "scope_2": [
-        "Apply manufacturer-approved primer where required by the system specification.",
-        "Apply tack coat of fluid applied membrane at specified rate.",
-        "Fully embed reinforcing polyester fabric into wet base coat, rolling out all wrinkles and laps.",
-        "Apply intermediate coat to fully encapsulate the reinforcing fabric at specified mil thickness.",
-        "Apply top coat to manufacturer-specified dry mil thickness across the entire field.",
-        "Reinforce all penetrations, drains, scuppers, and wall transitions with additional fabric plies.",
-        "Final walk-through, water-test drains, and quality inspection with the owner.",
+        "<b>Flashing:</b> All penetrations will be flashed with a 5-course system of mastic and fabric before and during application. Then one of the following systems will be applied based on the selected warranty tier:",
     ],
+    "tier_table": {
+        "headers": ["25-YEAR SYSTEM", "20-YEAR SYSTEM", "15-YEAR SYSTEM", "10-YEAR SYSTEM"],
+        "rows": [
+            [
+                "Base Layer of Emulsion with embedded fabric",
+                "Base Layer of Emulsion with embedded fabric",
+                "Base Layer of Emulsion with embedded fabric",
+                "Base Layer of Emulsion with embedded fabric",
+            ],
+            [
+                "Mid Layer of Acrylic with embedded fabric",
+                "Mid Layer of Emulsion with embedded fabric",
+                "Mid Layer of Acrylic with embedded fabric",
+                "Mid Layer of Emulsion with embedded fabric",
+            ],
+            [
+                "Top Layer of Acrylic with embedded fabric",
+                "Mid Layer of Acrylic with embedded fabric",
+                "Top Layer of Acrylic",
+                "Top Layer of Acrylic",
+            ],
+            [
+                "Top Layer of Acrylic",
+                "Top Layer of Acrylic",
+                "",
+                "",
+            ],
+        ],
+        "alt_header": "Alternative if Applicable",
+        "alt_rows": [
+            [
+                "",
+                "Two Layers of Acrylic with embedded fabric, Plus Top Layer",
+                "",
+                "One Layer of Acrylic with embedded fabric, Plus Top Layer",
+            ],
+        ],
+        "warranty_row": [
+            "25-Yr Warranty with Hail Rider Included",
+            "20-Yr Warranty with Hail Rider Included",
+            "15-Yr Standard Warranty Included",
+            "10-Yr Standard Warranty Included",
+        ],
+    },
 }
 
 
@@ -824,6 +860,54 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
     story.extend(_scope_block(s, template["scope_1_title"], template["scope_1"]))
     story.append(Spacer(1, 0.05 * inch))
     story.extend(_scope_block(s, template["scope_2_title"], template["scope_2"]))
+
+    # Optional tier comparison table (used by FARM and similar multi-warranty systems)
+    if template.get("tier_table"):
+        tt = template["tier_table"]
+        story.append(Spacer(1, 0.05 * inch))
+        cell_style = ParagraphStyle("tier_cell", fontName="Helvetica", fontSize=8, textColor=DARK, leading=10, alignment=1)
+        head_style = ParagraphStyle("tier_head", fontName="Helvetica-Bold", fontSize=8, textColor=colors.white, leading=10, alignment=1)
+        warr_style = ParagraphStyle("tier_warr", fontName="Helvetica-Bold", fontSize=8, textColor=DARK, leading=10, alignment=1)
+        alt_style = ParagraphStyle("tier_alt", fontName="Helvetica-Bold", fontSize=7, textColor=BRONZE, leading=9, alignment=1)
+
+        data_rows = [[Paragraph(h, head_style) for h in tt["headers"]]]
+        for row in tt.get("rows", []):
+            data_rows.append([Paragraph(c, cell_style) if c else "" for c in row])
+
+        alt_rows = tt.get("alt_rows", [])
+        alt_start_idx = None
+        if alt_rows:
+            alt_start_idx = len(data_rows)
+            data_rows.append([Paragraph(tt.get("alt_header", "Alternative if Applicable"), alt_style)] * 4)
+            for row in alt_rows:
+                data_rows.append([Paragraph(c, cell_style) if c else "" for c in row])
+
+        warr_idx = None
+        if tt.get("warranty_row"):
+            warr_idx = len(data_rows)
+            data_rows.append([Paragraph(c, warr_style) for c in tt["warranty_row"]])
+
+        col_w = 7.5 * inch / 4
+        ttable = Table(data_rows, colWidths=[col_w] * 4)
+        style_cmds = [
+            ("BACKGROUND", (0, 0), (-1, 0), BLUE),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]
+        if alt_start_idx is not None:
+            style_cmds.append(("BACKGROUND", (0, alt_start_idx), (-1, alt_start_idx), LIGHT))
+            style_cmds.append(("SPAN", (0, alt_start_idx), (-1, alt_start_idx)))
+        if warr_idx is not None:
+            style_cmds.append(("BACKGROUND", (0, warr_idx), (-1, warr_idx), LIGHT))
+            style_cmds.append(("LINEABOVE", (0, warr_idx), (-1, warr_idx), 0.75, DARK))
+        ttable.setStyle(TableStyle(style_cmds))
+        story.append(ttable)
+
     story.append(Spacer(1, 0.06 * inch))
 
     story.append(Paragraph("Inclusions", s["h2"]))
@@ -835,19 +919,20 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
     story.append(Paragraph(inc_text, s["body"]))
     story.append(Spacer(1, 0.06 * inch))
 
-    # Cover photo
-    if cover_photo_bytes:
-        try:
-            img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=1.2 * inch, kind="proportional")
-            story.append(img)
-        except Exception:
-            story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
-    else:
-        ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[1.2 * inch])
-        ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
-        story.append(ph)
-        story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))
-    story.append(Spacer(1, 0.06 * inch))
+    # Cover photo (skipped when template has a tier_table — the table itself fills the visual space)
+    if not template.get("tier_table"):
+        if cover_photo_bytes:
+            try:
+                img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=1.2 * inch, kind="proportional")
+                story.append(img)
+            except Exception:
+                story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
+        else:
+            ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[1.2 * inch])
+            ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
+            story.append(ph)
+            story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))
+        story.append(Spacer(1, 0.06 * inch))
 
     story.append(Paragraph("Exclusions", s["h2"]))
     excl = "<br/>".join([f"•&nbsp;&nbsp;{e}" for e in EXCLUSIONS])
