@@ -531,7 +531,7 @@ TILE_TEMPLATE = {
 }
 
 FARM_TEMPLATE = {
-    "title": "FARM (FLUID APPLIED REINFORCED MEMBRANE) SCOPE",
+    "title": "FLUID APPLIED REINFORCED MEMBRANE SCOPE",
     "scope_1_title": "Inspection and Prep",
     "scope_1": [
         "Survey existing roof assembly and document deck condition, slope, and drainage.",
@@ -716,11 +716,19 @@ def _header_block(s, doc, template_title: str):
         elems.append(Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"]))
 
     elems.append(Spacer(1, 0.05 * inch))
+    # Adaptive title font size — keeps even the longest titles on a single line at letter width
+    title_text = template_title or ""
+    if len(title_text) > 36:
+        title_font, title_lead = 18, 22
+    elif len(title_text) > 30:
+        title_font, title_lead = 20, 24
+    else:
+        title_font, title_lead = 22, 26
     title_centered = ParagraphStyle(
         "title_centered", parent=s["title"], alignment=1,
-        fontSize=22, leading=26, spaceAfter=6,
+        fontSize=title_font, leading=title_lead, spaceAfter=6,
     )
-    elems.append(Paragraph(template_title, title_centered))
+    elems.append(Paragraph(title_text, title_centered))
     elems.append(Spacer(1, 0.35 * inch))
 
     product_line = doc.get("product_type", "—")
