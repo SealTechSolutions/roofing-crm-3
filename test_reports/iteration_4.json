@@ -1,0 +1,39 @@
+{
+  "summary": "SealTech Books Phase 2 (GL auto-journal hooks + Dashboard Per-Entity KPI strip) tested end-to-end. 14/14 pytest backend tests passed covering invoice issue/payment journaling, revenue routing (FARM 4030 / Maintenance 4100 / default Re-Roof 4010), COGS routing (5000 Materials vs 5010 Subcontractor Labor), idempotent payment overwrite (same posting_key updates one row), payment reversal on amount_paid=0, delete reversal cascade, missing entity_id silent-skip, KPI per-entity arithmetic match, and /reports/kpis/all multi-entity shape. All 4 frontend flows verified: invoice-entity-select & bill-entity-select default to Parent entity (SealTech Holdings); Dashboard 'Books — Per-Entity Snapshot' strip renders 4 rows at /, each row click navigates to /books and persists localStorage 'books_entity_id'. Strip hides gracefully when no GL activity (code path `anyActivity` check, verified inverse).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["Visiting /dashboard URL renders blank (no route). The dashboard is mounted at /. Navigating typo or bookmarked /dashboard shows an empty page — consider a redirect from /dashboard → /."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_books_phase2.py",
+    "/app/test_reports/pytest/pytest_phase2.xml"
+  ],
+  "action_items": [
+    "Optional: add a redirect from /dashboard to / to handle bookmarked URLs (cosmetic).",
+    "Optional: when an invoice/bill is updated and entity_id is CLEARED (changed from set → empty), update_invoice/update_vendor_bill only reverses if `existing.entity_id != data.entity_id` — currently works because new post_invoice_issue with empty entity_id no-ops, AND reverse is triggered when old != new. Confirmed correct via test (test_no_journal_when_entity_blank + delete-reverses-all). No fix needed; just calling it out."
+  ],
+  "critical_code_review_comments": [
+    "gl.post_invoice_issue() reverses 'issue' journal when status is draft/void/blank but does NOT also reverse the 'payment' journal on void — a void invoice with amount_paid>0 would keep the cash entry. Likely edge case but worth a guard.",
+    "gl._sum_for_accounts(): date filter assembly via `match[\"date\"] = match.get(\"date\", {})` then `match[\"date\"][\"$gte\"] = date_from` could overwrite if both date_from and date_to supplied — works but slightly fragile; use setdefault both times.",
+    "InvoiceIn.entity_id is Optional[str] but blank string is the actual no-op signal — consistent with Phase 1 EntityIn pattern; just document.",
+    "gl.entity_kpis: cash_on_hand uses CASH_ACCOUNT_NUMBERS = ('1000','1010','1020') only — if a user creates a custom Bank-type account (e.g. 1030), it will be excluded from Cash KPI. Consider summing by account_type='Asset' and category='Bank' instead.",
+    "Dashboard BooksKpiStrip swallows fetch errors silently (return null on err) — fine for UX but no telemetry; consider logging."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_books_phase2.py (new)"
+  ],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "100% (4/4 flows)"},
+  "test_credentials": "admin@roofingcrm.com / admin123 (working)",
+  "seed_data_creation": "All test invoices/bills/deals/vendors created with TEST_QA_ prefix and are cleaned up by each test's finally block (DELETE cascade also reverses GL entries). No persistent test data left.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 2 backend tests at /app/backend/tests/test_books_phase2.py. Helpers: _make_invoice/_put_invoice/_make_bill/_put_bill/_make_deal/_make_vendor. Invoice default status is 'Draft' which short-circuits GL — tests always pass status='Sent'. Vendor bill default status='Pending' DOES post (only draft/void/blank skips). Reversal uses is_reversed flag — query without include_reversed=true to filter them out. Frontend: dashboard strip lives at / (NOT /dashboard); invoice-entity-select & bill-entity-select are populated via /books/entities GET then default to parent via useEffect (takes ~1-3s after modal open — wait for the select.input_value() to be non-empty before reading).",
+  "rca of the issue": "N/A — no bugs found in Phase 2 deliverable."
+}

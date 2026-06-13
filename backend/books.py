@@ -332,4 +332,40 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
     async def get_account_types(current=Depends(get_current_user)):
         return {"types": ACCOUNT_TYPES}
 
+    # ---------- Journal Entries (read-only feed) ----------
+    @router.get("/journal-entries")
+    async def list_journal_entries(
+        entity_id: Optional[str] = None,
+        limit: int = 100,
+        include_reversed: bool = False,
+        current=Depends(get_current_user),
+    ):
+        q: dict = {}
+        if entity_id:
+            q["entity_id"] = entity_id
+        if not include_reversed:
+            q["is_reversed"] = {"$ne": True}
+        out = []
+        async for j in db.journal_entries.find(q).sort("date", -1).limit(max(1, min(500, limit))):
+            out.append(_clean(j))
+        return out
+
+    # ---------- Reports / KPIs ----------
+    @router.get("/reports/kpis")
+    async def report_kpis(entity_id: str, current=Depends(get_current_user)):
+        from gl import entity_kpis
+        return await entity_kpis(db, entity_id)
+
+    @router.get("/reports/kpis/all")
+    async def report_kpis_all(current=Depends(get_current_user)):
+        from gl import entity_kpis
+        out = []
+        async for e in db.entities.find({"is_active": True}).sort([("is_parent", -1), ("name", 1)]):
+            kpi = await entity_kpis(db, e["id"])
+            kpi["entity_name"] = e["name"]
+            kpi["entity_role"] = e.get("role", "")
+            kpi["is_parent"] = e.get("is_parent", False)
+            out.append(kpi)
+        return out
+
     return router

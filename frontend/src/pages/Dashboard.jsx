@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, formatCurrency } from "@/lib/api";
 import { Link } from "react-router-dom";
-import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked } from "lucide-react";
 import { ExportButtons } from "@/components/ExportImport";
 
 const KPI = ({ label, value, hint, icon: Icon, testId }) => (
@@ -101,6 +101,9 @@ export default function Dashboard() {
           <KPI label="Due This Week" value={formatCurrency(data.payables_due_this_week || 0)} hint={`${data.payables_due_this_week_count || 0} bills due in 7 days`} icon={Wallet} testId="kpi-payables-due-week" />
         </Link>
       </div>
+
+      {/* Books — Per-Entity KPI Strip */}
+      <BooksKpiStrip />
 
       {/* Materials In Motion */}
       <MaterialsInMotion motion={motion} />
@@ -365,5 +368,89 @@ export function StatusPill({ status }) {
     <span className={`inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm ${map[status] || "bg-zinc-200 text-zinc-800"}`}>
       {status}
     </span>
+  );
+}
+
+
+// ---- Books per-entity KPI strip ----
+function BooksKpiStrip() {
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    api.get("/books/reports/kpis/all")
+      .then((r) => setRows(r.data || []))
+      .catch((e) => setErr(e?.message || "Failed to load"));
+  }, []);
+
+  if (err) return null;
+  if (!rows) return null;
+  if (!rows.length) return null;
+
+  // Hide the strip if no entity has any activity yet (keeps dashboard clean until journals start)
+  const anyActivity = rows.some(
+    (r) => r.cash_on_hand !== 0 || r.open_ar !== 0 || r.open_ap !== 0 || r.ytd_revenue !== 0
+  );
+  if (!anyActivity) return null;
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-sm mb-12" data-testid="books-kpi-strip">
+      <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          <BookMarked className="w-5 h-5 text-blue-700" />
+          <div>
+            <h2 className="font-heading text-lg font-bold tracking-tight">Books — Per-Entity Snapshot</h2>
+            <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-1">
+              Cash · Open A/R · Open A/P · MTD Revenue — live from the General Ledger
+            </div>
+          </div>
+        </div>
+        <Link
+          to="/books"
+          className="text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:text-blue-900 inline-flex items-center gap-1"
+          data-testid="books-strip-open-link"
+        >
+          Open Books <ChevronRight className="w-3 h-3" />
+        </Link>
+      </div>
+      <div className="divide-y divide-zinc-100">
+        {rows.map((e) => (
+          <Link
+            key={e.entity_id}
+            to="/books"
+            onClick={() => localStorage.setItem("books_entity_id", e.entity_id)}
+            className="grid grid-cols-2 md:grid-cols-6 gap-4 px-6 py-4 hover:bg-zinc-50 transition-colors items-center"
+            data-testid={`books-row-${e.entity_id}`}
+          >
+            <div className="md:col-span-2">
+              <div className="font-bold text-zinc-950 truncate">{e.entity_name}</div>
+              <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-0.5">
+                {e.is_parent ? "Parent · " : ""}{e.entity_role || "—"}
+              </div>
+            </div>
+            <KpiCell label="Cash on Hand" value={formatCurrency(e.cash_on_hand)} tone="emerald" />
+            <KpiCell label="Open A/R" value={formatCurrency(e.open_ar)} tone="blue" />
+            <KpiCell label="Open A/P" value={formatCurrency(e.open_ap)} tone="rose" />
+            <KpiCell label="MTD Revenue" value={formatCurrency(e.mtd_revenue)} hint={`YTD ${formatCurrency(e.ytd_revenue)}`} tone="zinc" />
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function KpiCell({ label, value, hint, tone = "zinc" }) {
+  const toneMap = {
+    emerald: "text-emerald-700",
+    blue: "text-blue-700",
+    rose: "text-rose-700",
+    zinc: "text-zinc-950",
+  };
+  return (
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{label}</div>
+      <div className={`font-mono font-black text-base ${toneMap[tone]} mt-0.5`}>{value}</div>
+      {hint && <div className="text-[10px] text-zinc-400 mt-0.5">{hint}</div>}
+    </div>
   );
 }

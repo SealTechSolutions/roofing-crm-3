@@ -384,8 +384,22 @@ function BillEditor({ bill, vendors, deals, onClose, onSaved }) {
     paid_date: bill.paid_date || "",
     paid_method: bill.paid_method || "",
     paid_reference: bill.paid_reference || "",
+    entity_id: bill.entity_id || "",
   }));
   const [saving, setSaving] = useState(false);
+  const [entities, setEntities] = useState([]);
+
+  // Load Books entities for the entity picker
+  useEffect(() => {
+    api.get("/books/entities").then((r) => {
+      setEntities(r.data || []);
+      if (!bill.entity_id) {
+        const parent = (r.data || []).find((e) => e.is_parent);
+        if (parent) setForm((f) => ({ ...f, entity_id: f.entity_id || parent.id }));
+      }
+    }).catch(() => setEntities([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const updateLine = (idx, patch) => {
     const items = [...form.line_items];
@@ -454,6 +468,25 @@ function BillEditor({ bill, vendors, deals, onClose, onSaved }) {
         </div>
 
         <div className="p-5 space-y-5">
+          {/* Books entity picker */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Books Entity (GL posting)</label>
+            <select
+              value={form.entity_id}
+              onChange={(e) => setForm({ ...form, entity_id: e.target.value })}
+              className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+              data-testid="bill-entity-select"
+            >
+              <option value="">— No GL Posting —</option>
+              {entities.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}{e.is_parent ? "  (Parent)" : ""}{e.role ? `  — ${e.role}` : ""}
+                </option>
+              ))}
+            </select>
+            <div className="text-[10px] text-zinc-500 mt-1">COGS & A/P post to this entity's books (sub-vendors → 5010 Subcontractor Labor, suppliers → 5000 Materials Direct).</div>
+          </div>
+
           {/* Vendor + Bill Info */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="lg:col-span-2">

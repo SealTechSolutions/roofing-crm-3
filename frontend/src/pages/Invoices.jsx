@@ -267,8 +267,22 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
     payment_reference: invoice.payment_reference || "",
     source_type: invoice.source_type || "",
     source_id: invoice.source_id || "",
+    entity_id: invoice.entity_id || "",
   }));
   const [saving, setSaving] = useState(false);
+  const [entities, setEntities] = useState([]);
+
+  // Load Books entities for the entity picker
+  useEffect(() => {
+    api.get("/books/entities").then((r) => {
+      setEntities(r.data || []);
+      if (!form.entity_id) {
+        const parent = (r.data || []).find((e) => e.is_parent);
+        if (parent) setForm((f) => ({ ...f, entity_id: parent.id }));
+      }
+    }).catch(() => setEntities([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Whenever deal_id is set (new or existing invoice), load CO list + existing invoices for context
   useEffect(() => {
@@ -456,6 +470,25 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-950 text-xl">×</button>
         </div>
         <div className="p-5 space-y-5">
+          {/* Books — Entity routing */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Books Entity (GL posting)</label>
+            <select
+              value={form.entity_id}
+              onChange={(e) => setForm({ ...form, entity_id: e.target.value })}
+              className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+              data-testid="invoice-entity-select"
+            >
+              <option value="">— No GL Posting —</option>
+              {entities.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}{e.is_parent ? "  (Parent)" : ""}{e.role ? `  — ${e.role}` : ""}
+                </option>
+              ))}
+            </select>
+            <div className="text-[10px] text-zinc-500 mt-1">Sales & A/R post to this entity's Chart of Accounts. Leave blank to skip journaling.</div>
+          </div>
+
           {/* Link to project */}
           {isNew && (
             <div>

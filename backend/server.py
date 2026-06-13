@@ -30,6 +30,7 @@ from storage import init_storage, put_object, get_object, APP_NAME
 from exports import to_excel, to_pdf, CATEGORIES as EXPORT_CATEGORIES
 from spec_sheet import build_spec_sheet
 from books import make_router as make_books_router, seed_default_entities
+import gl
 
 
 # ----- DB -----
@@ -472,6 +473,7 @@ class InvoiceIn(BaseModel):
     deal_id: Optional[str] = None
     customer_contact_id: Optional[str] = None
     invoice_type: str = ""  # Project Amount | Deposit | Mid-Project | Final | Maintenance | Repair | (blank)
+    entity_id: Optional[str] = None  # Books — which legal entity this invoice belongs to (GL routes here)
     # Bill-to snapshot (frozen at creation time)
     bill_to_company: str = ""
     bill_to_name: str = ""
@@ -534,6 +536,7 @@ class VendorBillIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     vendor_id: Optional[str] = None
     vendor_name: str = ""  # snapshot for display
+    entity_id: Optional[str] = None  # Books — which legal entity this bill belongs to (GL routes here)
     bill_number: str = ""
     bill_date: str = ""
     received_date: str = ""
@@ -1982,6 +1985,12 @@ async def create_invoice(body: InvoiceIn, current=Depends(get_current_user)):
     data["created_by_user_id"] = current["id"]
     data["is_deleted"] = False
     await db.invoices.insert_one(data.copy())
+    # Books — auto-journal (no-op if entity_id is not set)
+    try:
+        await gl.post_invoice_issue(db, data, posted_by_user_id=current["id"])
+        await gl.post_invoice_payment(db, data, posted_by_user_id=current["id"])
+    except Exception as e:
+        logger.warning(f"GL post (invoice create) failed: {type(e).__name__}: {e}")
     return strip_id(data)
 
 
@@ -2008,6 +2017,14 @@ async def update_invoice(invoice_id: str, body: InvoiceIn, current=Depends(get_c
     data["pdf_generated_at"] = existing.get("pdf_generated_at", "")
     data = _recalc_invoice(data)
     await db.invoices.update_one({"id": invoice_id}, {"$set": data})
+    # If entity changed, reverse old journals first
+    try:
+        if existing.get("entity_id") and existing.get("entity_id") != data.get("entity_id"):
+            await gl.reverse_journals(db, source_type="invoice", source_id=invoice_id)
+        await gl.post_invoice_issue(db, data, posted_by_user_id=current["id"])
+        await gl.post_invoice_payment(db, data, posted_by_user_id=current["id"])
+    except Exception as e:
+        logger.warning(f"GL post (invoice update) failed: {type(e).__name__}: {e}")
     return strip_id(data)
 
 
@@ -2017,6 +2034,11 @@ async def delete_invoice(invoice_id: str, current=Depends(get_current_user)):
         await db.invoices.delete_one({"id": invoice_id})
     else:
         await db.invoices.update_one({"id": invoice_id}, {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}})
+    # Reverse any GL postings tied to this invoice
+    try:
+        await gl.reverse_journals(db, source_type="invoice", source_id=invoice_id)
+    except Exception as e:
+        logger.warning(f"GL reverse (invoice delete) failed: {type(e).__name__}: {e}")
     return {"ok": True}
 
 
@@ -2533,6 +2555,11 @@ async def create_vendor_bill(body: VendorBillIn, current=Depends(get_current_use
     data["created_by_user_id"] = current["id"]
     data["is_deleted"] = False
     await db.vendor_bills.insert_one(data.copy())
+    try:
+        await gl.post_bill_received(db, data, posted_by_user_id=current["id"])
+        await gl.post_bill_payment(db, data, posted_by_user_id=current["id"])
+    except Exception as e:
+        logger.warning(f"GL post (vendor bill create) failed: {type(e).__name__}: {e}")
     return strip_id(data)
 
 
@@ -2561,6 +2588,13 @@ async def update_vendor_bill(bill_id: str, body: VendorBillIn, current=Depends(g
     data["created_by_user_id"] = existing.get("created_by_user_id")
     data = _recalc_bill(data)
     await db.vendor_bills.update_one({"id": bill_id}, {"$set": data})
+    try:
+        if existing.get("entity_id") and existing.get("entity_id") != data.get("entity_id"):
+            await gl.reverse_journals(db, source_type="vendor_bill", source_id=bill_id)
+        await gl.post_bill_received(db, data, posted_by_user_id=current["id"])
+        await gl.post_bill_payment(db, data, posted_by_user_id=current["id"])
+    except Exception as e:
+        logger.warning(f"GL post (vendor bill update) failed: {type(e).__name__}: {e}")
     return strip_id(data)
 
 
@@ -2570,6 +2604,10 @@ async def delete_vendor_bill(bill_id: str, current=Depends(get_current_user)):
         await db.vendor_bills.delete_one({"id": bill_id})
     else:
         await db.vendor_bills.update_one({"id": bill_id}, {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}})
+    try:
+        await gl.reverse_journals(db, source_type="vendor_bill", source_id=bill_id)
+    except Exception as e:
+        logger.warning(f"GL reverse (vendor bill delete) failed: {type(e).__name__}: {e}")
     return {"ok": True}
 
 
@@ -4366,7 +4404,8 @@ async def on_startup():
     # Seed Books module — entities + default Chart of Accounts (idempotent)
     try:
         await seed_default_entities(db)
-        logger.info("Books entities + COA seeded")
+        await gl.ensure_indexes(db)
+        logger.info("Books entities + COA seeded; GL indexes ensured")
     except Exception as e:
         logger.warning(f"Books seeding failed: {e}")
 
