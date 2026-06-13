@@ -110,26 +110,26 @@ TPO_OVERLAY_TEMPLATE = {
 }
 
 TPO_REPLACEMENT_TEMPLATE = {
-    "title": "TPO REPLACEMENT ROOF SYSTEM SCOPE",
-    "scope_1_title": "Tear-Off and Substrate Prep",
+    "title": "TPO ROOF SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Tear-Off / Prep",
     "scope_1": [
         "Survey existing roof assembly and document deck condition, slope, and drainage.",
-        "Identify wet insulation by infrared scan and/or core cuts; quantify replacement areas.",
-        "Tear-off existing TPO membrane, insulation, and cover board down to the structural deck.",
-        "Replace deteriorated decking with new like-gauge plywood or steel deck as needed.",
-        "Remove failed flashings, pitch pans, drains, scuppers, and edge metal.",
-        "Remove and properly dispose of all torn-off material from the property.",
+        "Identify wet insulation by infrared and/or core cuts; quantify replacement areas.",
+        "Tear-off existing roof down to the structural deck (or prep substrate for re-cover where approved).",
+        "Replace any deteriorated decking with new plywood or steel deck as needed.",
+        "Remove and properly dispose of all debris from the property.",
     ],
-    "scope_2_title": "New TPO Membrane Installation",
+    "scope_2_title": "TPO Membrane Installation",
     "scope_2": [
-        "Install polyisocyanurate insulation to specified R-value, mechanically attached or fully adhered per manufacturer.",
+        "Remove existing membrane, insulation, flashings, base sheets, edge metal, copings, penetrations, and accessories down to the structural deck.",
+        "Remove fasteners and clean the deck of debris, adhesives, or contaminants.",
+        "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
+        "Install ISO insulation to achieve specified R-value, mechanically attached or fully adhered per manufacturer.",
         "Install ½\" high-density cover board over insulation to provide a smooth, durable substrate.",
         "Install 60-mil TPO membrane — fully adhered, mechanically attached, or RhinoBond per project specification.",
         "Heat-weld all seams with calibrated hot-air welder; probe-test 100% of seams after cooling.",
-        "Install new TPO-coated metal drip edge, gravel stop, and termination bars at all perimeters.",
+        "Install new code-required metal drip edge, gravel stop, and termination bar at all perimeters.",
         "Flash all penetrations, curbs, walls, and corners with pre-formed or field-fabricated TPO accessories.",
-        "Install new pipe boots, pitch pans (filled with two-part urethane sealant), and corner patches.",
-        "Install splice plates and target patches at all T-joints, drains, and irregular conditions.",
         "Final walk-through, water-test drains, and quality inspection with the owner.",
     ],
 }
