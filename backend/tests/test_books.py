@@ -78,12 +78,12 @@ class TestEntities:
         assert "_id" not in created
         ent_id = created["id"]
 
-        # Verify 44 default accounts seeded
+        # Verify 45 default accounts seeded (incl. 6600 Depreciation Expense added in Phase 5)
         r2 = client.get(f"{BASE_URL}/api/books/accounts",
                         params={"entity_id": ent_id}, timeout=10)
         assert r2.status_code == 200
         accts = r2.json()
-        assert len(accts) == 44, f"Expected 44 seeded accounts, got {len(accts)}"
+        assert len(accts) == 45, f"Expected 45 seeded accounts, got {len(accts)}"
 
         # Update entity
         r3 = client.put(f"{BASE_URL}/api/books/entities/{ent_id}",
@@ -114,7 +114,7 @@ def parent_entity_id(client):
 
 
 class TestAccounts:
-    def test_44_accounts_per_default_entity(self, client):
+    def test_45_accounts_per_default_entity(self, client):
         r = client.get(f"{BASE_URL}/api/books/entities", timeout=10)
         for e in r.json():
             if e["name"] not in DEFAULT_ENTITY_NAMES:
@@ -123,7 +123,7 @@ class TestAccounts:
                             params={"entity_id": e["id"]}, timeout=10)
             assert r2.status_code == 200
             accts = r2.json()
-            assert len(accts) == 44, f"Entity {e['name']} has {len(accts)} accts, expected 44"
+            assert len(accts) == 45, f"Entity {e['name']} has {len(accts)} accts, expected 45"
             # No _id leak
             for a in accts:
                 assert "_id" not in a

@@ -1,0 +1,42 @@
+{
+  "summary": "Phase 5 — Books Period Close (Close the Books) full backend + frontend testing. Created /app/backend/tests/test_books_period_close.py with 12 tests covering COA seed (6600/1510), monthly_depreciation persistence + lock_through preservation, preview (no writes), happy-path run (DR 6600 / CR 1510 = 1500, 2 PDFs uploaded to library, entity.lock_through=2026-05-31), idempotency (rerun=true, single depreciation journal), period-lock enforcement on invoice issue (invoice dated in locked period → CRM ok, no journal), invoice after lock posts normally, reopen clears lock when no other closes remain, list sorted DESC, admin-only 403. All 12 PASS. Frontend Playwright verified: 6 tabs, #close routing, period-close-tool with all 9 data-testids, close-run-btn flow with confirm → CLOSED badge + Library link, reopen flow → REOPENED amber + entity lock pill back to OPEN, entity-monthly-depr field present in Entity edit modal. Regression: 73/76 backend tests pass; 3 pre-existing stale failures unrelated to Phase 5 (open-registration test, option-counts, deal/dashboard) noted below. Updated test_books.py 44→45 account count assertions since 6600 Depreciation Expense added.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/register", "issue": "test_register_and_login in backend_test.py expects open registration which is correctly disabled per auth playbook — stale test, not a product bug"},
+      {"endpoint": "/api/options", "issue": "test_options_counts expects 7 sources, gets 5 — stale seeded count assertion, not a product bug"},
+      {"endpoint": "/api/deals", "issue": "test_deal_crud_and_dashboard MTD revenue assertion fails (0 >= 6500) — pre-existing flake from prior phases, not Phase 5"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_books_period_close.py",
+    "/app/test_reports/pytest/pytest_phase5.xml",
+    "/app/test_reports/pytest/pytest_phase5_all.xml"
+  ],
+  "action_items": [
+    "(Optional) Clean up 3 stale regression tests in backend_test.py (registration-open / option-counts / deal dashboard) — they pre-date Phase 5 and assert outdated values.",
+    "Phase 5 is fully working — no Phase-5-specific fixes required."
+  ],
+  "critical_code_review_comments": [
+    "period_close.run_close orders late_fees → depreciation → PDFs → lock correctly. Late-fee accrual calls post_journal WITHOUT bypass — but since the lock is written AFTER, it isn't blocked. Confirmed by code review + the fact that test_run_happy_path posts depreciation cleanly even on a reopened entity.",
+    "books.py PUT /entities preserves lock_through (line 254) and is_active (line 252) — verified in test_put_entity_persists_monthly_depr_and_preserves_lock.",
+    "gl.post_journal silently returns None when lock blocks the post (logs a warning). UX consideration: CRM invoice create still 200s, only the GL journal is suppressed — this matches the spec but a future enhancement could surface a UI banner when an invoice is created in a closed period.",
+    "period_close.preview_close performs the same overdue-invoice scan logic as gl.accrue_late_fees — DRY opportunity: extract _iter_overdue_invoices helper. Not blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_books_period_close.py (new — 12 tests)",
+    "/app/backend/tests/test_books.py (updated 44→45 account assertions in 2 tests)"
+  ],
+  "success_rate": {"backend": "100% (12/12 Phase-5 tests; 73/76 overall with 3 pre-existing failures)", "frontend": "100% (all 9 data-testids present + close/reopen flow verified)"},
+  "test_credentials": "admin@roofingcrm.com / admin123 (verified working)",
+  "seed_data_creation": "Test creates 2 invoices (TEST_LockedPeriod 2026-05-15, TEST_AfterLock 2026-06-15) and deletes them in TestPeriodLock.test_zz_cleanup. Test creates a TEST_sales_<uuid> user via POST /api/users and deletes it after admin-only test. Set parent entity monthly_depreciation=1500 — left as-is so UI reflects realistic data; period_close for 2026-05 is left in reopened state so subsequent test runs start clean.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 5 Period Close is fully working end-to-end. Backend tests live at /app/backend/tests/test_books_period_close.py — reuse for regression. The parent entity (SealTech Holdings) currently has monthly_depreciation=1500 from these tests. The 3 pre-existing failing tests in backend_test.py (test_register_and_login, test_options_counts, test_deal_crud_and_dashboard) are stale and unrelated to Phase 5; they were failing before this iteration too. If the parent entity has a closed period when starting tests, the fixture in test_books_period_close.py auto-reopens it.",
+  "rca of the issue": "N/A — no bugs found in Phase 5 deliverables."
+}

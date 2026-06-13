@@ -88,8 +88,11 @@ async def post_journal(
     memo: str = "",
     posting_date: Optional[str] = None,
     posted_by_user_id: Optional[str] = None,
+    bypass_period_lock: bool = False,
 ) -> Optional[dict]:
-    """Idempotent upsert of one journal entry. Returns the stored doc (or None if no valid lines)."""
+    """Idempotent upsert of one journal entry. Returns the stored doc (or None if no valid lines).
+    Refuses to post if the entity's `lock_through` date covers the posting date — unless bypass_period_lock=True
+    (used by the period-close orchestrator to post late-fee + depreciation entries on its way to locking)."""
     clean_lines = [ln for ln in lines if ln is not None and (ln["debit"] > 0 or ln["credit"] > 0)]
     if not clean_lines:
         return None
@@ -101,6 +104,16 @@ async def post_journal(
             f"D={total_debit} C={total_credit} — skipping post"
         )
         return None
+    posting_date_str = posting_date or datetime.now(timezone.utc).date().isoformat()
+    if not bypass_period_lock:
+        ent = await db.entities.find_one({"id": entity_id}, {"_id": 0, "lock_through": 1})
+        lock = (ent or {}).get("lock_through") or ""
+        if lock and posting_date_str <= lock:
+            logger.warning(
+                f"GL: refused to post {source_type}:{source_id}:{kind} on {posting_date_str} — entity "
+                f"{entity_id} closed through {lock}. Reopen the period to post."
+            )
+            return None
     posting_key = f"{source_type}:{source_id}:{kind}"
     now_iso = datetime.now(timezone.utc).isoformat()
     doc = {
@@ -109,7 +122,7 @@ async def post_journal(
         "source_id": source_id,
         "kind": kind,
         "posting_key": posting_key,
-        "date": posting_date or datetime.now(timezone.utc).date().isoformat(),
+        "date": posting_date_str,
         "memo": memo,
         "lines": clean_lines,
         "total_debit": total_debit,

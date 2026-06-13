@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2 } from "lucide-react";
+import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2, FileCheck } from "lucide-react";
 import { ProfitLossReport, BalanceSheetReport, LateFeeAccrualTool } from "@/pages/BooksReports";
+import { PeriodCloseTool } from "@/pages/BooksPeriodClose";
 
 const ACCOUNT_TYPES = ["Asset", "Liability", "Equity", "Revenue", "COGS", "Expense", "Other"];
 
@@ -49,8 +50,8 @@ export default function BooksCOA() {
   const [showEntityEdit, setShowEntityEdit] = useState(false);
   const [showEntityNew, setShowEntityNew] = useState(false);
 
-  // Tabs: coa | activity | pl | bs | latefees
-  const VALID_VIEWS = ["coa", "activity", "pl", "bs", "latefees"];
+  // Tabs: coa | activity | pl | bs | latefees | close
+  const VALID_VIEWS = ["coa", "activity", "pl", "bs", "latefees", "close"];
   const [view, setView] = useState(() => {
     const fromHash = (typeof window !== "undefined" && window.location.hash || "").replace("#", "");
     return VALID_VIEWS.includes(fromHash) ? fromHash : "coa";
@@ -267,6 +268,7 @@ export default function BooksCOA() {
           <TabButton active={view === "pl"} onClick={() => setView("pl")} icon={TrendingUp} label="P&L" testId="tab-pl" />
           <TabButton active={view === "bs"} onClick={() => setView("bs")} icon={Scale} label="Balance Sheet" testId="tab-bs" />
           <TabButton active={view === "latefees"} onClick={() => setView("latefees")} icon={Wand2} label="Late Fees" testId="tab-latefees" />
+          <TabButton active={view === "close"} onClick={() => setView("close")} icon={FileCheck} label="Period Close" testId="tab-close" />
         </div>
 
         {/* Filters — only when on COA tab */}
@@ -476,6 +478,11 @@ export default function BooksCOA() {
         <LateFeeAccrualTool entities={entities} />
       )}
 
+      {/* Body — Period Close */}
+      {view === "close" && (
+        <PeriodCloseTool entityId={entityId} entities={entities} onEntityRefresh={loadEntities} />
+      )}
+
       {showEntityEdit && currentEntity && (
         <EntityModal
           mode="edit"
@@ -518,6 +525,7 @@ function EntityModal({ mode, initial, onClose, onSaved }) {
     email: initial?.email || "",
     phone: initial?.phone || "",
     remit_to_address: initial?.remit_to_address || "",
+    monthly_depreciation: Number(initial?.monthly_depreciation) || 0,
     is_active: initial?.is_active !== false,
   }));
   const [saving, setSaving] = useState(false);
@@ -597,6 +605,21 @@ function EntityModal({ mode, initial, onClose, onSaved }) {
           </div>
           <Field label="Remit-To Address (for invoices)" full>
             <textarea value={draft.remit_to_address} onChange={(e) => setDraft({ ...draft, remit_to_address: e.target.value })} rows={2} className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-blue-700" />
+          </Field>
+          <Field label="Monthly Depreciation (Books → Period Close)" full>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-zinc-500">$</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={draft.monthly_depreciation}
+                onChange={(e) => setDraft({ ...draft, monthly_depreciation: parseFloat(e.target.value) || 0 })}
+                className="flex-1 border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-blue-700 font-mono"
+                data-testid="entity-monthly-depr"
+              />
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">DR 6600 / CR 1510 monthly</span>
+            </div>
           </Field>
           <div className="col-span-2 flex items-center gap-4 text-xs">
             <label className="flex items-center gap-2">

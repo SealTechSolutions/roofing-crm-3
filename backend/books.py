@@ -66,6 +66,7 @@ DEFAULT_COA = [
     {"number": "6300", "name": "Office & Admin", "type": "Expense", "category": "Office"},
     {"number": "6400", "name": "Sales Commissions", "type": "Expense", "category": "Sales"},
     {"number": "6500", "name": "Marketing & Advertising", "type": "Expense", "category": "Marketing"},
+    {"number": "6600", "name": "Depreciation Expense", "type": "Expense", "category": "Depreciation", "system": True},
     {"number": "6900", "name": "Bank / Credit Card Fees", "type": "Expense", "category": "Bank Fees"},
     # 9000s — Other
     {"number": "9000", "name": "Interest Income / Expense", "type": "Other", "category": "Other"},
@@ -125,6 +126,8 @@ class EntityIn(BaseModel):
     email: str = ""
     phone: str = ""
     remit_to_address: str = ""
+    monthly_depreciation: float = 0.0  # Posted during month-end close: DR 6600 / CR 1510
+    lock_through: str = ""  # ISO date — last day of most recent closed period; managed by period-close logic
     is_active: bool = True
 
 
@@ -247,6 +250,8 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
         update = body.model_dump()
         # Never silently reactivate a deactivated entity via plain edit — preserve current is_active
         update["is_active"] = e.get("is_active", True)
+        # lock_through is system-managed by period-close — never editable through Entity form
+        update["lock_through"] = e.get("lock_through", "")
         await db.entities.update_one({"id": entity_id}, {"$set": update})
         merged = {**e, **update}
         return _clean(merged)
@@ -413,5 +418,26 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
     ):
         from gl import accrue_late_fees
         return await accrue_late_fees(db, entity_id=entity_id, as_of=as_of, posted_by_user_id=current.get("id"))
+
+    # ---------- Period Close ----------
+    @router.get("/period-close/list")
+    async def period_close_list(entity_id: Optional[str] = None, current=Depends(get_current_user)):
+        import period_close as pc
+        return await pc.list_period_closes(db, entity_id=entity_id)
+
+    @router.get("/period-close/preview")
+    async def period_close_preview(entity_id: str, period: str, current=Depends(get_current_user)):
+        import period_close as pc
+        return await pc.preview_close(db, entity_id=entity_id, period=period)
+
+    @router.post("/period-close/run")
+    async def period_close_run(entity_id: str, period: str, current=Depends(require_admin)):
+        import period_close as pc
+        return await pc.run_close(db, entity_id=entity_id, period=period, posted_by=current.get("id"))
+
+    @router.post("/period-close/reopen")
+    async def period_close_reopen(entity_id: str, period: str, current=Depends(require_admin)):
+        import period_close as pc
+        return await pc.reopen_period(db, entity_id=entity_id, period=period, reopened_by=current.get("id"))
 
     return router

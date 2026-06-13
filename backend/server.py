@@ -172,6 +172,7 @@ LIBRARY_TAXONOMY = [
     {"category": "Certificates & Credentials", "subcategories": ["Insurance / COI", "W-9", "Business License", "Manufacturer Certifications"]},
     {"category": "Contracts & Legal", "subcategories": ["Master Service Agreement", "Lien Waivers", "Change Orders", "Terms & Conditions"]},
     {"category": "Manufacturer Warranties", "subcategories": ["Sample Warranties", "Issued Warranties", "Warranty Reference"]},
+    {"category": "Books", "subcategories": ["Period Close Snapshots", "Tax & Audit Packets", "Bank Statements"]},
 ]
 IMPORT_CATEGORIES = ["contacts", "properties", "projects", "vendors", "subcontractors"]
 DUPLICATE_MODES = ["skip", "update", "create"]
@@ -4405,7 +4406,9 @@ async def on_startup():
     try:
         await seed_default_entities(db)
         await gl.ensure_indexes(db)
-        logger.info("Books entities + COA seeded; GL indexes ensured")
+        import period_close as pc
+        await pc.ensure_indexes(db)
+        logger.info("Books entities + COA seeded; GL + period_close indexes ensured")
     except Exception as e:
         logger.warning(f"Books seeding failed: {e}")
 
