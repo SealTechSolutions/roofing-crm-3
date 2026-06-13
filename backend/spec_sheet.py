@@ -874,6 +874,24 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
     # ---- Page 1: Header + Pricing ----
     story.extend(_header_block(s, data, template["title"], template))
     story.extend(_pricing_table(s, data, template))
+
+    # For templates with a tier_table (e.g. FARM), Page 2 already absorbs the
+    # comparison-table footprint, so the Page 1 pricing block is compact and
+    # leaves room for the cover photo. Render it here on Page 1.
+    if template.get("tier_table"):
+        story.append(Spacer(1, 0.12 * inch))
+        if cover_photo_bytes:
+            try:
+                img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=1.6 * inch, kind="proportional")
+                story.append(img)
+            except Exception:
+                story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
+        else:
+            ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[1.6 * inch])
+            ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
+            story.append(ph)
+            story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))
+
     story.append(PageBreak())
 
     # ---- Page 2: Scope ----

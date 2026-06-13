@@ -102,6 +102,11 @@
 - ✅ Two columns: "By Project" (sorted by open value, clickable rows → project) and
      "By Vendor — Chase List" (suppliers ranked by open value, so you call the biggest first)
 
+## FARM Spec Sheet Polishing (2026-02)
+- ✅ FARM 4-tier comparison table renders on Page 2 with adaptive heading
+- ✅ Removed redundant Add-On Manufacturer Warranty section + "(Standard Warranty Included)" tag for FARM (warranty options are already in-body)
+- ✅ Cover photo (or placeholder) now sits on **Page 1 under the pricing table** for FARM scopes — Page 2/3 layout still holds at exactly 3 pages
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics)
 - Statement of Account PDF (aging report per customer)
