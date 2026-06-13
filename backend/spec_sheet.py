@@ -30,7 +30,7 @@ def _styles():
         "title": ParagraphStyle("title", fontName="Helvetica-Bold", fontSize=20, textColor=DARK, leading=24, spaceAfter=4),
         "eyebrow": ParagraphStyle("eyebrow", fontName="Helvetica-Bold", fontSize=8, textColor=ORANGE, leading=10, spaceAfter=2),
         "h2": ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=12, textColor=BLUE, leading=15, spaceBefore=4, spaceAfter=4),
-        "body": ParagraphStyle("body", fontName="Helvetica", fontSize=10, textColor=DARK, leading=13),
+        "body": ParagraphStyle("body", fontName="Helvetica", fontSize=10, textColor=DARK, leading=12),
         "small": ParagraphStyle("small", fontName="Helvetica", fontSize=8, textColor=GRAY, leading=10),
         "bold": ParagraphStyle("bold", fontName="Helvetica-Bold", fontSize=9, textColor=DARK, leading=12),
         "tc": ParagraphStyle("tc", fontName="Helvetica", fontSize=11, textColor=DARK, leading=14, spaceAfter=8),
@@ -667,9 +667,9 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
 
     # ---- Page 2: Scope ----
     story.extend(_scope_block(s, template["scope_1_title"], template["scope_1"]))
-    story.append(Spacer(1, 0.06 * inch))
+    story.append(Spacer(1, 0.05 * inch))
     story.extend(_scope_block(s, template["scope_2_title"], template["scope_2"]))
-    story.append(Spacer(1, 0.08 * inch))
+    story.append(Spacer(1, 0.06 * inch))
 
     story.append(Paragraph("Inclusions", s["h2"]))
     total_sqft = data.get("total_sqft", 0) or 0
@@ -678,26 +678,26 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
     label = data.get("roof_type_label") or (roof_type or "roof system")
     inc_text = f"Approximately {total_sqft:,.0f} SF ({sq} SQ) {color} {label} system, including walls and flashings."
     story.append(Paragraph(inc_text, s["body"]))
-    story.append(Spacer(1, 0.08 * inch))
+    story.append(Spacer(1, 0.06 * inch))
 
     # Cover photo
     if cover_photo_bytes:
         try:
-            img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=1.6 * inch, kind="proportional")
+            img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=1.4 * inch, kind="proportional")
             story.append(img)
         except Exception:
             story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
     else:
-        ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[1.8 * inch])
+        ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[1.4 * inch])
         ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
         story.append(ph)
         story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))
-    story.append(Spacer(1, 0.08 * inch))
+    story.append(Spacer(1, 0.06 * inch))
 
     story.append(Paragraph("Exclusions", s["h2"]))
     excl = "<br/>".join([f"•&nbsp;&nbsp;{e}" for e in EXCLUSIONS])
     story.append(Paragraph(excl, s["body"]))
-    story.append(Spacer(1, 0.12 * inch))
+    story.append(Spacer(1, 0.08 * inch))
 
     appreciation_style = ParagraphStyle(
         "appreciation", parent=s["body"], alignment=1, fontName="Helvetica-Oblique",
@@ -707,13 +707,13 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
         "We are committed to delivering exceptional craftsmanship, transparency, and lasting value on every project we undertake.",
         appreciation_style,
     ))
-    story.append(Spacer(1, 0.1 * inch))
+    story.append(Spacer(1, 0.06 * inch))
 
     sig = Table([
         [Paragraph("<b>Darren Oliver, CSI, IIBEC</b><br/>GM, SealTech Building Solutions", s["body"]), ""],
     ], colWidths=[3.5 * inch, 4.0 * inch])
     story.append(sig)
-    story.append(Spacer(1, 0.04 * inch))
+    story.append(Spacer(1, 0.02 * inch))
 
     story.append(Paragraph("Acceptance Of Scope", s["h2"]))
     story.append(Paragraph(
