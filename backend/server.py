@@ -164,18 +164,22 @@ PARENT_TYPES = ["project", "vendor", "subcontractor", "contact", "property"]
 IMPORT_CATEGORIES = ["contacts", "properties", "projects", "vendors", "subcontractors"]
 DUPLICATE_MODES = ["skip", "update", "create"]
 USER_ROLES = ["admin", "manager", "sales"]
-FINANCIAL_FIELDS = ["proposal_option_1", "proposal_option_2", "proposal_option_3", "chosen_amount", "materials_cost", "labor_cost", "subcontractor_cost", "other_expenses", "payment_milestones", "cost_items"]
+FINANCIAL_FIELDS = ["proposal_option_1", "proposal_option_2", "proposal_option_3", "proposal_option_25yr", "chosen_amount", "materials_cost", "labor_cost", "subcontractor_cost", "other_expenses", "payment_milestones", "cost_items"]
 
 
 def proposal_mid_amount(d: dict) -> float:
-    """Return the middle (median by value) of the 3 proposal options, ignoring zeros.
+    """Return the middle (median by value) of the proposal options, ignoring zeros.
     Falls back to the single non-zero value if only one is set.
+    Includes the optional 4th 25-yr tier (FARM) when present.
     Used as the default tracking amount before a chosen_amount is locked in."""
     opts = []
     for i in (1, 2, 3):
         v = float(d.get(f"proposal_option_{i}", 0) or 0)
         if v > 0:
             opts.append(v)
+    v25 = float(d.get("proposal_option_25yr", 0) or 0)
+    if v25 > 0:
+        opts.append(v25)
     if not opts:
         return 0.0
     opts.sort()
@@ -366,6 +370,8 @@ class DealIn(BaseModel):
     proposal_option_1: float = 0.0
     proposal_option_2: float = 0.0
     proposal_option_3: float = 0.0
+    # Optional 4th tier — used by templates with a tier_table (e.g. FARM 25-yr w/ Hail Rider)
+    proposal_option_25yr: float = 0.0
     chosen_amount: float = 0.0
     chosen_date: str = ""
     date_sent: str = ""
@@ -2676,6 +2682,7 @@ async def deal_spec_sheet(
         "opt_20": float(deal.get("proposal_option_1") or 0),
         "opt_15": float(deal.get("proposal_option_2") or 0),
         "opt_10": float(deal.get("proposal_option_3") or 0),
+        "opt_25": float(deal.get("proposal_option_25yr") or 0),
         "w20": float(deal.get("warranty_20yr_add") or 0),
         "w15": float(deal.get("warranty_15yr_add") or 0),
         "w10": float(deal.get("warranty_10yr_add") or 0),
@@ -3063,7 +3070,7 @@ async def import_category(
                 rec["kind"] = "Subcontractor"
             # Coerce numeric for projects
             if category == "projects":
-                for nk in ["proposal_option_1", "proposal_option_2", "proposal_option_3", "chosen_amount"]:
+                for nk in ["proposal_option_1", "proposal_option_2", "proposal_option_3", "proposal_option_25yr", "chosen_amount"]:
                     try:
                         rec[nk] = float(rec.get(nk) or 0)
                     except (TypeError, ValueError):

@@ -105,8 +105,11 @@
 ## FARM Spec Sheet Polishing (2026-02)
 - ✅ FARM 4-tier comparison table renders on Page 2 with adaptive heading
 - ✅ Removed redundant Add-On Manufacturer Warranty section + "(Standard Warranty Included)" tag for FARM (warranty options are already in-body)
-- ✅ Page 1 now shows the **Inclusions** blurb (e.g. "Approximately 31,000 SF (310 SQ) white Fluid Applied Reinforced Membrane system, including walls and flashings.") plus an **enlarged cover photo** (7.5" × 3.1") that fills the lower portion of the page; total page count stays at exactly 3
+- ✅ Page 1 shows the **Inclusions** blurb (e.g. "Approximately 31,000 SF (310 SQ) white Fluid Applied Reinforced Membrane system, including walls and flashings.") plus an enlarged cover photo (7.5" × 2.7") on the lower half of the page
 - ✅ Page 2 no longer duplicates the Inclusions block when the template has a `tier_table`
+- ✅ **4-tier FARM pricing table** on Page 1: 25-Year Warranty w/Hail Rider, 20-Year Warranty w/Hail Rider, 15-Year Standard Warranty, 10-Year Standard Warranty
+- ✅ New `proposal_option_25yr` field on Deal model + form (Option D); flows through to `opt_25` in the spec sheet
+- ✅ All other scope templates still hold at exactly 3 pages (TPO/EPDM/ModBit/PVC/Silicone/Metal/Shingle/Tile/BUR verified)
 
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics)

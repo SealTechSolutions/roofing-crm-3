@@ -525,9 +525,12 @@ export default function DealDetail() {
       {/* Pricing options + spec */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
         <Card title={deal.deal_type === "Assessment" ? "Assessment Options" : "Pricing Options"}>
-          <Row label="Option A" value={formatCurrency(deal.proposal_option_1)} highlight={Math.abs(totals.revenue - deal.proposal_option_1) < 0.01 && totals.revenue > 0} />
-          <Row label="Option B" value={formatCurrency(deal.proposal_option_2)} highlight={Math.abs(totals.revenue - deal.proposal_option_2) < 0.01 && totals.revenue > 0} />
-          <Row label="Option C" value={formatCurrency(deal.proposal_option_3)} highlight={Math.abs(totals.revenue - deal.proposal_option_3) < 0.01 && totals.revenue > 0} />
+          <Row label="Option A — 20-yr" value={formatCurrency(deal.proposal_option_1)} highlight={Math.abs(totals.revenue - deal.proposal_option_1) < 0.01 && totals.revenue > 0} />
+          <Row label="Option B — 15-yr" value={formatCurrency(deal.proposal_option_2)} highlight={Math.abs(totals.revenue - deal.proposal_option_2) < 0.01 && totals.revenue > 0} />
+          <Row label="Option C — 10-yr" value={formatCurrency(deal.proposal_option_3)} highlight={Math.abs(totals.revenue - deal.proposal_option_3) < 0.01 && totals.revenue > 0} />
+          {Number(deal.proposal_option_25yr || 0) > 0 && (
+            <Row label="Option D — 25-yr (FARM)" value={formatCurrency(deal.proposal_option_25yr)} highlight={Math.abs(totals.revenue - deal.proposal_option_25yr) < 0.01 && totals.revenue > 0} />
+          )}
           <div className="border-t-2 border-zinc-950 my-2" />
           <Row label="Chosen" value={formatCurrency(totals.revenue)} bold />
         </Card>

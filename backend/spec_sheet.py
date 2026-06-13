@@ -777,12 +777,21 @@ def _pricing_table(s, doc, template: dict | None = None):
         f'{doc.get("product_type", "Roof System Investment")}{header_suffix}',
         s["h2"],
     ))
-    base = [
-        ["Warranty Tier", "Base Investment"],
-        ["20-Year Workmanship", _currency(doc.get("opt_20"))],
-        ["15-Year Workmanship", _currency(doc.get("opt_15"))],
-        ["10-Year Workmanship", _currency(doc.get("opt_10"))],
-    ]
+    if has_tier_table:
+        base = [
+            ["Warranty Tier", "Base Investment"],
+            ["25-Year Warranty w/Hail Rider", _currency(doc.get("opt_25"))],
+            ["20-Year Warranty w/Hail Rider", _currency(doc.get("opt_20"))],
+            ["15-Year Standard Warranty", _currency(doc.get("opt_15"))],
+            ["10-Year Standard Warranty", _currency(doc.get("opt_10"))],
+        ]
+    else:
+        base = [
+            ["Warranty Tier", "Base Investment"],
+            ["20-Year Workmanship", _currency(doc.get("opt_20"))],
+            ["15-Year Workmanship", _currency(doc.get("opt_15"))],
+            ["10-Year Workmanship", _currency(doc.get("opt_10"))],
+        ]
     t = Table(base, colWidths=[4.5 * inch, 3.0 * inch])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BLUE),
@@ -891,13 +900,13 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
         story.append(Spacer(1, 0.08 * inch))
         if cover_photo_bytes:
             try:
-                img = Image(BytesIO(cover_photo_bytes), width=7.5 * inch, height=3.1 * inch, kind="proportional")
+                img = Image(BytesIO(cover_photo_bytes), width=7.5 * inch, height=2.7 * inch, kind="proportional")
                 img.hAlign = "CENTER"
                 story.append(img)
             except Exception:
                 story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
         else:
-            ph = Table([[" "]], colWidths=[7.5 * inch], rowHeights=[3.1 * inch])
+            ph = Table([[" "]], colWidths=[7.5 * inch], rowHeights=[2.7 * inch])
             ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
             story.append(ph)
             story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))

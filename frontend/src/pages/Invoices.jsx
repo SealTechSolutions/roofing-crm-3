@@ -294,7 +294,7 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
       }));
       const cid = d.customer_contact_id || d.contact_id;
       // Compute project total from chosen_amount or MID proposal option (typical buy point) + approved change orders
-      const opts = [Number(d.proposal_option_1 || 0), Number(d.proposal_option_2 || 0), Number(d.proposal_option_3 || 0)].filter((x) => x > 0).sort((a, b) => a - b);
+      const opts = [Number(d.proposal_option_1 || 0), Number(d.proposal_option_2 || 0), Number(d.proposal_option_3 || 0), Number(d.proposal_option_25yr || 0)].filter((x) => x > 0).sort((a, b) => a - b);
       const midOption = opts.length ? opts[Math.floor(opts.length / 2)] : 0;
       const baseTotal = Number(d.chosen_amount || 0) > 0 ? Number(d.chosen_amount) : midOption;
       const projTotal = baseTotal + coTotal;
