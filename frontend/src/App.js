@@ -17,6 +17,7 @@ import Invoices from "@/pages/Invoices";
 import Payables from "@/pages/Payables";
 import Materials from "@/pages/Materials";
 import Library from "@/pages/Library";
+import BooksCOA from "@/pages/BooksCOA";
 import Profile from "@/pages/Profile";
 import "@/App.css";
 
@@ -69,6 +70,7 @@ function App() {
               <Route path="/payables" element={<Payables />} />
               <Route path="/materials" element={<Materials />} />
               <Route path="/library" element={<Library />} />
+              <Route path="/books" element={<BooksCOA />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/profile" element={<Profile />} />
             </Route>

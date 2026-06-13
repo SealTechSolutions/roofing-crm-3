@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const ALL_NAV = [
@@ -13,6 +13,7 @@ const ALL_NAV = [
   { to: "/payables", label: "Payables", icon: Wallet, testId: "nav-payables" },
   { to: "/materials", label: "Materials", icon: Boxes, testId: "nav-materials" },
   { to: "/library", label: "Library", icon: BookOpen, testId: "nav-library" },
+  { to: "/books", label: "Books", icon: BookMarked, testId: "nav-books" },
   { to: "/vendors", label: "Vendors", icon: Truck, testId: "nav-vendors" },
   { to: "/subcontractors", label: "Subcontractors", icon: HardHat, testId: "nav-subcontractors" },
   { to: "/users", label: "Users", icon: UserCog, testId: "nav-users", adminOnly: true },

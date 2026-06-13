@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from storage import init_storage, put_object, get_object, APP_NAME
 from exports import to_excel, to_pdf, CATEGORIES as EXPORT_CATEGORIES
 from spec_sheet import build_spec_sheet
+from books import make_router as make_books_router, seed_default_entities
 
 
 # ----- DB -----
@@ -4362,6 +4363,13 @@ async def on_startup():
     except Exception as e:
         logger.warning(f"Storage init failed (uploads will not work): {e}")
 
+    # Seed Books module — entities + default Chart of Accounts (idempotent)
+    try:
+        await seed_default_entities(db)
+        logger.info("Books entities + COA seeded")
+    except Exception as e:
+        logger.warning(f"Books seeding failed: {e}")
+
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@roofingcrm.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
     existing = await db.users.find_one({"email": admin_email})
@@ -4447,6 +4455,7 @@ async def shutdown_db_client():
 
 
 # ----- Router & CORS -----
+api_router.include_router(make_books_router(db, get_current_user, require_admin))
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
