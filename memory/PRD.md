@@ -246,9 +246,22 @@
 - ✅ Empty state: friendly message when an entity has no GL activity yet
 - ✅ Tested: 6/6 new + 14/14 Phase 2 regression + 12/12 frontend flows pass (`/app/test_reports/iteration_5.json`, `/app/backend/tests/test_books_phase3.py`)
 
+## Books Module — Phase 3 reports (2026-02) ✅
+- ✅ `gl.report_profit_loss(entity, date_from, date_to)` — Income Statement with Revenue / COGS / Gross Profit (+ margin %) / Operating Expense / Other / Net Income (+ margin %)
+- ✅ `gl.report_balance_sheet(entity, as_of)` — Assets / Liabilities / Equity with current-period earnings rolled into total equity; `out_of_balance` reconciliation check (epsilon 0.01)
+- ✅ Drill-down support on `/api/books/journal-entries` via `account_id`, `account_number`, `date_from`, `date_to`, `source_id` filters
+- ✅ Three new endpoints: `GET /reports/profit-loss`, `GET /reports/balance-sheet`, `POST /late-fees/accrue` (admin only)
+- ✅ `gl.accrue_late_fees(entity_id?, as_of?)` — month-end batch posting 1.5% × balance × DR 1100 / CR 4200 for every unpaid invoice >30 days past due. Idempotent: `posting_key = "invoice:{id}:late_fee:{YYYY-MM}"`. Returns counts (accrued / skipped) + total.
+- ✅ Frontend `/pages/BooksReports.jsx` — ProfitLossReport, BalanceSheetReport, LateFeeAccrualTool, DrilldownModal, DateRangeQuick presets (MTD / YTD / Last 30d / All) + print button
+- ✅ Books page now has 5 tabs (`coa`, `activity`, `pl`, `bs`, `latefees`); hash-routing supports browser back/forward via `hashchange` listener
+- ✅ Click any P&L or B/S row → drilldown modal lists every journal hitting that account in the window, with deep-link to source invoice / vendor bill
+- ✅ Tested: 13/13 new + 31/31 regression pytest + full Playwright suite pass (`/app/test_reports/iteration_6.json`, `/app/backend/tests/test_books_phase4.py`)
+
 ## Backlog (P0 — next Books phases)
-- Books Phase 3: Per-entity P&L + Balance Sheet reports (filterable by date range, drill-down to source doc)
-- Books Phase 3: Late-fee monthly accrual batch journal (DR 1100 AR / CR 4200 Late Fees Earned for outstanding A/R > 30 days @ 1.5%)
+- Books Phase 4: Inter-company auto-mirroring (Parent ↔ Sub-co via 1900 Inter-Co Receivable / 2900 Inter-Co Payable) + Bank Reconciliation
+- Manual journal-entry composer on Activity tab (DR/CR pair + memo + date) for owner draws, depreciation, year-end adjustments
+- Per-entity configurable late-fee rate (today hardcoded at 1.5%)
+- Cash Flow + A/R Aging + A/P Aging report tabs
 - Books Phase 4: Inter-company auto-mirroring (Parent ↔ Sub-co) and Bank Reconciliation
 
 ## Backlog (P1)

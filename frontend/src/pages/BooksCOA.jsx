@@ -65,6 +65,18 @@ export default function BooksCOA() {
     }
   }, [view]);
 
+  // Sync state if user uses browser back/forward (hash changes externally)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHash = () => {
+      const h = (window.location.hash || "").replace("#", "");
+      setView(VALID_VIEWS.includes(h) ? h : "coa");
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const currentEntity = useMemo(() => entities.find((e) => e.id === entityId) || null, [entities, entityId]);
 
   const loadEntities = async () => {

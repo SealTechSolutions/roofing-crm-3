@@ -129,10 +129,10 @@ export function BalanceSheetReport({ entityId, entityName }) {
       {loading && <div className="text-sm text-zinc-500">Loading...</div>}
       {!loading && data && (
         <div className="bg-white border border-zinc-200">
-          <ReportSection label="Assets" rows={data.sections.Asset} total={data.totals.assets} entityId={entityId} dateTo={asOf} onDrill={setDrill} />
+          <ReportSection label="Assets" rows={data.sections.Asset} total={data.totals.assets} entityId={entityId} dateTo={asOf} onDrill={setDrill} hideTotal />
           <SubtotalRow label="Total Assets" value={data.totals.assets} tone="blue" big testId="bs-total-assets" />
-          <ReportSection label="Liabilities" rows={data.sections.Liability} total={data.totals.liabilities} entityId={entityId} dateTo={asOf} onDrill={setDrill} />
-          <ReportSection label="Equity" rows={data.sections.Equity} total={data.totals.equity_accounts} entityId={entityId} dateTo={asOf} onDrill={setDrill} />
+          <ReportSection label="Liabilities" rows={data.sections.Liability} total={data.totals.liabilities} entityId={entityId} dateTo={asOf} onDrill={setDrill} hideTotal />
+          <ReportSection label="Equity" rows={data.sections.Equity} total={data.totals.equity_accounts} entityId={entityId} dateTo={asOf} onDrill={setDrill} hideTotal />
           <div className="px-5 py-2 border-t border-zinc-200 flex items-center justify-between text-sm bg-zinc-50">
             <span className="italic text-zinc-700">Current-period earnings</span>
             <span className="font-mono font-bold">{fmtMoney(data.current_earnings)}</span>
@@ -296,7 +296,7 @@ function DateRangeQuick({ dateFrom, dateTo, onChange }) {
   );
 }
 
-function ReportSection({ label, rows, total, entityId, dateFrom, dateTo, onDrill }) {
+function ReportSection({ label, rows, total, entityId, dateFrom, dateTo, onDrill, hideTotal }) {
   if (!rows?.length) return null;
   return (
     <div className="border-b border-zinc-200">
@@ -315,10 +315,12 @@ function ReportSection({ label, rows, total, entityId, dateFrom, dateTo, onDrill
           <span className="font-mono font-bold text-zinc-900">{fmtMoney(r.balance)}</span>
         </button>
       ))}
-      <div className="px-5 py-1.5 flex items-center justify-between text-sm border-t border-zinc-100 bg-zinc-50/60">
-        <span className="font-bold text-xs uppercase tracking-wider text-zinc-700">Total {label}</span>
-        <span className="font-mono font-black text-zinc-900">{fmtMoney(total)}</span>
-      </div>
+      {!hideTotal && (
+        <div className="px-5 py-1.5 flex items-center justify-between text-sm border-t border-zinc-100 bg-zinc-50/60">
+          <span className="font-bold text-xs uppercase tracking-wider text-zinc-700">Total {label}</span>
+          <span className="font-mono font-black text-zinc-900">{fmtMoney(total)}</span>
+        </div>
+      )}
     </div>
   );
 }
