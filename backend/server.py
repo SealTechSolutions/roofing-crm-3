@@ -164,7 +164,7 @@ PARENT_TYPES = ["project", "vendor", "subcontractor", "contact", "property", "li
 
 # Document Library taxonomy — shared resource folder for all users.
 LIBRARY_TAXONOMY = [
-    {"category": "SealTech Documents", "subcategories": ["Property Owner Guides", "Assessment & Reporting Documents", "Insurance & Storm Education", "Brochures"]},
+    {"category": "SealTech Documents", "subcategories": ["Assessment & Reporting Documents", "Property Owner Guides", "Insurance & Storm Education", "Brochures"]},
     {"category": "Western Colloid", "subcategories": ["Specifications", "Safety Data", "Brochures"]},
     {"category": "Everest Systems", "subcategories": ["Specifications", "Safety Data", "Brochures"]},
     {"category": "Certificates & Credentials", "subcategories": ["Insurance / COI", "W-9", "Business License", "Manufacturer Certifications"]},
