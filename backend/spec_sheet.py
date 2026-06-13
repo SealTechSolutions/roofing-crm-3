@@ -894,7 +894,12 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
         total_sqft_p1 = data.get("total_sqft", 0) or 0
         sq_p1 = int(round(total_sqft_p1 / 100))
         color_p1 = data.get("color", "white")
-        label_p1 = data.get("roof_type_label") or (roof_type or "roof system")
+        raw_label = data.get("roof_type_label") or (roof_type or "roof system")
+        # Preserve the FARM acronym in body copy: "FARM (fluid applied reinforced membrane)"
+        if "farm" in raw_label.lower() or "fluid applied reinforced membrane" in raw_label.lower():
+            label_p1 = "FARM (fluid applied reinforced membrane)"
+        else:
+            label_p1 = raw_label
         inc_text_p1 = f"Approximately {total_sqft_p1:,.0f} SF ({sq_p1} SQ) {color_p1} {label_p1} system, including walls and flashings."
         story.append(Paragraph(inc_text_p1, s["body"]))
         story.append(Spacer(1, 0.08 * inch))
@@ -915,17 +920,18 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
 
     # ---- Page 2: Scope ----
     story.extend(_scope_block(s, template["scope_1_title"], template["scope_1"]))
-    story.append(Spacer(1, 0.05 * inch))
+    # Tier-table templates (FARM) get more breathing room on page 2.
+    story.append(Spacer(1, 0.08 * inch if template.get("tier_table") else 0.05 * inch))
     story.extend(_scope_block(s, template["scope_2_title"], template["scope_2"]))
 
     # Optional tier comparison table (used by FARM and similar multi-warranty systems)
     if template.get("tier_table"):
         tt = template["tier_table"]
-        story.append(Spacer(1, 0.05 * inch))
-        cell_style = ParagraphStyle("tier_cell", fontName="Helvetica", fontSize=8, textColor=DARK, leading=10, alignment=1)
-        head_style = ParagraphStyle("tier_head", fontName="Helvetica-Bold", fontSize=8, textColor=colors.white, leading=10, alignment=1)
-        warr_style = ParagraphStyle("tier_warr", fontName="Helvetica-Bold", fontSize=8, textColor=DARK, leading=10, alignment=1)
-        alt_style = ParagraphStyle("tier_alt", fontName="Helvetica-Bold", fontSize=7, textColor=BRONZE, leading=9, alignment=1)
+        story.append(Spacer(1, 0.10 * inch))
+        cell_style = ParagraphStyle("tier_cell", fontName="Helvetica", fontSize=10, textColor=DARK, leading=13, alignment=1)
+        head_style = ParagraphStyle("tier_head", fontName="Helvetica-Bold", fontSize=10, textColor=colors.white, leading=13, alignment=1)
+        warr_style = ParagraphStyle("tier_warr", fontName="Helvetica-Bold", fontSize=10, textColor=DARK, leading=13, alignment=1)
+        alt_style = ParagraphStyle("tier_alt", fontName="Helvetica-Bold", fontSize=9, textColor=BRONZE, leading=11, alignment=1)
 
         data_rows = [[Paragraph(h, head_style) for h in tt["headers"]]]
         for row in tt.get("rows", []):
@@ -951,10 +957,10 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
             ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ]
         if alt_start_idx is not None:
             style_cmds.append(("BACKGROUND", (0, alt_start_idx), (-1, alt_start_idx), LIGHT))
@@ -965,7 +971,11 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
         ttable.setStyle(TableStyle(style_cmds))
         story.append(ttable)
 
-    story.append(Spacer(1, 0.06 * inch))
+    # Larger breathing room after the tier table only (FARM has room to spare on page 2)
+    if template.get("tier_table"):
+        story.append(Spacer(1, 0.10 * inch))
+    else:
+        story.append(Spacer(1, 0.06 * inch))
 
     # Inclusions block — for tier_table templates (FARM) this is rendered on
     # Page 1 instead, so skip it here to avoid duplication.
@@ -997,7 +1007,8 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
     story.append(Paragraph("Exclusions", s["h2"]))
     excl = "<br/>".join([f"•&nbsp;&nbsp;{e}" for e in EXCLUSIONS])
     story.append(Paragraph(excl, s["body"]))
-    story.append(Spacer(1, 0.08 * inch))
+    # Tier-table templates (FARM) have more vertical room on page 2 — open it up.
+    story.append(Spacer(1, 0.12 * inch if template.get("tier_table") else 0.08 * inch))
 
     appreciation_style = ParagraphStyle(
         "appreciation", parent=s["body"], alignment=1, fontName="Helvetica-Oblique",
@@ -1007,13 +1018,13 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
         "We are committed to delivering exceptional craftsmanship, transparency, and lasting value on every project we undertake.",
         appreciation_style,
     ))
-    story.append(Spacer(1, 0.06 * inch))
+    story.append(Spacer(1, 0.08 * inch if template.get("tier_table") else 0.06 * inch))
 
     sig = Table([
-        [Paragraph("<b>Darren Oliver, CSI, IIBEC</b><br/>GM, SealTech Building Solutions", s["body"]), ""],
+        [Paragraph("<b>Darren Oliver, CSI, IIBEC</b><br/>SealTech Building Solutions", s["body"]), ""],
     ], colWidths=[3.5 * inch, 4.0 * inch])
     story.append(sig)
-    story.append(Spacer(1, 0.02 * inch))
+    story.append(Spacer(1, 0.06 * inch if template.get("tier_table") else 0.02 * inch))
 
     story.append(Paragraph("Acceptance Of Scope", s["h2"]))
     story.append(Paragraph(
