@@ -134,6 +134,148 @@ TPO_REPLACEMENT_TEMPLATE = {
     ],
 }
 
+EPDM_OVERLAY_TEMPLATE = {
+    "title": "EPDM OVER-LAY ROOF SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
+    "scope_1": [
+        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Remove loose debris, clean the existing membrane thoroughly.",
+        "Remove and replace deteriorated flashings, pitch pans, vents, and penetrations as needed.",
+        "Cut, patch, and repair open seams, splits, and damaged areas of the existing membrane.",
+        "Secure loose existing membrane.",
+    ],
+    "scope_2_title": "EPDM Membrane Installation",
+    "scope_2": [
+        "Install cover board (e.g., ½\" high-density gypsum or wood fiber) mechanically fastened over the existing membrane for a smooth, durable substrate.",
+        "Install 60-mil EPDM membrane — fully adhered with bonding adhesive or mechanically attached per project specification.",
+        "Splice all seams with factory-applied seam tape and EPDM splice primer; roll all laps with steel roller.",
+        "Install pre-formed pipe boots, inside/outside corners, and uncured EPDM flashing at irregular penetrations.",
+        "Terminate membrane at walls and curbs with termination bar, water cut-off mastic, and counter-flashing.",
+        "Install new metal edge, drip edge, and gravel stop per SPRI ES-1 requirements.",
+        "Remove and properly dispose of all debris from the property.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+        "NOTE: Manufacturer system warranties typically require tear-off — confirm warranty eligibility prior to acceptance.",
+    ],
+}
+
+EPDM_REPLACEMENT_TEMPLATE = {
+    "title": "EPDM REPLACEMENT ROOF SYSTEM SCOPE",
+    "scope_1_title": "Tear-Off and Substrate Prep",
+    "scope_1": [
+        "Survey existing roof assembly and document deck condition, drains, scuppers, and curbs.",
+        "Identify wet insulation via infrared scan or core cuts; quantify replacement areas.",
+        "Tear-off existing membrane, insulation, and cover board down to the structural deck.",
+        "Replace deteriorated decking with new like-gauge plywood or steel deck as needed.",
+        "Remove failed flashings, pitch pans, drains, scuppers, and edge metal.",
+        "Remove and properly dispose of all torn-off material from the property.",
+    ],
+    "scope_2_title": "New EPDM Membrane Installation",
+    "scope_2": [
+        "Install polyiso insulation to specified R-value plus ½\" high-density cover board, fully adhered or mechanically attached.",
+        "Install 60-mil EPDM membrane — fully adhered with bonding adhesive, mechanically attached, or ballasted per spec.",
+        "Splice all seams with factory-applied seam tape and EPDM splice primer; roll all laps with steel roller.",
+        "Install pre-formed pipe boots, inside/outside corners, and uncured EPDM flashing at irregular penetrations.",
+        "Terminate membrane at walls and curbs with termination bar, water cut-off mastic, and counter-flashing.",
+        "Install new metal edge, drip edge, and gravel stop per SPRI ES-1 requirements.",
+        "If ballasted: install washed river rock at 10 lbs/SF minimum or per engineered spec.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+MODBIT_OVERLAY_TEMPLATE = {
+    "title": "MODIFIED BITUMEN OVER-LAY ROOF SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
+    "scope_1": [
+        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Power-clean existing surface; remove loose granules, debris, and contamination.",
+        "Cut, patch, and repair blisters, splits, and damaged areas of the existing membrane.",
+        "Remove and replace deteriorated flashings, pitch pans, vents, and penetrations as needed.",
+        "Apply manufacturer-approved primer or bleed-blocking coat over the existing surface.",
+    ],
+    "scope_2_title": "Modified Bitumen Over-Lay Installation",
+    "scope_2": [
+        "Install SBS or APP modified bitumen base ply directly over the primed existing surface — mechanically fastened, torch-applied, or cold-process adhered per spec.",
+        "Install granulated SBS or APP modified bitumen cap sheet, fully bonded and offset from base ply laps.",
+        "Heat-weld or cold-bond all end and side laps; broom-in and inspect for full bleed-out.",
+        "Flash all penetrations, walls, and curbs with two-ply modified bitumen flashings terminated with metal counter-flashing.",
+        "Install new pitch pans filled with two-part urethane sealant where required.",
+        "Install new metal drip edge, gravel stop, and gutter line metal as specified.",
+        "Remove and properly dispose of all debris from the property.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+MODBIT_REPLACEMENT_TEMPLATE = {
+    "title": "MODIFIED BITUMEN REPLACEMENT ROOF SYSTEM SCOPE",
+    "scope_1_title": "Tear-Off and Substrate Prep",
+    "scope_1": [
+        "Survey existing roof assembly and document deck condition, drains, and curbs.",
+        "Identify wet insulation via core cuts or infrared survey; quantify replacement areas.",
+        "Tear-off existing cap sheet, ply membrane, and insulation down to the structural deck.",
+        "Replace deteriorated decking and any wet insulation with new like-for-like materials.",
+        "Remove failed flashings, pitch pans, drains, and edge metal.",
+        "Remove and properly dispose of all torn-off material from the property.",
+    ],
+    "scope_2_title": "New Modified Bitumen System Installation",
+    "scope_2": [
+        "Install polyiso insulation to specified R-value with mechanically attached or hot-asphalt-adhered cover board.",
+        "Install SBS or APP modified bitumen base ply — mechanically attached, torch-applied, cold-process adhered, or self-adhered per spec.",
+        "Install granulated SBS or APP modified bitumen cap sheet, fully bonded and offset from base ply laps.",
+        "Heat-weld or cold-bond all end and side laps; broom-in and inspect for full bleed-out.",
+        "Flash all penetrations, walls, and curbs with two-ply modified bitumen flashings terminated with metal counter-flashing.",
+        "Install new pitch pans filled with two-part urethane sealant where required.",
+        "Install new metal drip edge, gravel stop, and gutter line metal as specified.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+PVC_OVERLAY_TEMPLATE = {
+    "title": "PVC OVER-LAY ROOF SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
+    "scope_1": [
+        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Remove loose debris, clean the existing single-ply surface thoroughly.",
+        "Remove and replace deteriorated flashings, pitch pans, vents, and penetrations as needed.",
+        "Secure loose existing membrane.",
+    ],
+    "scope_2_title": "PVC Membrane Installation",
+    "scope_2": [
+        "Install cover board and/or insulation overlay (e.g., mechanically fastened polyiso) over the existing membrane for a smooth, durable substrate.",
+        "Install 60-mil PVC membrane — fully adhered, mechanically attached, or RhinoBond per project specification.",
+        "Heat-weld all seams with calibrated hot-air welder; probe-test 100% of seams after cooling.",
+        "Detail all penetrations, curbs, parapets, and transitions with manufacturer-approved PVC flashings, pipe boots, and termination bars.",
+        "Install splice plates and target patches at all T-joints, drains, and irregular conditions.",
+        "Ensure proper integration with existing or new PVC-coated metal flashings (e.g., coping caps, drip edges).",
+        "Remove and properly dispose of all debris from the property.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+PVC_REPLACEMENT_TEMPLATE = {
+    "title": "PVC REPLACEMENT ROOF SYSTEM SCOPE",
+    "scope_1_title": "Tear-Off and Substrate Prep",
+    "scope_1": [
+        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Identify wet insulation by infrared scan and/or core cuts; quantify replacement areas.",
+        "Tear-off existing membrane, insulation, and cover board down to the structural deck.",
+        "Replace deteriorated decking with new like-gauge plywood or steel deck as needed.",
+        "Remove failed flashings, pitch pans, drains, scuppers, and edge metal.",
+        "Remove and properly dispose of all torn-off material from the property.",
+    ],
+    "scope_2_title": "New PVC Membrane Installation",
+    "scope_2": [
+        "Install polyisocyanurate insulation to specified R-value, mechanically attached or fully adhered per manufacturer.",
+        "Install ½\" high-density cover board over insulation to provide a smooth, durable substrate.",
+        "Install 60-mil PVC membrane — fully adhered, mechanically attached, or RhinoBond per project specification.",
+        "Heat-weld all seams with calibrated hot-air welder; probe-test 100% of seams after cooling.",
+        "Install new PVC-coated metal drip edge, gravel stop, and termination bars at all perimeters.",
+        "Flash all penetrations, curbs, walls, and corners with pre-formed or field-fabricated PVC accessories.",
+        "Install new pipe boots, pitch pans (filled with two-part urethane sealant), and corner patches.",
+        "Install splice plates and target patches at all T-joints, drains, and irregular conditions.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
 # Kept as the generic fallback when "TPO" alone is selected (no over-lay / replacement distinction yet)
 TPO_TEMPLATE = TPO_OVERLAY_TEMPLATE
 
@@ -308,9 +450,21 @@ ROOF_TEMPLATE_MAP = {
     "tporeplacingtpo": TPO_REPLACEMENT_TEMPLATE,
     "epdm": EPDM_TEMPLATE,
     "epdmwballast": EPDM_TEMPLATE,
-    "pvc": TPO_TEMPLATE,  # PVC single-ply uses substantially the same scope as TPO
+    "epdmoverlay": EPDM_OVERLAY_TEMPLATE,
+    "epdmoverexistingepdm": EPDM_OVERLAY_TEMPLATE,
+    "epdmreplacement": EPDM_REPLACEMENT_TEMPLATE,
+    "epdmreplacingepdm": EPDM_REPLACEMENT_TEMPLATE,
+    "pvc": PVC_OVERLAY_TEMPLATE,
+    "pvcoverlay": PVC_OVERLAY_TEMPLATE,
+    "pvcoverexistingpvc": PVC_OVERLAY_TEMPLATE,
+    "pvcreplacement": PVC_REPLACEMENT_TEMPLATE,
+    "pvcreplacingpvc": PVC_REPLACEMENT_TEMPLATE,
     "modbit": MODBIT_TEMPLATE,
     "modifiedbitumen": MODBIT_TEMPLATE,
+    "modbitoverlay": MODBIT_OVERLAY_TEMPLATE,
+    "modifiedbitumenoverlay": MODBIT_OVERLAY_TEMPLATE,
+    "modbitreplacement": MODBIT_REPLACEMENT_TEMPLATE,
+    "modifiedbitumenreplacement": MODBIT_REPLACEMENT_TEMPLATE,
     "bur": BUR_TEMPLATE,
     "burbuiltup": BUR_TEMPLATE,
     "builtup": BUR_TEMPLATE,

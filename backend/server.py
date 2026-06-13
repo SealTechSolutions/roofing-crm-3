@@ -118,9 +118,15 @@ ROOF_TYPES = [
     "Shingle",
     "Metal",
     "BUR (Built-Up)",
+    "ModBit Over-Lay",
+    "ModBit Replacement",
     "ModBit",
+    "EPDM Over-Lay",
+    "EPDM Replacement",
     "EPDM w/ Ballast",
     "EPDM",
+    "PVC Over-Lay",
+    "PVC Replacement",
     "PVC",
     "TPO Over-Lay",
     "TPO Replacement",
@@ -2551,6 +2557,12 @@ async def deal_spec_sheet(
     PRODUCT_TYPE_DEFAULTS = {
         "TPO Over-Lay": "TPO Roof System Over Existing TPO Over-Lay",
         "TPO Replacement": "TPO Roof System Replacing TPO",
+        "EPDM Over-Lay": "EPDM Roof System Over Existing EPDM Over-Lay",
+        "EPDM Replacement": "EPDM Roof System Replacing EPDM",
+        "ModBit Over-Lay": "Modified Bitumen Roof System Over Existing Modified Bitumen Over-Lay",
+        "ModBit Replacement": "Modified Bitumen Roof System Replacing Modified Bitumen",
+        "PVC Over-Lay": "PVC Roof System Over Existing PVC Over-Lay",
+        "PVC Replacement": "PVC Roof System Replacing PVC",
     }
     proposed = deal.get("proposed_roof_type") or "Silicone"
     if deal.get("product_description"):

@@ -86,6 +86,15 @@
 - ✅ Footer + vendor header roll up project & vendor variance totals
 - ✅ Multiple bills can link to one take-off line (sum into Actual); each bill line links to at most one
 
+## Roof System Variants (TPO / EPDM / ModBit / PVC) — 2026-02
+- ✅ Each of TPO, EPDM, ModBit, PVC now has TWO templates: **Over-Lay** and **Replacement**
+- ✅ Each variant has a curated PDF title (e.g., "TPO OVER-LAY ROOF SYSTEM SCOPE") and a curated
+     Product Type line on page 1 (e.g., "TPO Roof System Over Existing TPO Over-Lay")
+- ✅ Bodies authored: TPO Over-Lay (user-provided verbatim), TPO Replacement, EPDM Over-Lay
+     (with warranty caveat), EPDM Replacement, ModBit Over-Lay, ModBit Replacement,
+     PVC Over-Lay, PVC Replacement
+- ✅ Generic "TPO", "EPDM", "ModBit", "PVC" entries kept for backward compatibility
+
 ## Materials In Motion (2026-02)
 - ✅ New `GET /api/dashboard/materials-in-motion` aggregating across all projects
 - ✅ Dashboard card sits below Payables KPIs (hides itself when there's nothing in motion)
