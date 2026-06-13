@@ -47,6 +47,20 @@
 - ✅ Expand-all / Collapse-all shortcuts + per-vendor filter dropdown
 - ✅ Inline notes column merged under product name for better readability
 
+## Material Take-Off / Purchase Orders (2026-02)
+- ✅ New `material_takeoff[]` field on Deal — snapshots SKU/name/unit/vendor/loaded cost at add time
+- ✅ Project-level take-off card on DealDetail with vendor-grouped tables
+- ✅ "Add Materials" picker (Option B) — searchable catalog grouped by product family,
+     multi-size qty entry on a single row, multi-line bulk add in one click
+- ✅ Per-line: editable qty (auto-recalculates line total), per-line notes, Ordered/Received toggle, delete
+- ✅ Per-vendor "Download PO" + "Email PO" buttons → ReportLab-built PDF (`purchase_order_pdf.py`)
+- ✅ PO PDF: PO# = `<street>_<city>` (project name = PO#), ship-to from property, vendor block,
+     line items (qty/size/SKU/product/notes), **NO dollar amounts**
+- ✅ Internal "Estimated" cost rolls up in the take-off card (never shown on the PO PDF)
+- ✅ Endpoints: `GET /api/materials/grouped`, `POST/PUT/DELETE /api/deals/{id}/takeoff(/{line_id})`,
+     `GET /api/deals/{id}/purchase-order/{vendor_id}.pdf`,
+     `POST /api/deals/{id}/purchase-order/{vendor_id}/email`
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics)
 - Statement of Account PDF (aging report per customer)

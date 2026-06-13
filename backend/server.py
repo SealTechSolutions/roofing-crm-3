@@ -366,6 +366,8 @@ class DealIn(BaseModel):
     next_maintenance_date: str = ""
     last_maintenance_date: str = ""
     maintenance_visits: List[dict] = Field(default_factory=list)
+    # Material Take-Off — pull from materials catalog, drives PO PDFs and Estimated Materials cost
+    material_takeoff: List[dict] = Field(default_factory=list)
 
 
 class Deal(DealIn):
@@ -852,6 +854,26 @@ def normalize_deal(data: dict) -> dict:
         cleaned_cos.append(co)
     data["change_orders"] = cleaned_cos
 
+    # Normalize material take-off lines (snapshots from catalog)
+    takeoff = data.get("material_takeoff") or []
+    cleaned_takeoff = []
+    for ln in takeoff:
+        if not ln.get("id"):
+            ln["id"] = str(uuid.uuid4())
+        try:
+            ln["quantity"] = float(ln.get("quantity") or 0)
+        except (TypeError, ValueError):
+            ln["quantity"] = 0.0
+        try:
+            ln["unit_cost"] = float(ln.get("unit_cost") or 0)
+        except (TypeError, ValueError):
+            ln["unit_cost"] = 0.0
+        ln["line_total"] = round(ln["quantity"] * ln["unit_cost"], 2)
+        ln.setdefault("ordered", False)
+        ln.setdefault("received", False)
+        cleaned_takeoff.append(ln)
+    data["material_takeoff"] = cleaned_takeoff
+
     # Compute next_maintenance_date: last_visit + 1 year, else start_date + 1 year
     start = data.get("maintenance_start_date", "") or ""
     base = last_visit_date or start
@@ -989,6 +1011,346 @@ async def delete_maintenance_visit(deal_id: str, visit_id: str, current=Depends(
     await db.deals.update_one({"id": deal_id}, {"$set": cleaned})
     doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
     return scrub_deal(doc, current)
+
+
+# ----- Material Take-Off -----
+class TakeoffLineIn(BaseModel):
+    """Single line being added to a project's take-off. Server snapshots the catalog fields."""
+    model_config = ConfigDict(extra="ignore")
+    material_id: str
+    quantity: float = 0.0
+    notes: str = ""
+
+
+class TakeoffBulkAddIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    lines: List[TakeoffLineIn] = Field(default_factory=list)
+
+
+class TakeoffLinePatch(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    quantity: Optional[float] = None
+    notes: Optional[str] = None
+    ordered: Optional[bool] = None
+    received: Optional[bool] = None
+
+
+async def _check_deal_owner(deal_id: str, current: dict) -> dict:
+    existing = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if current.get("role") == "sales":
+        owns = existing.get("assigned_to_user_id") == current["id"] or existing.get("created_by_user_id") == current["id"]
+        if not owns:
+            raise HTTPException(status_code=403, detail="Not your project")
+    return existing
+
+
+def _persist_deal_takeoff(existing: dict, new_takeoff: list) -> dict:
+    merged = {**existing, "material_takeoff": new_takeoff}
+    for k in ("id", "created_at", "_id", "is_deleted", "deleted_at", "deleted_by"):
+        merged.pop(k, None)
+    return normalize_deal(merged)
+
+
+@api_router.post("/deals/{deal_id}/takeoff", response_model=Deal)
+async def add_takeoff_lines(deal_id: str, body: TakeoffBulkAddIn, current=Depends(get_current_user)):
+    """Bulk-add take-off lines. Snapshots catalog fields (sku/name/unit/vendor/loaded cost)
+    so price/name changes in the catalog do NOT silently affect previously-built take-offs."""
+    existing = await _check_deal_owner(deal_id, current)
+    if not body.lines:
+        raise HTTPException(status_code=400, detail="No lines provided")
+
+    # Resolve material snapshots
+    new_lines = list(existing.get("material_takeoff") or [])
+    for ln in body.lines:
+        if ln.quantity <= 0:
+            continue
+        mat = await db.materials.find_one({"id": ln.material_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+        if not mat:
+            raise HTTPException(status_code=404, detail=f"Material {ln.material_id} not found")
+        loaded = float(mat.get("default_price", 0) or 0) * (1 + float(mat.get("shipping_pct", 0) or 0) / 100)
+        new_lines.append({
+            "id": str(uuid.uuid4()),
+            "material_id": mat["id"],
+            "sku": mat.get("sku", "") or "",
+            "name": mat.get("name", "") or "",
+            "unit": mat.get("unit", "") or "",
+            "category": mat.get("category", "") or "",
+            "vendor_id": mat.get("vendor_id"),
+            "vendor_name": mat.get("vendor_name", "") or "",
+            "quantity": float(ln.quantity),
+            "unit_cost": round(loaded, 2),
+            "line_total": round(loaded * float(ln.quantity), 2),
+            "notes": ln.notes or "",
+            "ordered": False,
+            "received": False,
+            "added_at": now_iso(),
+        })
+
+    cleaned = _persist_deal_takeoff(existing, new_lines)
+    await db.deals.update_one({"id": deal_id}, {"$set": cleaned})
+    doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    return scrub_deal(doc, current)
+
+
+@api_router.put("/deals/{deal_id}/takeoff/{line_id}", response_model=Deal)
+async def update_takeoff_line(deal_id: str, line_id: str, body: TakeoffLinePatch, current=Depends(get_current_user)):
+    existing = await _check_deal_owner(deal_id, current)
+    lines = list(existing.get("material_takeoff") or [])
+    found = False
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    for ln in lines:
+        if ln.get("id") == line_id:
+            ln.update(patch)
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Take-off line not found")
+    cleaned = _persist_deal_takeoff(existing, lines)
+    await db.deals.update_one({"id": deal_id}, {"$set": cleaned})
+    doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    return scrub_deal(doc, current)
+
+
+@api_router.delete("/deals/{deal_id}/takeoff/{line_id}", response_model=Deal)
+async def delete_takeoff_line(deal_id: str, line_id: str, current=Depends(get_current_user)):
+    existing = await _check_deal_owner(deal_id, current)
+    lines = [ln for ln in (existing.get("material_takeoff") or []) if ln.get("id") != line_id]
+    cleaned = _persist_deal_takeoff(existing, lines)
+    await db.deals.update_one({"id": deal_id}, {"$set": cleaned})
+    doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    return scrub_deal(doc, current)
+
+
+@api_router.get("/materials/grouped")
+async def list_materials_grouped(current=Depends(get_current_user)):
+    """Return materials grouped by vendor and product family for the picker.
+
+    Product family is derived by splitting the material name on the em-dash separator
+    (`Silkoxy H3 — 55 Gal Drum` → family `Silkoxy H3`, variant `55 Gal Drum`).
+    Falls back to the full name if no em-dash is present.
+    """
+    cursor = db.materials.find({"is_deleted": {"$ne": True}}, {"_id": 0}).sort("name", 1)
+    mats = await cursor.to_list(2000)
+    vendors_map: dict = {}
+    for m in mats:
+        vname = (m.get("vendor_name") or "").strip() or "Unassigned"
+        v = vendors_map.setdefault(vname, {"vendor_name": vname, "vendor_id": m.get("vendor_id"), "families": {}})
+        # Split family / variant on " — " (em-dash) — the convention used by our importers
+        full = (m.get("name") or "").strip()
+        if " — " in full:
+            family_name, variant_label = full.split(" — ", 1)
+        else:
+            family_name, variant_label = full, m.get("unit", "") or ""
+        family = v["families"].setdefault(family_name, {
+            "family": family_name,
+            "category": m.get("category") or "",
+            "variants": [],
+        })
+        loaded = float(m.get("default_price", 0) or 0) * (1 + float(m.get("shipping_pct", 0) or 0) / 100)
+        family["variants"].append({
+            "material_id": m["id"],
+            "sku": m.get("sku") or "",
+            "label": variant_label,
+            "unit": m.get("unit", "") or "",
+            "default_price": float(m.get("default_price", 0) or 0),
+            "loaded_cost": round(loaded, 2),
+            "notes": m.get("notes", "") or "",
+        })
+
+    # Materialize to list and sort
+    out = []
+    for v in vendors_map.values():
+        families = sorted(v["families"].values(), key=lambda f: f["family"].lower())
+        out.append({
+            "vendor_name": v["vendor_name"],
+            "vendor_id": v["vendor_id"],
+            "family_count": len(families),
+            "variant_count": sum(len(f["variants"]) for f in families),
+            "families": families,
+        })
+    out.sort(key=lambda x: (x["vendor_name"] == "Unassigned", x["vendor_name"].lower()))
+    return out
+
+
+async def _build_po_dict(deal_id: str, vendor_id: str, current: dict) -> dict:
+    """Build the dict that purchase_order_pdf.build_purchase_order_pdf consumes."""
+    deal = await _check_deal_owner(deal_id, current)
+    all_lines = [ln for ln in (deal.get("material_takeoff") or []) if ln.get("vendor_id") == vendor_id]
+    if not all_lines:
+        raise HTTPException(status_code=404, detail="No take-off lines for this vendor on this project")
+
+    # Filter to only un-ordered lines? Keep all for now; future flag could split.
+    vendor = await db.vendors.find_one({"id": vendor_id}, {"_id": 0}) or {"name": all_lines[0].get("vendor_name") or "Vendor"}
+
+    # Resolve project address from property
+    ship_to = {}
+    if deal.get("property_id"):
+        prop = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
+        if prop:
+            ship_to = {
+                "address": prop.get("property_address", ""),
+                "address_line2": prop.get("property_address_line2", ""),
+                "city": prop.get("property_city", ""),
+                "state": prop.get("property_state", ""),
+                "zip": prop.get("property_zip", ""),
+            }
+
+    # Build the project_name / PO# convention: "<street>_<city>"
+    street = (ship_to.get("address") or "").strip()
+    city = (ship_to.get("city") or "").strip()
+    project_name_fallback = (deal.get("title") or "").strip()
+    if street and city:
+        po_number = f"{street}_{city}"
+    else:
+        po_number = project_name_fallback or deal_id[:8]
+    project_name = po_number
+
+    # Requested-by = current user
+    requested_by = {
+        "name": current.get("name", ""),
+        "title": current.get("title", ""),
+        "phone": current.get("phone", ""),
+        "email": current.get("email", ""),
+    }
+
+    po = {
+        "po_number": po_number,
+        "project_name": project_name,
+        "po_date": datetime.now(timezone.utc).date().isoformat(),
+        "ship_to": ship_to,
+        "vendor": {
+            "name": vendor.get("name", "") or "",
+            "contact_name": vendor.get("contact_name", "") or "",
+            "phone": vendor.get("phone", "") or vendor.get("mobile_phone", "") or vendor.get("work_phone", "") or "",
+            "email": vendor.get("email", "") or "",
+            "address": vendor.get("address", "") or "",
+            "address_line2": vendor.get("address_line2", "") or "",
+            "city": vendor.get("city", "") or "",
+            "state": vendor.get("state", "") or "",
+            "zip": vendor.get("zip_code", "") or "",
+        },
+        "requested_by": requested_by,
+        "notes": "",
+        "lines": [{
+            "sku": ln.get("sku", ""),
+            "name": ln.get("name", ""),
+            "unit": ln.get("unit", ""),
+            "quantity": ln.get("quantity", 0),
+            "notes": ln.get("notes", ""),
+        } for ln in all_lines],
+    }
+    return po
+
+
+@api_router.get("/deals/{deal_id}/purchase-order/{vendor_id}.pdf")
+async def deal_purchase_order_pdf(
+    deal_id: str,
+    vendor_id: str,
+    token: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    """Generate a per-vendor PO / Material Take-Off PDF for a project. No prices on the PDF."""
+    raw = None
+    if authorization and authorization.startswith("Bearer "):
+        raw = authorization[7:]
+    elif token:
+        raw = token
+    if not raw:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(raw, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["sub"]})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        user.pop("_id", None)
+        user.pop("password_hash", None)
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    po = await _build_po_dict(deal_id, vendor_id, user)
+    from purchase_order_pdf import build_purchase_order_pdf
+    pdf_bytes = build_purchase_order_pdf(po)
+    safe_name = po["po_number"].replace("/", "-").replace("\\", "-")
+    fname = f"PO_{safe_name}_{po['vendor']['name'].replace(' ', '_')}.pdf"
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@api_router.post("/deals/{deal_id}/purchase-order/{vendor_id}/email")
+async def email_purchase_order(deal_id: str, vendor_id: str, body: dict = Body(default={}), current=Depends(get_current_user)):
+    """Email the per-vendor PO PDF to the vendor's contact email."""
+    po = await _build_po_dict(deal_id, vendor_id, current)
+    from purchase_order_pdf import build_purchase_order_pdf
+    pdf_bytes = build_purchase_order_pdf(po)
+
+    to_email = (body.get("to_email") or po["vendor"].get("email") or "").strip()
+    cc_email = (body.get("cc_email") or "").strip()
+    if not to_email:
+        raise HTTPException(status_code=400, detail="No recipient email — please provide one or set the vendor's email.")
+
+    po_num = po["po_number"]
+    vendor_name = po["vendor"]["name"] or "Vendor"
+    project_name = po["project_name"]
+    subject = f"Purchase Order — {po_num}"
+
+    body_text = (
+        f"Hi {po['vendor'].get('contact_name') or vendor_name},\n\n"
+        f"Please find attached Purchase Order {po_num} for project {project_name}.\n\n"
+        f"Could you confirm receipt, lead time, and pricing? Please call Darren Oliver at 720-715-9955 "
+        f"if you have any questions or to discuss volume pricing.\n\n"
+        f"Thank you,\n"
+        f"{po['requested_by'].get('name') or 'SealTech Building Solutions'}\n"
+        f"SealTech Building Solutions  ·  720-715-9955"
+    )
+
+    body_html = f"""
+    <html><body style="font-family: Arial, Helvetica, sans-serif; color: #0A0A0A; max-width: 620px;">
+      <p style="margin: 0 0 16px;">Hi {po['vendor'].get('contact_name') or vendor_name},</p>
+      <p style="margin: 0 0 16px;">Please find attached <b>Purchase Order {po_num}</b> for project <b>{project_name}</b>.</p>
+      <p style="margin: 16px 0;">Could you confirm receipt, lead time, and pricing? Please call <b>Darren Oliver at 720-715-9955</b> if you have any questions or to discuss volume pricing.</p>
+      <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
+        <b style="color: #0A0A0A;">{po['requested_by'].get('name') or 'SealTech Building Solutions'}</b><br/>
+        SealTech Building Solutions  ·  720-715-9955  ·  info@sealtechbuildingsolutions.com
+      </p>
+    </body></html>
+    """
+
+    try:
+        from email_sender import send_email, EmailNotConfigured
+        result = send_email(
+            to=to_email,
+            cc=cc_email,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+            reply_to=os.environ.get("GMAIL_FROM_EMAIL") or None,
+            attachments=[{"filename": f"PO_{po_num}.pdf", "data": pdf_bytes, "mime": "application/pdf"}],
+        )
+    except EmailNotConfigured as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email send failed: {type(e).__name__}: {e}")
+
+    # Mark all this vendor's lines as ordered
+    deal = await db.deals.find_one({"id": deal_id})
+    lines = list(deal.get("material_takeoff") or [])
+    for ln in lines:
+        if ln.get("vendor_id") == vendor_id:
+            ln["ordered"] = True
+            ln["ordered_at"] = now_iso()
+    cleaned = _persist_deal_takeoff(deal, lines)
+    await db.deals.update_one({"id": deal_id}, {"$set": cleaned})
+
+    return {
+        "ok": True,
+        "message": f"PO {po_num} emailed to {to_email}",
+        "to_email": to_email,
+        "message_id": result.get("message_id"),
+    }
+
+
 
 
 @api_router.get("/maintenance")

@@ -5,6 +5,7 @@ import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrenc
 import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
+import MaterialTakeoff from "@/components/MaterialTakeoff";
 
 export default function DealDetail() {
   const { id } = useParams();
@@ -560,6 +561,9 @@ export default function DealDetail() {
         coverPhotoId={deal.cover_photo_file_id}
         onSetCover={(fileId) => persist({ cover_photo_file_id: deal.cover_photo_file_id === fileId ? null : fileId })}
       />
+
+      {/* Material Take-Off */}
+      <MaterialTakeoff deal={deal} reload={reload} />
 
       {/* Maintenance Plan */}
       <Card
