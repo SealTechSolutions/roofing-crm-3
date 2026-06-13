@@ -59,10 +59,10 @@
 
 ## Per-Rep Scope Signature (2026-02)
 - ✅ Added `credentials` (free-text, e.g. "CSI, IIBEC") to User model + `/auth/me` GET/PUT + admin create/update
-- ✅ Scope PDF signature now pulls `name` + `credentials` from the logged-in user — "Name, Credentials / SealTech Building Solutions"
-- ✅ One-time migration on app start: existing admin `name="Admin"` → "Darren Oliver", empty `credentials` → "CSI, IIBEC"
+- ✅ Scope PDF signature pulls `name` + `credentials` from the logged-in user — "Name, Credentials / SealTech Building Solutions"
+- ✅ One-time migration on app start: existing admin `name="Admin"` → "Darren Oliver" (credentials are NEVER auto-applied)
 - ✅ Profile page has a **Scope Signature Preview** card that mirrors exactly how the rep's name will print on every scope PDF
-- ✅ If `credentials` is blank, the comma is omitted (e.g. "Sam Estimator / SealTech Building Solutions")
+- ✅ If `credentials` is blank, the comma + credentials are omitted entirely — each rep must explicitly type their own credentials; nothing is inherited from another user
 
 ## Material Take-Off / Purchase Orders (2026-02)
 - ✅ New `material_takeoff[]` field on Deal — snapshots SKU/name/unit/vendor/loaded cost at add time

@@ -1031,15 +1031,12 @@ def build_spec_sheet(
     ))
     story.append(Spacer(1, 0.08 * inch if template.get("tier_table") else 0.06 * inch))
 
-    # Closing signature line — pulls from logged-in user when supplied, else
-    # falls back to the founder/GM signature.
-    sn = (signer_name or "").strip() or "Darren Oliver"
+    # Closing signature line — pulls directly from the logged-in user. No
+    # auto-applied credentials: each rep is responsible for setting their own
+    # name + credentials on their Profile page.
+    sn = (signer_name or "").strip()
     sc = (signer_credentials or "").strip()
-    # If the caller didn't pass credentials, keep the historical "CSI, IIBEC"
-    # only when also using the default signer; otherwise show name alone.
-    if not sc and (signer_name or "").strip() == "":
-        sc = "CSI, IIBEC"
-    signer_line = f"<b>{sn}{', ' + sc if sc else ''}</b><br/>SealTech Building Solutions"
+    signer_line = f"<b>{sn}{', ' + sc if (sn and sc) else ''}</b><br/>SealTech Building Solutions"
     sig = Table([
         [Paragraph(signer_line, s["body"]), ""],
     ], colWidths=[3.5 * inch, 4.0 * inch])

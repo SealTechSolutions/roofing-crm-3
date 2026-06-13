@@ -51,10 +51,10 @@ function ProfileSection({ user, onSaved }) {
     }
   };
 
-  // Live signature preview matches the spec sheet exactly
-  const sigName = name.trim() || "Darren Oliver";
-  const sigCreds = credentials.trim() || (name.trim() ? "" : "CSI, IIBEC");
-  const sigLine = sigCreds ? `${sigName}, ${sigCreds}` : sigName;
+  // Live signature preview matches the spec sheet exactly — no auto-applied credentials.
+  const sigName = name.trim();
+  const sigCreds = credentials.trim();
+  const sigLine = sigName && sigCreds ? `${sigName}, ${sigCreds}` : sigName;
 
   return (
     <div className="bg-white border border-zinc-200 rounded-sm p-6 mb-6">

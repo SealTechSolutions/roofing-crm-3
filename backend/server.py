@@ -3629,9 +3629,8 @@ async def on_startup():
         # One-time: backfill default name "Admin" → "Darren Oliver"
         if (existing.get("name") or "").strip() in ("", "Admin"):
             migrate["name"] = "Darren Oliver"
-        # One-time: backfill credentials so the scope signature continues to render correctly
-        if not (existing.get("credentials") or "").strip():
-            migrate["credentials"] = "CSI, IIBEC"
+        # Note: credentials are NEVER auto-applied — every rep is responsible
+        # for setting their own credentials on the Profile page.
         await db.users.update_one({"id": existing["id"]}, {"$set": migrate})
 
     # Start the weekly payables-email scheduler
