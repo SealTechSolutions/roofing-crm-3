@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { Plus, Search, X, Trash2, FileText, Mail, Package, Boxes, CheckCircle2, Circle, Truck } from "lucide-react";
+import { Plus, Search, X, Trash2, FileText, Mail, Package, Boxes, CheckCircle2, Circle, Truck, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 
 /**
@@ -19,11 +19,13 @@ export default function MaterialTakeoff({ deal, reload }) {
     const map = new Map();
     for (const ln of lines) {
       const key = ln.vendor_name || "Unassigned";
-      if (!map.has(key)) map.set(key, { vendor_name: key, vendor_id: ln.vendor_id, lines: [], total: 0, qty: 0 });
+      if (!map.has(key)) map.set(key, { vendor_name: key, vendor_id: ln.vendor_id, lines: [], total: 0, qty: 0, ordered: 0, received: 0 });
       const g = map.get(key);
       g.lines.push(ln);
       g.total += Number(ln.line_total || 0);
       g.qty += Number(ln.quantity || 0);
+      if (ln.ordered) g.ordered += 1;
+      if (ln.received) g.received += 1;
     }
     return Array.from(map.values()).sort((a, b) => a.vendor_name.localeCompare(b.vendor_name));
   }, [deal.material_takeoff]);
@@ -128,6 +130,23 @@ export default function MaterialTakeoff({ deal, reload }) {
                   <span className="text-[11px] uppercase tracking-wider text-zinc-300">
                     {g.lines.length} line{g.lines.length === 1 ? "" : "s"}  ·  {Number(g.qty)} unit{g.qty === 1 ? "" : "s"}  ·  Est. {formatCurrency(g.total)}
                   </span>
+                  {(g.ordered > 0 || g.received > 0) && (
+                    <span className="inline-flex items-center gap-2 text-[10px] uppercase tracking-wider text-zinc-300">
+                      <span className="text-zinc-500">·</span>
+                      {g.ordered > 0 && (
+                        <span className="inline-flex items-center gap-1">
+                          <Truck className="w-3 h-3 text-blue-300" />
+                          <span className="font-bold text-white">{g.ordered}</span>/{g.lines.length} ordered
+                        </span>
+                      )}
+                      {g.received > 0 && (
+                        <span className="inline-flex items-center gap-1">
+                          <PackageCheck className="w-3 h-3 text-emerald-300" />
+                          <span className="font-bold text-white">{g.received}</span>/{g.lines.length} received
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {g.vendor_id && (
@@ -156,7 +175,8 @@ export default function MaterialTakeoff({ deal, reload }) {
                 <table className="w-full text-sm" data-testid={`takeoff-table-${g.vendor_name}`}>
                   <thead>
                     <tr className="border-b border-zinc-200 text-left text-[10px] uppercase tracking-wider bg-zinc-50">
-                      <th className="py-2 px-3 w-16 text-center">Status</th>
+                      <th className="py-2 px-3 w-14 text-center" title="Ordered — click the truck to toggle when the PO is placed">Ordered</th>
+                      <th className="py-2 px-3 w-14 text-center" title="Received — click the box to toggle when material arrives on site">Received</th>
                       <th className="py-2 px-3 w-20 text-right">Qty</th>
                       <th className="py-2 px-3 w-28">Size / Unit</th>
                       <th className="py-2 px-3">Product</th>
@@ -167,16 +187,38 @@ export default function MaterialTakeoff({ deal, reload }) {
                   </thead>
                   <tbody>
                     {g.lines.map((ln) => (
-                      <tr key={ln.id} className="border-b border-zinc-100" data-testid={`takeoff-line-${ln.id}`}>
+                      <tr
+                        key={ln.id}
+                        className={`border-b border-zinc-100 transition-colors ${ln.received ? "bg-emerald-50/60" : ln.ordered ? "bg-blue-50/30" : ""}`}
+                        data-testid={`takeoff-line-${ln.id}`}
+                      >
                         <td className="py-2 px-3 text-center">
                           <button
                             onClick={() => updateLine(ln.id, { ordered: !ln.ordered })}
-                            title={ln.ordered ? "Ordered — click to mark as not ordered" : "Mark as ordered"}
-                            className="inline-flex"
+                            title={ln.ordered ? "Ordered — click to un-mark" : "Mark as ordered"}
+                            className="inline-flex p-1 rounded-sm hover:bg-blue-100"
                             data-testid={`toggle-ordered-${ln.id}`}
                           >
                             {ln.ordered ? (
-                              <Truck className="w-4 h-4 text-emerald-600" />
+                              <Truck className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <Truck className="w-4 h-4 text-zinc-300" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          <button
+                            onClick={() => {
+                              const nextReceived = !ln.received;
+                              // Marking as received implies ordered
+                              updateLine(ln.id, nextReceived ? { received: true, ordered: true } : { received: false });
+                            }}
+                            title={ln.received ? "Received on site — click to un-mark" : "Mark as received on site"}
+                            className="inline-flex p-1 rounded-sm hover:bg-emerald-100"
+                            data-testid={`toggle-received-${ln.id}`}
+                          >
+                            {ln.received ? (
+                              <PackageCheck className="w-4 h-4 text-emerald-600" />
                             ) : (
                               <Circle className="w-4 h-4 text-zinc-300" />
                             )}

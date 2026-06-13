@@ -52,7 +52,10 @@
 - ✅ Project-level take-off card on DealDetail with vendor-grouped tables
 - ✅ "Add Materials" picker (Option B) — searchable catalog grouped by product family,
      multi-size qty entry on a single row, multi-line bulk add in one click
-- ✅ Per-line: editable qty (auto-recalculates line total), per-line notes, Ordered/Received toggle, delete
+- ✅ Per-line: editable qty (auto-recalculates line total), per-line notes, delete
+- ✅ **3-state pipeline per line: Pending → Ordered (blue truck) → Received (green PackageCheck)**
+- ✅ Row background tints: blue when ordered, green when received
+- ✅ Vendor header rolls up pipeline counts: `X/Y ordered · X/Y received`
 - ✅ Per-vendor "Download PO" + "Email PO" buttons → ReportLab-built PDF (`purchase_order_pdf.py`)
 - ✅ PO PDF: PO# = `<street>_<city>` (project name = PO#), ship-to from property, vendor block,
      line items (qty/size/SKU/product/notes), **NO dollar amounts**
