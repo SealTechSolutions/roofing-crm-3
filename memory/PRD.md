@@ -79,6 +79,13 @@
 - ✅ Email row is disabled when the customer has no `email` on file with a clear tooltip explaining how to fix
 - ✅ Backend filters out Draft/Paid/Void invoices automatically; only Sent/Partial/Overdue with `balance_due > 0.01` show up
 
+## 25-Year Tier on Project Edit & Spec Sheet (2026-02)
+- ✅ New `warranty_25yr_add` field on Deal model — sits alongside warranty_20yr_add / 15 / 10
+- ✅ Deal edit form now shows the 25-yr Warranty Add input (5-column row: 25 / 20 / 15 / 10 / Coating Color) and Option D ($) — 25-yr promoted to the **leading** Pricing Option (D / A / B / C order; FARM-only qualifier removed)
+- ✅ DealDetail page shows Option D — 25-yr line only when amount > 0
+- ✅ Spec sheet `_pricing_table` now adds a **25-Year row at the top** of all three non-FARM pricing tables (Base Investment, [OPTIONAL] Manufacturer Warranty, and Total Investment with Optional Manufacturer Warranty) when either `opt_25` or `w25` is > 0; typography tightens automatically (8pt / 5pt padding) so the page still holds at exactly 3 pages
+- ✅ All 13 templates verified at 3 pages with and without the 25-yr row populated
+
 ## Material Take-Off / Purchase Orders (2026-02)
 - ✅ New `material_takeoff[]` field on Deal — snapshots SKU/name/unit/vendor/loaded cost at add time
 - ✅ Project-level take-off card on DealDetail with vendor-grouped tables

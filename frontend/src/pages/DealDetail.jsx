@@ -529,7 +529,7 @@ export default function DealDetail() {
           <Row label="Option B — 15-yr" value={formatCurrency(deal.proposal_option_2)} highlight={Math.abs(totals.revenue - deal.proposal_option_2) < 0.01 && totals.revenue > 0} />
           <Row label="Option C — 10-yr" value={formatCurrency(deal.proposal_option_3)} highlight={Math.abs(totals.revenue - deal.proposal_option_3) < 0.01 && totals.revenue > 0} />
           {Number(deal.proposal_option_25yr || 0) > 0 && (
-            <Row label="Option D — 25-yr (FARM)" value={formatCurrency(deal.proposal_option_25yr)} highlight={Math.abs(totals.revenue - deal.proposal_option_25yr) < 0.01 && totals.revenue > 0} />
+            <Row label="Option D — 25-yr" value={formatCurrency(deal.proposal_option_25yr)} highlight={Math.abs(totals.revenue - deal.proposal_option_25yr) < 0.01 && totals.revenue > 0} />
           )}
           <div className="border-t-2 border-zinc-950 my-2" />
           <Row label="Chosen" value={formatCurrency(totals.revenue)} bold />

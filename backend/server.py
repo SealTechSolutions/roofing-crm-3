@@ -391,6 +391,8 @@ class DealIn(BaseModel):
     warranty_20yr_add: float = 0.0
     warranty_15yr_add: float = 0.0
     warranty_10yr_add: float = 0.0
+    # Optional 25-yr warranty add-on (e.g., FARM Hail Rider). Mirrors the other tiers.
+    warranty_25yr_add: float = 0.0
     warranty_color: str = "white"
     cover_photo_file_id: Optional[str] = None
     # Change orders — approved scope additions/deductions that affect the contract total
@@ -2900,6 +2902,7 @@ async def deal_spec_sheet(
         "w20": float(deal.get("warranty_20yr_add") or 0),
         "w15": float(deal.get("warranty_15yr_add") or 0),
         "w10": float(deal.get("warranty_10yr_add") or 0),
+        "w25": float(deal.get("warranty_25yr_add") or 0),
         "total_sqft": float(deal.get("total_sqft") or 0),
         "color": color,
         "roof_type_label": (deal.get("proposed_roof_type") or "silicone").lower(),

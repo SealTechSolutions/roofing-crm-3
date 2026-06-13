@@ -88,6 +88,7 @@ const empty = {
   warranty_20yr_add: 0,
   warranty_15yr_add: 0,
   warranty_10yr_add: 0,
+  warranty_25yr_add: 0,
   warranty_color: "white",
   cover_photo_file_id: "",
 };
@@ -358,7 +359,10 @@ export default function Deals() {
               <Field label="Product Description (override)">
                 <Input data-testid="deal-product-desc" value={form.product_description} onChange={(v) => setForm({ ...form, product_description: v })} placeholder="e.g., Silicone Roof System w/Granules Over Single-Ply Investment" />
               </Field>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-3">
+                <Field label="25-Yr Warranty Add ($)">
+                  <Input data-testid="deal-w25" type="number" min="0" step="100" value={form.warranty_25yr_add} onChange={(v) => setForm({ ...form, warranty_25yr_add: v })} />
+                </Field>
                 <Field label="20-Yr Warranty Add ($)">
                   <Input data-testid="deal-w20" type="number" min="0" step="100" value={form.warranty_20yr_add} onChange={(v) => setForm({ ...form, warranty_20yr_add: v })} />
                 </Field>
@@ -372,7 +376,7 @@ export default function Deals() {
                   <Input data-testid="deal-color" value={form.warranty_color} onChange={(v) => setForm({ ...form, warranty_color: v })} placeholder="white" />
                 </Field>
               </div>
-              <div className="text-xs text-zinc-500 mt-2">Option A→20-yr · Option B→15-yr · Option C→10-yr · Option D→25-yr w/Hail Rider (FARM). Add-ons appear in the spec sheet&apos;s optional warranty table.</div>
+              <div className="text-xs text-zinc-500 mt-2">Option D→25-yr · Option A→20-yr · Option B→15-yr · Option C→10-yr. Add-ons appear in the spec sheet&apos;s optional warranty table. Leave 25-yr fields at 0 to hide that tier on non-FARM scopes.</div>
             </div>
 
             <div className="pt-4 border-t border-zinc-200">
@@ -380,6 +384,9 @@ export default function Deals() {
                 {form.deal_type === "Assessment" ? "Assessment — 3 Roof System Options" : "Scope — Pricing Options"}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Field label="Option D ($) — 25-yr">
+                  <Input data-testid="deal-option-25yr" type="number" min="0" step="0.01" value={form.proposal_option_25yr} onChange={(v) => setForm({ ...form, proposal_option_25yr: v })} />
+                </Field>
                 <Field label="Option A ($) — 20-yr">
                   <Input data-testid="deal-option-1" type="number" min="0" step="0.01" value={form.proposal_option_1} onChange={(v) => setForm({ ...form, proposal_option_1: v })} />
                 </Field>
@@ -388,9 +395,6 @@ export default function Deals() {
                 </Field>
                 <Field label="Option C ($) — 10-yr">
                   <Input data-testid="deal-option-3" type="number" min="0" step="0.01" value={form.proposal_option_3} onChange={(v) => setForm({ ...form, proposal_option_3: v })} />
-                </Field>
-                <Field label="Option D ($) — 25-yr (FARM only)">
-                  <Input data-testid="deal-option-25yr" type="number" min="0" step="0.01" value={form.proposal_option_25yr} onChange={(v) => setForm({ ...form, proposal_option_25yr: v })} />
                 </Field>
               </div>
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">

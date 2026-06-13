@@ -773,6 +773,14 @@ def _header_block(s, doc, template_title: str, template: dict | None = None):
 def _pricing_table(s, doc, template: dict | None = None):
     elems = []
     has_tier_table = bool(template and template.get("tier_table"))
+    has_25 = float(doc.get("opt_25") or 0) > 0 or float(doc.get("w25") or 0) > 0
+    # Tighten typography when a 25-yr row is present on non-FARM scopes so all
+    # three tables still fit on page 1 without spilling to a 4th page.
+    table_font = 8 if (has_25 and not has_tier_table) else 9
+    cell_pad = 5 if (has_25 and not has_tier_table) else 7
+    total_font = 9 if (has_25 and not has_tier_table) else 10
+    total_pad = 6 if (has_25 and not has_tier_table) else 8
+    gap_after = (0.06 if (has_25 and not has_tier_table) else 0.12) * inch
     header_suffix = "" if has_tier_table else ' <font size="9"><i>(Standard Warranty Included)</i></font>'
     elems.append(Paragraph(
         f'{doc.get("product_type", "Roof System Investment")}{header_suffix}',
@@ -789,25 +797,30 @@ def _pricing_table(s, doc, template: dict | None = None):
     else:
         base = [
             ["Warranty Tier", "Base Investment"],
+        ]
+        # Optional 25-yr base price (e.g., when a non-FARM scope offers a 25-yr workmanship tier).
+        if float(doc.get("opt_25") or 0) > 0:
+            base.append(["25-Year Workmanship", _currency(doc.get("opt_25"))])
+        base.extend([
             ["20-Year Workmanship", _currency(doc.get("opt_20"))],
             ["15-Year Workmanship", _currency(doc.get("opt_15"))],
             ["10-Year Workmanship", _currency(doc.get("opt_10"))],
-        ]
+        ])
     t = Table(base, colWidths=[4.5 * inch, 3.0 * inch])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BLUE),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("FONTSIZE", (0, 0), (-1, -1), table_font),
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
-        ("TOPPADDING", (0, 0), (-1, -1), 7),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), cell_pad),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), cell_pad),
     ]))
     elems.append(t)
-    elems.append(Spacer(1, 0.12 * inch))
+    elems.append(Spacer(1, gap_after))
 
     # Templates that already enumerate warranty options in-body (e.g., FARM's tier_table)
     # don't need the optional add-on warranty section — there are no extra warranty fees.
@@ -817,37 +830,44 @@ def _pricing_table(s, doc, template: dict | None = None):
     elems.append(Paragraph("[OPTIONAL] Manufacturer Warranty (Labor &amp; Material)", s["h2"]))
     opt = [
         ["Warranty Tier", "Add-On Cost"],
+    ]
+    if float(doc.get("w25") or 0) > 0 or float(doc.get("opt_25") or 0) > 0:
+        opt.append(["25-Year Labor & Material", _currency(doc.get("w25"))])
+    opt.extend([
         ["20-Year Labor & Material", _currency(doc.get("w20"))],
         ["15-Year Labor & Material", _currency(doc.get("w15"))],
         ["10-Year Labor & Material", _currency(doc.get("w10"))],
-    ]
+    ])
     t2 = Table(opt, colWidths=[4.5 * inch, 3.0 * inch])
     t2.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BLUE), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("FONTSIZE", (0, 0), (-1, -1), table_font), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
-        ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), cell_pad), ("BOTTOMPADDING", (0, 0), (-1, -1), cell_pad),
     ]))
     elems.append(t2)
-    elems.append(Spacer(1, 0.12 * inch))
+    elems.append(Spacer(1, gap_after))
 
     elems.append(Paragraph("Total Investment with Optional Manufacturer Warranty", s["h2"]))
-    tot = [
+    tot = []
+    if float(doc.get("opt_25") or 0) > 0 or float(doc.get("w25") or 0) > 0:
+        tot.append(["Including 25-Year Upgraded Warranty", _currency((doc.get("opt_25") or 0) + (doc.get("w25") or 0))])
+    tot.extend([
         ["Including 20-Year Upgraded Warranty", _currency((doc.get("opt_20") or 0) + (doc.get("w20") or 0))],
         ["Including 15-Year Upgraded Warranty", _currency((doc.get("opt_15") or 0) + (doc.get("w15") or 0))],
         ["Including 10-Year Upgraded Warranty", _currency((doc.get("opt_10") or 0) + (doc.get("w10") or 0))],
-    ]
+    ])
     t3 = Table(tot, colWidths=[4.5 * inch, 3.0 * inch])
     t3.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("FONTSIZE", (0, 0), (-1, -1), total_font),
         ("TEXTCOLOR", (1, 0), (1, -1), BLUE),
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("GRID", (0, 0), (-1, -1), 0.5, DARK),
         ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
-        ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), total_pad), ("BOTTOMPADDING", (0, 0), (-1, -1), total_pad),
     ]))
     elems.append(t3)
     return elems
