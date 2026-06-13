@@ -98,6 +98,19 @@
 - ✅ Refuses to run with helpful error if SqFt fields are blank
 - ✅ Rate-card legend printed inline under the warranty grid for quick reference
 
+## Late-Fee Policy Wired Everywhere (2026-02)
+- ✅ Backend helper `compute_late_fee(invoice, as_of)` + `compute_aging` now compute 1.5%/month on balances ≥ 30 days past due (compounds — 30-59 d = 1 mo, 60-89 d = 2 mo, …)
+- ✅ Statement PDF: new **Late Fee** column on the detail table (red when > 0), three-row totals block (Subtotal → Late Fees → **TOTAL DUE incl. Late Fees** in blue), gray footer paragraph stating the full policy
+- ✅ Statement summary JSON now returns `late_fees` + `total_due_with_fees` alongside `total`
+- ✅ Statement email body (text + HTML) shows the late-fee breakdown when > 0 and always includes the policy block (amber-bordered HTML callout)
+- ✅ Invoice PDF: new "LATE FEE POLICY" paragraph below Remittance Instructions
+- ✅ Invoice email body (text + HTML) includes the policy block (amber-bordered HTML callout)
+- ✅ Verified end-to-end: a real 180-day-overdue invoice ($63,875) renders $5,748.75 late fees (6 mo × 1.5%) → grand total $69,623.75 across Statement PDF, summary JSON, and email response
+
+## Hail Rider Repositioned Beyond FARM (2026-02)
+- ✅ Non-FARM warranty add-on table now labels the 20-yr and 25-yr rows as **"… Labor & Material w/Hail Rider"** so the customer sees what's included
+- ✅ Deal form helper text no longer says "Leave 25-yr fields at 0 to hide that tier on non-FARM scopes" — the qualifier is gone since any scope can now offer 25-yr
+
 ## Material Take-Off / Purchase Orders (2026-02)
 - ✅ New `material_takeoff[]` field on Deal — snapshots SKU/name/unit/vendor/loaded cost at add time
 - ✅ Project-level take-off card on DealDetail with vendor-grouped tables

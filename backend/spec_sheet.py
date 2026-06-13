@@ -832,9 +832,9 @@ def _pricing_table(s, doc, template: dict | None = None):
         ["Warranty Tier", "Add-On Cost"],
     ]
     if float(doc.get("w25") or 0) > 0 or float(doc.get("opt_25") or 0) > 0:
-        opt.append(["25-Year Labor & Material", _currency(doc.get("w25"))])
+        opt.append(["25-Year Labor & Material w/Hail Rider", _currency(doc.get("w25"))])
     opt.extend([
-        ["20-Year Labor & Material", _currency(doc.get("w20"))],
+        ["20-Year Labor & Material w/Hail Rider", _currency(doc.get("w20"))],
         ["15-Year Labor & Material", _currency(doc.get("w15"))],
         ["10-Year Labor & Material", _currency(doc.get("w10"))],
     ])

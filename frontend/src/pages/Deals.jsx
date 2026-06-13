@@ -411,7 +411,7 @@ export default function Deals() {
                 <span className="font-mono">20-Yr&nbsp;$15.00/$1,750</span> &middot;
                 <span className="font-mono">25-Yr&nbsp;$17.50/$2,000</span>.&nbsp;
                 <b>Hail Rider</b> <span className="font-mono">$3.50/SQ</span> auto-added to <b>20-Yr</b> and <b>25-Yr</b> only (not available on 10/15).&nbsp;
-                Option A→25-yr · Option B→20-yr · Option C→15-yr · Option D→10-yr. Leave 25-yr fields at 0 to hide that tier on non-FARM scopes.
+                Option A→25-yr · Option B→20-yr · Option C→15-yr · Option D→10-yr. Add-ons appear in the spec sheet&apos;s optional warranty table.
               </div>
             </div>
 

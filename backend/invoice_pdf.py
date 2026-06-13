@@ -263,6 +263,13 @@ def build_invoice_pdf(inv: dict) -> bytes:
     story.append(KeepTogether([
         Paragraph("REMITTANCE INSTRUCTIONS", s["label"]),
         Paragraph(REMIT_BLOCK, s["body_sm"]),
+        Spacer(1, 0.08 * inch),
+        Paragraph(
+            '<font color="#B45309"><b>LATE FEE POLICY:</b></font> '
+            '<font color="#52525B">A late fee of <b>1.5% per month (18% APR)</b> is applied to any balance more than '
+            "30 days past due. Fees compound monthly and are reflected on each Statement of Account.</font>",
+            s["body_sm"],
+        ),
     ]))
 
     pdf.build(story, onFirstPage=_footer, onLaterPages=_footer)

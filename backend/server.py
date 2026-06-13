@@ -2118,6 +2118,8 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
         f"Remit payment to:\n"
         f"  SealTech Building Solutions\n"
         f"  2278 Mannatt Ct, Castle Rock, CO 80104\n\n"
+        f"LATE FEE POLICY: A late fee of 1.5% per month (18% APR) is applied to any\n"
+        f"balance more than 30 days past due. Fees compound monthly.\n\n"
         f"If you have any questions, please reply to this email.\n\n"
         f"Thank you for your business,\n"
         f"SealTech Building Solutions\n"
@@ -2138,6 +2140,9 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
       <p style="margin: 0 0 16px; line-height: 1.5;">
         SealTech Building Solutions<br/>
         2278 Mannatt Ct, Castle Rock, CO 80104
+      </p>
+      <p style="margin: 16px 0; padding: 10px 14px; background: #FFFBEB; border-left: 3px solid #B45309; color: #52525B; font-size: 12px;">
+        <b style="color: #B45309;">Late Fee Policy:</b> A late fee of <b>1.5% per month (18% APR)</b> is applied to any balance more than <b>30 days past due</b>. Fees compound monthly and are reflected on each Statement of Account.
       </p>
       <p style="margin: 16px 0;">If you have any questions, please reply to this email.</p>
       <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
@@ -2320,19 +2325,30 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
 
     cust_label = contact.get("company_name") or contact.get("contact_name") or "your account"
     grand = float(aging.get("total") or 0)
+    late_fees = float(aging.get("late_fees") or 0)
+    grand_with_fees = float(aging.get("total_due_with_fees") or grand)
     grand_str = f"${grand:,.2f}"
+    fees_str = f"${late_fees:,.2f}"
+    grand_with_fees_str = f"${grand_with_fees:,.2f}"
+    has_fees = late_fees > 0.01
 
     subject = f"Statement of Account — {cust_label} — {as_of_date.strftime('%B %d, %Y')}"
 
+    fees_line_text = f"  Late Fees (1.5%/mo): {fees_str}\n  TOTAL DUE:           {grand_with_fees_str}\n" if has_fees else ""
     body_text = (
         f"Hello,\n\n"
         f"Please find attached your current Statement of Account from SealTech Building Solutions, "
         f"covering all open invoices as of {as_of_date.strftime('%B %d, %Y')}.\n\n"
-        f"  Total Balance Due:  {grand_str}\n"
-        f"  Open Invoices:      {len(invs)}\n\n"
+        f"  Open Invoices:       {len(invs)}\n"
+        f"  Open Balance:        {grand_str}\n"
+        f"{fees_line_text}"
+        f"\n"
         f"Remit payment to:\n"
         f"  SealTech Building Solutions\n"
         f"  2278 Mannatt Ct, Castle Rock, CO 80104\n\n"
+        f"LATE FEE POLICY: A late fee of 1.5% per month (18% APR) is applied to any\n"
+        f"balance more than 30 days past due. Fees compound monthly and are shown\n"
+        f"on each Statement of Account.\n\n"
         f"If any of the invoices listed have already been paid, or if you have questions about any of them, "
         f"please reply to this email or call us at 720-715-9955 so we can reconcile your account.\n\n"
         f"Thank you for your business,\n"
@@ -2340,18 +2356,31 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
         f"720-715-9955  ·  info@sealtechbuildingsolutions.com"
     )
 
+    fees_html = ""
+    if has_fees:
+        fees_html = (
+            f'<tr><td style="padding: 4px 16px 4px 0; color: #B45309; font-size: 13px;">Late Fees (1.5%/mo)</td>'
+            f'<td style="padding: 4px 0; font-weight: bold; font-family: monospace; color: #B45309;">{fees_str}</td></tr>'
+            f'<tr><td style="padding: 8px 16px 4px 0; color: #0A0A0A; font-size: 13px; font-weight: bold; border-top: 1px solid #0A0A0A;">TOTAL DUE</td>'
+            f'<td style="padding: 8px 0 4px; font-weight: bold; font-family: monospace; color: #1D4ED8; font-size: 15px; border-top: 1px solid #0A0A0A;">{grand_with_fees_str}</td></tr>'
+        )
+
     body_html = f"""
     <html><body style="font-family: Arial, Helvetica, sans-serif; color: #0A0A0A; max-width: 620px;">
       <p style="margin: 0 0 16px;">Hello,</p>
       <p style="margin: 0 0 16px;">Please find attached your current <b>Statement of Account</b> from SealTech Building Solutions, covering all open invoices as of {as_of_date.strftime('%B %d, %Y')}.</p>
       <table style="border-collapse: collapse; margin: 16px 0;">
-        <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Total Balance Due</td><td style="padding: 4px 0; font-weight: bold; font-family: monospace; color: #1D4ED8;">{grand_str}</td></tr>
         <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Open Invoices</td><td style="padding: 4px 0; font-family: monospace;">{len(invs)}</td></tr>
+        <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Open Balance</td><td style="padding: 4px 0; font-weight: bold; font-family: monospace;">{grand_str}</td></tr>
+        {fees_html}
       </table>
       <p style="margin: 16px 0 8px; color: #52525B; font-size: 13px;"><b>Remit payment to:</b></p>
       <p style="margin: 0 0 16px; line-height: 1.5;">
         SealTech Building Solutions<br/>
         2278 Mannatt Ct, Castle Rock, CO 80104
+      </p>
+      <p style="margin: 16px 0; padding: 10px 14px; background: #FFFBEB; border-left: 3px solid #B45309; color: #52525B; font-size: 12px;">
+        <b style="color: #B45309;">Late Fee Policy:</b> A late fee of <b>1.5% per month (18% APR)</b> is applied to any balance more than <b>30 days past due</b>. Fees compound monthly and are reflected on each Statement of Account.
       </p>
       <p style="margin: 16px 0;">If any of the invoices listed have already been paid, or if you have questions about any of them, please reply to this email or call us at 720-715-9955 so we can reconcile your account.</p>
       <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
@@ -2389,6 +2418,8 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
         "cc_email": cc_email,
         "message_id": result.get("message_id"),
         "total_balance": round(grand, 2),
+        "late_fees": round(late_fees, 2),
+        "total_due_with_fees": round(grand_with_fees, 2),
         "invoice_count": len(invs),
     }
 
