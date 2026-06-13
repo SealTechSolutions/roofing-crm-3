@@ -2630,6 +2630,9 @@ async def deal_spec_sheet(
         "ModBit Replacement": "Modified Bitumen Roof System Replacing Modified Bitumen",
         "PVC Over-Lay": "PVC Roof System Over Existing PVC Over-Lay",
         "PVC Replacement": "PVC Roof System Replacing PVC",
+        "FARM (Fluid Applied Reinforced Membrane)": (
+            f"Fluid Applied Reinforced Membrane Roof System Over Existing {deal.get('current_roof_type','').strip() or '—'}"
+        ),
     }
     # Membrane-system labels we recognize for new construction Product Type phrasing
     NEW_CONSTRUCTION_LABELS = {

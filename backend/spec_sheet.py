@@ -702,7 +702,7 @@ def _footer(canvas, doc):
     canvas.restoreState()
 
 
-def _header_block(s, doc, template_title: str):
+def _header_block(s, doc, template_title: str, template: dict | None = None):
     elems = []
     # Logo at top-left, 50% larger
     if os.path.exists(LOGO_PATH):
@@ -732,10 +732,15 @@ def _header_block(s, doc, template_title: str):
     elems.append(Spacer(1, 0.35 * inch))
 
     product_line = doc.get("product_type", "—")
-    product_cell = Paragraph(
-        f'{product_line} <font size="7" color="#52525B"><i>(Standard Warranty Included)</i></font>',
-        s["body"],
-    )
+    # Templates with a tier_table (e.g. FARM) already enumerate warranty tiers in-body,
+    # so skip the "(Standard Warranty Included)" annotation here.
+    if template and template.get("tier_table"):
+        product_cell = Paragraph(product_line, s["body"])
+    else:
+        product_cell = Paragraph(
+            f'{product_line} <font size="7" color="#52525B"><i>(Standard Warranty Included)</i></font>',
+            s["body"],
+        )
 
     cname = (doc.get("contact_name") or "").strip()
     cphone = (doc.get("contact_phone") or "").strip()
@@ -764,10 +769,12 @@ def _header_block(s, doc, template_title: str):
     return elems
 
 
-def _pricing_table(s, doc):
+def _pricing_table(s, doc, template: dict | None = None):
     elems = []
+    has_tier_table = bool(template and template.get("tier_table"))
+    header_suffix = "" if has_tier_table else ' <font size="9"><i>(Standard Warranty Included)</i></font>'
     elems.append(Paragraph(
-        f'{doc.get("product_type", "Roof System Investment")} <font size="9"><i>(Standard Warranty Included)</i></font>',
+        f'{doc.get("product_type", "Roof System Investment")}{header_suffix}',
         s["h2"],
     ))
     base = [
@@ -791,6 +798,11 @@ def _pricing_table(s, doc):
     ]))
     elems.append(t)
     elems.append(Spacer(1, 0.12 * inch))
+
+    # Templates that already enumerate warranty options in-body (e.g., FARM's tier_table)
+    # don't need the optional add-on warranty section — there are no extra warranty fees.
+    if has_tier_table:
+        return elems
 
     elems.append(Paragraph("[OPTIONAL] Manufacturer Warranty (Labor &amp; Material)", s["h2"]))
     opt = [
@@ -860,8 +872,8 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
     story = []
 
     # ---- Page 1: Header + Pricing ----
-    story.extend(_header_block(s, data, template["title"]))
-    story.extend(_pricing_table(s, data))
+    story.extend(_header_block(s, data, template["title"], template))
+    story.extend(_pricing_table(s, data, template))
     story.append(PageBreak())
 
     # ---- Page 2: Scope ----
