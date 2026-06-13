@@ -122,6 +122,8 @@ ROOF_TYPES = [
     "EPDM w/ Ballast",
     "EPDM",
     "PVC",
+    "TPO Over-Lay",
+    "TPO Replacement",
     "TPO",
 ]
 DEAL_STATUSES = ["Lead", "Sent", "Won", "Lost", "Past Lead"]
@@ -2545,7 +2547,18 @@ async def deal_spec_sheet(
             contact_name = cust.get("contact_name", "") or ""
             contact_phone = (cust.get("mobile_phone") or cust.get("phone") or cust.get("work_phone") or "").strip()
 
-    product_desc = deal.get("product_description") or f"{deal.get('proposed_roof_type','Silicone')} Roof System Over Existing {deal.get('current_roof_type','')}".strip()
+    # Per-roof-type product type defaults (user-curated wording for each variant)
+    PRODUCT_TYPE_DEFAULTS = {
+        "TPO Over-Lay": "TPO Roof System Over Existing TPO Over-Lay",
+        "TPO Replacement": "TPO Roof System Replacing TPO",
+    }
+    proposed = deal.get("proposed_roof_type") or "Silicone"
+    if deal.get("product_description"):
+        product_desc = deal["product_description"]
+    elif proposed in PRODUCT_TYPE_DEFAULTS:
+        product_desc = PRODUCT_TYPE_DEFAULTS[proposed]
+    else:
+        product_desc = f"{proposed} Roof System Over Existing {deal.get('current_roof_type','')}".strip()
     color = deal.get("warranty_color") or "white"
 
     data = {

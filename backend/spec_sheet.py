@@ -87,28 +87,55 @@ SILICONE_TEMPLATE = {
     ],
 }
 
-TPO_TEMPLATE = {
-    "title": "TPO ROOF SYSTEM SCOPE",
-    "scope_1_title": "Inspection and Tear-Off / Prep",
+TPO_OVERLAY_TEMPLATE = {
+    "title": "TPO OVER-LAY ROOF SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
     "scope_1": [
         "Survey existing roof assembly and document deck condition, slope, and drainage.",
-        "Identify wet insulation by infrared and/or core cuts; quantify replacement areas.",
-        "Tear-off existing roof down to the structural deck (or prep substrate for re-cover where approved).",
-        "Replace any deteriorated decking with new plywood or steel deck as needed.",
-        "Remove and properly dispose of all debris from the property.",
+        "Remove loose debris, clean the existing TPO surface thoroughly.",
+        "Remove and replace deteriorated flashings, pitch pans, vents, and penetrations as needed.",
+        "Secure loose existing membrane.",
     ],
     "scope_2_title": "TPO Membrane Installation",
     "scope_2": [
-        "Install polyisocyanurate insulation to achieve specified R-value, mechanically attached or fully adhered per manufacturer.",
+        "Install cover board and/or insulation overlay (e.g., mechanically fastened polyiso) over the existing membrane for a smooth durable substrate.",
+        "Install 60-mil TPO membrane — fully adhered, mechanically attached, or RhinoBond per project specification.",
+        "Heat-weld all seams with calibrated hot-air welder; probe-test 100% of seams after cooling.",
+        "Detail all penetrations, curbs, parapets, and transitions with manufacturer-approved flashings, pipe boots, and termination bars.",
+        "Install splice plates and target patches at all T-joints, drains, and irregular conditions.",
+        "Ensure proper integration with existing or new metal flashings (e.g., coping caps, drip edges).",
+        "Remove and properly dispose of all debris from the property.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+TPO_REPLACEMENT_TEMPLATE = {
+    "title": "TPO REPLACEMENT ROOF SYSTEM SCOPE",
+    "scope_1_title": "Tear-Off and Substrate Prep",
+    "scope_1": [
+        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Identify wet insulation by infrared scan and/or core cuts; quantify replacement areas.",
+        "Tear-off existing TPO membrane, insulation, and cover board down to the structural deck.",
+        "Replace deteriorated decking with new like-gauge plywood or steel deck as needed.",
+        "Remove failed flashings, pitch pans, drains, scuppers, and edge metal.",
+        "Remove and properly dispose of all torn-off material from the property.",
+    ],
+    "scope_2_title": "New TPO Membrane Installation",
+    "scope_2": [
+        "Install polyisocyanurate insulation to specified R-value, mechanically attached or fully adhered per manufacturer.",
         "Install ½\" high-density cover board over insulation to provide a smooth, durable substrate.",
         "Install 60-mil TPO membrane — fully adhered, mechanically attached, or RhinoBond per project specification.",
         "Heat-weld all seams with calibrated hot-air welder; probe-test 100% of seams after cooling.",
-        "Install TPO-coated metal drip edge, gravel stop, and termination bar at all perimeters.",
+        "Install new TPO-coated metal drip edge, gravel stop, and termination bars at all perimeters.",
         "Flash all penetrations, curbs, walls, and corners with pre-formed or field-fabricated TPO accessories.",
+        "Install new pipe boots, pitch pans (filled with two-part urethane sealant), and corner patches.",
         "Install splice plates and target patches at all T-joints, drains, and irregular conditions.",
         "Final walk-through, water-test drains, and quality inspection with the owner.",
     ],
 }
+
+# Kept as the generic fallback when "TPO" alone is selected (no over-lay / replacement distinction yet)
+TPO_TEMPLATE = TPO_OVERLAY_TEMPLATE
 
 EPDM_TEMPLATE = {
     "title": "EPDM ROOF SYSTEM SCOPE",
@@ -274,6 +301,11 @@ ROOF_TEMPLATE_MAP = {
     "silicone": SILICONE_TEMPLATE,
     "siliconewgranules": SILICONE_TEMPLATE,
     "tpo": TPO_TEMPLATE,
+    "tpooverlay": TPO_OVERLAY_TEMPLATE,
+    "tpooverexistingtpo": TPO_OVERLAY_TEMPLATE,
+    "tpooverexistingtpooverlay": TPO_OVERLAY_TEMPLATE,
+    "tporeplacement": TPO_REPLACEMENT_TEMPLATE,
+    "tporeplacingtpo": TPO_REPLACEMENT_TEMPLATE,
     "epdm": EPDM_TEMPLATE,
     "epdmwballast": EPDM_TEMPLATE,
     "pvc": TPO_TEMPLATE,  # PVC single-ply uses substantially the same scope as TPO
