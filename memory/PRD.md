@@ -86,6 +86,18 @@
 - ✅ Spec sheet `_pricing_table` adds a **25-Year row at the top** of all three non-FARM pricing tables (Base Investment, [OPTIONAL] Manufacturer Warranty, and Total Investment with Optional Manufacturer Warranty) when either `opt_25` or `w25` is > 0; typography tightens automatically (8pt / 5pt padding) so the page still holds at exactly 3 pages
 - ✅ All 13 templates verified at 3 pages with and without the 25-yr row populated
 
+## "Calculate Warranties" Auto-Calc (2026-02)
+- ✅ New **Calculate Warranties** button (Calculator icon) next to the Warranty Add-Ons section header on the Deal form
+- ✅ One click auto-fills all 4 warranty add-on fields from the project's computed SqFt using the standard per-SQ rates with minimums:
+     • 10-Yr: max($9.00 × SQ, $1,250)
+     • 15-Yr: max($12.00 × SQ, $1,500)
+     • 20-Yr: max($15.00 × SQ, $1,750) + ($3.50 × SQ Hail Rider)
+     • 25-Yr: max($17.50 × SQ, $2,000) + ($3.50 × SQ Hail Rider)
+- ✅ Hail Rider $3.50/SQ auto-added to 20-Yr and 25-Yr only (not available on 10/15)
+- ✅ Toast confirms the SQ count + "incl. Hail Rider on 20/25-yr"
+- ✅ Refuses to run with helpful error if SqFt fields are blank
+- ✅ Rate-card legend printed inline under the warranty grid for quick reference
+
 ## Material Take-Off / Purchase Orders (2026-02)
 - ✅ New `material_takeoff[]` field on Deal — snapshots SKU/name/unit/vendor/loaded cost at add time
 - ✅ Project-level take-off card on DealDetail with vendor-grouped tables

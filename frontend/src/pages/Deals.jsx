@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, formatApiError, formatCurrency } from "@/lib/api";
-import { Plus, Pencil, Trash2, ArrowUpRight, Archive, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, ArrowUpRight, Archive, FileText, Calculator } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { StatusPill } from "@/pages/Dashboard";
@@ -355,7 +355,35 @@ export default function Deals() {
             </div>
 
             <div className="pt-4 border-t border-zinc-200">
-              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">Spec Sheet — Warranty Add-Ons &amp; Product</div>
+              <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">Spec Sheet — Warranty Add-Ons &amp; Product</div>
+                <button
+                  type="button"
+                  data-testid="calc-warranties-btn"
+                  onClick={() => {
+                    const sqft = (parseFloat(form.property_sqft || 0)) + (parseFloat(form.perimeter_lnft || 0) * parseFloat(form.avg_parapet_height || 0));
+                    if (sqft <= 0) { toast.error("Enter Property SqFt / Perimeter / Parapet first so we know the SQ count."); return; }
+                    const sq = sqft / 100;
+                    const rider = 3.5 * sq;  // Hail Rider — only added to 20-yr and 25-yr
+                    const w10 = Math.max(9.0 * sq, 1250);
+                    const w15 = Math.max(12.0 * sq, 1500);
+                    const w20 = Math.max(15.0 * sq, 1750) + rider;
+                    const w25 = Math.max(17.5 * sq, 2000) + rider;
+                    setForm({
+                      ...form,
+                      warranty_25yr_add: Math.round(w25 * 100) / 100,
+                      warranty_20yr_add: Math.round(w20 * 100) / 100,
+                      warranty_15yr_add: Math.round(w15 * 100) / 100,
+                      warranty_10yr_add: Math.round(w10 * 100) / 100,
+                    });
+                    toast.success(`Warranties calculated for ${sq.toFixed(1)} SQ (incl. Hail Rider on 20/25-yr)`);
+                  }}
+                  className="inline-flex items-center gap-2 bg-white border border-blue-700 text-blue-700 px-3 h-8 text-[10px] font-bold uppercase tracking-wider hover:bg-blue-50 rounded-sm transition-colors"
+                  title="Auto-fill all 4 warranty add-on fields from Total SqFt using the standard per-square rates + Hail Rider on 20/25-yr"
+                >
+                  <Calculator className="w-3.5 h-3.5" /> Calculate Warranties
+                </button>
+              </div>
               <Field label="Product Description (override)">
                 <Input data-testid="deal-product-desc" value={form.product_description} onChange={(v) => setForm({ ...form, product_description: v })} placeholder="e.g., Silicone Roof System w/Granules Over Single-Ply Investment" />
               </Field>
@@ -376,7 +404,15 @@ export default function Deals() {
                   <Input data-testid="deal-color" value={form.warranty_color} onChange={(v) => setForm({ ...form, warranty_color: v })} placeholder="white" />
                 </Field>
               </div>
-              <div className="text-xs text-zinc-500 mt-2">Option A→25-yr · Option B→20-yr · Option C→15-yr · Option D→10-yr. Add-ons appear in the spec sheet&apos;s optional warranty table. Leave 25-yr fields at 0 to hide that tier on non-FARM scopes.</div>
+              <div className="text-xs text-zinc-500 mt-2">
+                <b>Standard rates</b> (per SQ, $-minimum):&nbsp;
+                <span className="font-mono">10-Yr&nbsp;$9.00/$1,250</span> &middot;
+                <span className="font-mono">15-Yr&nbsp;$12.00/$1,500</span> &middot;
+                <span className="font-mono">20-Yr&nbsp;$15.00/$1,750</span> &middot;
+                <span className="font-mono">25-Yr&nbsp;$17.50/$2,000</span>.&nbsp;
+                <b>Hail Rider</b> <span className="font-mono">$3.50/SQ</span> auto-added to <b>20-Yr</b> and <b>25-Yr</b> only (not available on 10/15).&nbsp;
+                Option A→25-yr · Option B→20-yr · Option C→15-yr · Option D→10-yr. Leave 25-yr fields at 0 to hide that tier on non-FARM scopes.
+              </div>
             </div>
 
             <div className="pt-4 border-t border-zinc-200">
