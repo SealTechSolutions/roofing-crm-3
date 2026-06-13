@@ -74,6 +74,25 @@
      `GET /api/deals/{id}/purchase-order/{vendor_id}.pdf`,
      `POST /api/deals/{id}/purchase-order/{vendor_id}/email`
 
+## Estimated vs Actual Variance (2026-02)
+- ✅ `VendorBillLine` gained `takeoff_line_id` (link) + `sku` fields
+- ✅ New endpoints:
+     `GET /api/deals/{id}/takeoff-variance` — per-line/per-vendor/project Est/Act/Variance + $%
+     `PUT /api/vendor-bills/{bill_id}/lines/{line_id}/link` — link/unlink bill line ↔ take-off line
+     `GET /api/deals/{id}/linkable-bill-lines` — pickable bill lines with SKU auto-match suggestions
+- ✅ "Show Variance" toggle on the take-off card adds Actual + Variance columns
+- ✅ Per-line "Link Bill" button → modal listing linkable bill lines with auto-match (by SKU) section
+- ✅ Variance badge: green (under) / red (over) / grey (at) with $ delta and % delta
+- ✅ Footer + vendor header roll up project & vendor variance totals
+- ✅ Multiple bills can link to one take-off line (sum into Actual); each bill line links to at most one
+
+## Materials In Motion (2026-02)
+- ✅ New `GET /api/dashboard/materials-in-motion` aggregating across all projects
+- ✅ Dashboard card sits below Payables KPIs (hides itself when there's nothing in motion)
+- ✅ Right-aligned stats: # projects with open orders · # open lines · $ open value
+- ✅ Two columns: "By Project" (sorted by open value, clickable rows → project) and
+     "By Vendor — Chase List" (suppliers ranked by open value, so you call the biggest first)
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics)
 - Statement of Account PDF (aging report per customer)

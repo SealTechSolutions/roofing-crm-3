@@ -438,11 +438,14 @@ class VendorBillLine(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     description: str = ""
+    sku: str = ""  # vendor's product code if visible on the bill — drives auto-match to take-off lines
     project_id: Optional[str] = None
     project_title: str = ""
     quantity: float = 1.0
     unit_price: float = 0.0
     amount: float = 0.0
+    # Variance tracking — when this bill line pays for a specific take-off line, store its id
+    takeoff_line_id: Optional[str] = None
 
 
 class VendorBillIn(BaseModel):
@@ -1175,6 +1178,218 @@ async def delete_takeoff_line(deal_id: str, line_id: str, current=Depends(get_cu
     await db.deals.update_one({"id": deal_id}, {"$set": cleaned})
     doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
     return scrub_deal(doc, current)
+
+
+# ----- Take-Off ↔ Bill Linking + Variance -----
+def _normalize_str(s: str) -> str:
+    """Lowercase, alphanumeric-only normalization for fuzzy SKU matching."""
+    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+
+
+@api_router.get("/deals/{deal_id}/takeoff-variance")
+async def deal_takeoff_variance(deal_id: str, current=Depends(get_current_user)):
+    """Estimated vs Actual breakdown per take-off line.
+
+    Actual = sum of vendor_bill line items whose `takeoff_line_id` equals the take-off line's id.
+    Returns per-line, per-vendor, and project totals.
+    """
+    deal = await _check_deal_owner(deal_id, current)
+    takeoff = list(deal.get("material_takeoff") or [])
+    takeoff_ids = [ln["id"] for ln in takeoff]
+
+    # Aggregate all bill line items linked to these take-off lines
+    linked_amounts: dict = {tid: 0.0 for tid in takeoff_ids}
+    linked_bills_by_line: dict = {tid: [] for tid in takeoff_ids}
+    if takeoff_ids:
+        cursor = db.vendor_bills.find(
+            {"is_deleted": {"$ne": True}, "line_items.takeoff_line_id": {"$in": takeoff_ids}},
+            {"_id": 0},
+        )
+        async for bill in cursor:
+            for li in bill.get("line_items", []) or []:
+                tid = li.get("takeoff_line_id")
+                if tid in linked_amounts:
+                    linked_amounts[tid] += float(li.get("amount") or 0)
+                    linked_bills_by_line[tid].append({
+                        "bill_id": bill.get("id"),
+                        "bill_number": bill.get("bill_number") or "",
+                        "vendor_name": bill.get("vendor_name") or "",
+                        "bill_date": bill.get("bill_date") or "",
+                        "line_id": li.get("id"),
+                        "line_description": li.get("description") or "",
+                        "line_amount": float(li.get("amount") or 0),
+                        "line_quantity": float(li.get("quantity") or 0),
+                    })
+
+    out_lines = []
+    by_vendor: dict = {}
+    for ln in takeoff:
+        est = float(ln.get("line_total") or 0)
+        act = round(linked_amounts.get(ln["id"], 0.0), 2)
+        var = round(act - est, 2)
+        var_pct = round((var / est) * 100, 1) if est > 0 else None
+        out_lines.append({
+            "id": ln["id"],
+            "name": ln.get("name", ""),
+            "sku": ln.get("sku", ""),
+            "vendor_name": ln.get("vendor_name", ""),
+            "vendor_id": ln.get("vendor_id"),
+            "unit": ln.get("unit", ""),
+            "quantity": float(ln.get("quantity") or 0),
+            "ordered": bool(ln.get("ordered")),
+            "received": bool(ln.get("received")),
+            "estimated": round(est, 2),
+            "actual": act,
+            "variance": var,
+            "variance_pct": var_pct,
+            "linked_bills": linked_bills_by_line.get(ln["id"], []),
+        })
+
+        v = ln.get("vendor_name") or "Unassigned"
+        bv = by_vendor.setdefault(v, {"vendor_name": v, "estimated": 0.0, "actual": 0.0, "lines": 0, "linked_lines": 0})
+        bv["estimated"] += est
+        bv["actual"] += act
+        bv["lines"] += 1
+        if act > 0:
+            bv["linked_lines"] += 1
+
+    total_est = round(sum(l["estimated"] for l in out_lines), 2)
+    total_act = round(sum(l["actual"] for l in out_lines), 2)
+    total_var = round(total_act - total_est, 2)
+    total_var_pct = round((total_var / total_est) * 100, 1) if total_est > 0 else None
+
+    by_vendor_arr = []
+    for v in by_vendor.values():
+        v["estimated"] = round(v["estimated"], 2)
+        v["actual"] = round(v["actual"], 2)
+        v["variance"] = round(v["actual"] - v["estimated"], 2)
+        v["variance_pct"] = round((v["variance"] / v["estimated"]) * 100, 1) if v["estimated"] > 0 else None
+        by_vendor_arr.append(v)
+
+    return {
+        "lines": out_lines,
+        "by_vendor": sorted(by_vendor_arr, key=lambda x: x["vendor_name"]),
+        "totals": {
+            "estimated": total_est,
+            "actual": total_act,
+            "variance": total_var,
+            "variance_pct": total_var_pct,
+            "lines": len(out_lines),
+            "linked_lines": sum(1 for l in out_lines if l["actual"] > 0),
+        },
+    }
+
+
+class LinkBillLineReq(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    takeoff_line_id: Optional[str] = None  # null = clear the link
+
+
+@api_router.put("/vendor-bills/{bill_id}/lines/{line_id}/link")
+async def link_bill_line_to_takeoff(bill_id: str, line_id: str, body: LinkBillLineReq, current=Depends(get_current_user)):
+    """Link (or unlink with takeoff_line_id=null) a single vendor bill line item
+    to a specific take-off line on a project."""
+    bill = await db.vendor_bills.find_one({"id": bill_id, "is_deleted": {"$ne": True}})
+    if not bill:
+        raise HTTPException(status_code=404, detail="Vendor bill not found")
+
+    # Validate target take-off line exists (if linking) and infer project_id from it
+    target_deal = None
+    target_line = None
+    if body.takeoff_line_id:
+        target_deal = await db.deals.find_one({"material_takeoff.id": body.takeoff_line_id, "is_deleted": {"$ne": True}})
+        if not target_deal:
+            raise HTTPException(status_code=404, detail="Take-off line not found")
+        for ln in target_deal.get("material_takeoff") or []:
+            if ln.get("id") == body.takeoff_line_id:
+                target_line = ln
+                break
+
+    items = list(bill.get("line_items") or [])
+    found = False
+    for li in items:
+        if li.get("id") == line_id:
+            li["takeoff_line_id"] = body.takeoff_line_id
+            # Snapshot the project on the bill line for filtering
+            if target_deal:
+                li["project_id"] = target_deal["id"]
+                li["project_title"] = target_deal.get("title") or li.get("project_title", "")
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Bill line item not found")
+
+    await db.vendor_bills.update_one(
+        {"id": bill_id},
+        {"$set": {"line_items": items, "updated_at": now_iso()}},
+    )
+    return {
+        "ok": True,
+        "linked_to": body.takeoff_line_id,
+        "takeoff_line_name": (target_line or {}).get("name", "") if target_line else "",
+    }
+
+
+@api_router.get("/deals/{deal_id}/linkable-bill-lines")
+async def list_linkable_bill_lines(deal_id: str, current=Depends(get_current_user)):
+    """Return vendor bill line items that could be linked to take-off lines on this project.
+
+    Includes bills whose vendor matches a vendor in the project's take-off OR bills already
+    tagged with this project_id on at least one line. For each line, returns an auto-match
+    suggestion (the take-off line whose SKU normalizes to the same value).
+    """
+    deal = await _check_deal_owner(deal_id, current)
+    takeoff = list(deal.get("material_takeoff") or [])
+    if not takeoff:
+        return {"lines": []}
+
+    project_vendor_ids = list({ln.get("vendor_id") for ln in takeoff if ln.get("vendor_id")})
+    takeoff_line_ids = {ln["id"] for ln in takeoff}
+    # SKU map for fuzzy auto-suggest
+    sku_to_takeoff = {}
+    for ln in takeoff:
+        key = _normalize_str(ln.get("sku", ""))
+        if key:
+            sku_to_takeoff.setdefault(key, []).append(ln)
+
+    or_filters = []
+    if project_vendor_ids:
+        or_filters.append({"vendor_id": {"$in": project_vendor_ids}})
+    or_filters.append({"line_items.project_id": deal_id})
+    cursor = db.vendor_bills.find(
+        {"is_deleted": {"$ne": True}, "$or": or_filters},
+        {"_id": 0},
+    ).sort("bill_date", -1)
+    bills = await cursor.to_list(500)
+
+    out = []
+    for bill in bills:
+        for li in bill.get("line_items") or []:
+            current_link = li.get("takeoff_line_id")
+            # Skip lines already linked to a take-off on a DIFFERENT project
+            if current_link and current_link not in takeoff_line_ids:
+                continue
+            sugg = None
+            if not current_link:
+                key = _normalize_str(li.get("sku", ""))
+                if key and key in sku_to_takeoff:
+                    sugg = sku_to_takeoff[key][0]["id"]
+            out.append({
+                "bill_id": bill.get("id"),
+                "bill_number": bill.get("bill_number") or "",
+                "bill_date": bill.get("bill_date") or "",
+                "vendor_id": bill.get("vendor_id"),
+                "vendor_name": bill.get("vendor_name") or "",
+                "line_id": li.get("id"),
+                "description": li.get("description") or "",
+                "sku": li.get("sku") or "",
+                "quantity": float(li.get("quantity") or 0),
+                "amount": float(li.get("amount") or 0),
+                "linked_to": current_link,
+                "suggested_takeoff_line_id": sugg,
+            })
+    return {"lines": out}
+
 
 
 @api_router.get("/materials/grouped")
@@ -2950,6 +3165,102 @@ async def materials_template(current=Depends(get_current_user)):
 
 
 # ----- Dashboard -----
+
+@api_router.get("/dashboard/materials-in-motion")
+async def materials_in_motion(current=Depends(get_current_user)):
+    """Projects with take-off lines that are ordered but not yet received.
+
+    Returns a list of projects with counts and the per-vendor breakdown so the user
+    can see at a glance which suppliers are still owed deliveries.
+    """
+    query = {"is_deleted": {"$ne": True}, "material_takeoff": {"$exists": True, "$not": {"$size": 0}}}
+    # Sales reps only see their own projects
+    if current.get("role") == "sales":
+        query["$or"] = [
+            {"assigned_to_user_id": current["id"]},
+            {"created_by_user_id": current["id"]},
+        ]
+    cursor = db.deals.find(query, {"_id": 0, "id": 1, "title": 1, "material_takeoff": 1, "status": 1}).sort("title", 1)
+    deals = await cursor.to_list(1000)
+
+    out_projects = []
+    total_ordered_lines = 0
+    total_received_lines = 0
+    total_pending_lines = 0
+    total_open_value = 0.0
+    vendor_aggregate: dict = {}
+
+    for d in deals:
+        lines = d.get("material_takeoff") or []
+        if not lines:
+            continue
+        ordered = [ln for ln in lines if ln.get("ordered") and not ln.get("received")]
+        received = [ln for ln in lines if ln.get("received")]
+        pending = [ln for ln in lines if not ln.get("ordered") and not ln.get("received")]
+        total_ordered_lines += len(ordered)
+        total_received_lines += len(received)
+        total_pending_lines += len(pending)
+
+        if not ordered:
+            continue  # only include projects with stuff actually in motion
+
+        per_vendor: dict = {}
+        open_value = 0.0
+        for ln in ordered:
+            v = ln.get("vendor_name") or "Unassigned"
+            pv = per_vendor.setdefault(v, {"vendor_name": v, "vendor_id": ln.get("vendor_id"), "lines": 0, "value": 0.0})
+            pv["lines"] += 1
+            amt = float(ln.get("line_total") or 0)
+            pv["value"] += amt
+            open_value += amt
+
+            va = vendor_aggregate.setdefault(v, {"vendor_name": v, "vendor_id": ln.get("vendor_id"), "lines": 0, "projects": set(), "value": 0.0})
+            va["lines"] += 1
+            va["projects"].add(d["id"])
+            va["value"] += amt
+
+        total_open_value += open_value
+        out_projects.append({
+            "id": d["id"],
+            "title": d.get("title", "") or "",
+            "status": d.get("status", ""),
+            "lines_ordered": len(ordered),
+            "lines_received": len(received),
+            "lines_pending": len(pending),
+            "open_value": round(open_value, 2),
+            "vendors": sorted([
+                {"vendor_name": v["vendor_name"], "vendor_id": v["vendor_id"], "lines": v["lines"], "value": round(v["value"], 2)}
+                for v in per_vendor.values()
+            ], key=lambda x: x["vendor_name"]),
+        })
+
+    # Sort projects with the most open value first
+    out_projects.sort(key=lambda p: -p["open_value"])
+
+    by_vendor = sorted([
+        {
+            "vendor_name": v["vendor_name"],
+            "vendor_id": v["vendor_id"],
+            "lines": v["lines"],
+            "projects": len(v["projects"]),
+            "value": round(v["value"], 2),
+        }
+        for v in vendor_aggregate.values()
+    ], key=lambda x: -x["value"])
+
+    return {
+        "totals": {
+            "projects_with_open_orders": len(out_projects),
+            "lines_ordered_not_received": total_ordered_lines,
+            "lines_received": total_received_lines,
+            "lines_pending_to_order": total_pending_lines,
+            "open_value": round(total_open_value, 2),
+        },
+        "projects": out_projects,
+        "by_vendor": by_vendor,
+    }
+
+
 @api_router.get("/dashboard/summary")
 async def dashboard_summary(current=Depends(get_current_user)):
     deals = await db.deals.find({}, {"_id": 0}).to_list(5000)

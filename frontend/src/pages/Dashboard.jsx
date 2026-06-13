@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, formatCurrency } from "@/lib/api";
 import { Link } from "react-router-dom";
-import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight } from "lucide-react";
 import { ExportButtons } from "@/components/ExportImport";
 
 const KPI = ({ label, value, hint, icon: Icon, testId }) => (
@@ -20,10 +20,12 @@ export default function Dashboard() {
   const [deals, setDeals] = useState([]);
   const [revWindow, setRevWindow] = useState("ytd");
   const [revData, setRevData] = useState(null);
+  const [motion, setMotion] = useState(null);
 
   useEffect(() => {
     api.get("/dashboard/summary").then((r) => setData(r.data));
     api.get("/deals").then((r) => setDeals(r.data));
+    api.get("/dashboard/materials-in-motion").then((r) => setMotion(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -100,6 +102,9 @@ export default function Dashboard() {
         </Link>
       </div>
 
+      {/* Materials In Motion */}
+      <MaterialsInMotion motion={motion} />
+
       {/* Revenue by Project Type */}
       <div className="bg-white border border-zinc-200 rounded-sm mb-12" data-testid="revenue-by-type-card">
         <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between flex-wrap gap-2">
@@ -166,7 +171,7 @@ export default function Dashboard() {
           </table>
         )}
         <div className="px-6 py-3 border-t border-zinc-100 text-[10px] uppercase tracking-wider text-zinc-500">
-          <span className="text-blue-700 font-bold">Note:</span> "Received" currently uses Paid milestone amounts as a proxy. Once invoicing is added, this will track actual invoiced + collected amounts.
+          <span className="text-blue-700 font-bold">Note:</span> &quot;Received&quot; currently uses Paid milestone amounts as a proxy. Once invoicing is added, this will track actual invoiced + collected amounts.
         </div>
       </div>
 
@@ -216,6 +221,137 @@ export default function Dashboard() {
     </div>
   );
 }
+
+function MaterialsInMotion({ motion }) {
+  if (!motion) return null;
+  const t = motion.totals || {};
+  const projects = motion.projects || [];
+  const byVendor = motion.by_vendor || [];
+
+  // Hide the card entirely if there's nothing in motion AND no take-off history at all
+  if (t.projects_with_open_orders === 0 && t.lines_received === 0 && t.lines_pending_to_order === 0) {
+    return null;
+  }
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-sm mb-12" data-testid="materials-in-motion-card">
+      <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-1 inline-flex items-center gap-2">
+            <Truck className="w-3.5 h-3.5" /> Materials In Motion
+          </div>
+          <h2 className="font-heading text-lg font-bold tracking-tight">Outstanding deliveries across all projects</h2>
+          <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-1">
+            Ordered take-off lines that have not yet been received on site
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="text-right">
+            <div className="font-heading text-2xl font-black tracking-tighter text-zinc-950 leading-none">
+              {t.projects_with_open_orders}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-0.5">Projects</div>
+          </div>
+          <div className="w-px h-10 bg-zinc-200" />
+          <div className="text-right">
+            <div className="font-heading text-2xl font-black tracking-tighter text-zinc-950 leading-none">
+              {t.lines_ordered_not_received}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-0.5">Open lines</div>
+          </div>
+          <div className="w-px h-10 bg-zinc-200" />
+          <div className="text-right">
+            <div className="font-heading text-2xl font-black tracking-tighter text-blue-700 leading-none">
+              {formatCurrency(t.open_value || 0)}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-0.5">Open value</div>
+          </div>
+        </div>
+      </div>
+
+      {projects.length === 0 ? (
+        <div className="px-6 py-10 text-center">
+          <PackageCheck className="w-8 h-8 text-emerald-300 mx-auto mb-3" />
+          <div className="text-sm font-bold text-zinc-700 mb-1">Nothing in motion right now.</div>
+          <div className="text-xs text-zinc-500">
+            {t.lines_received > 0
+              ? `All ${t.lines_received} ordered line${t.lines_received === 1 ? "" : "s"} have been received. Nice work.`
+              : "Add materials to a project&apos;s take-off and mark them ordered to see them here."}
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
+          {/* Per-project list */}
+          <div className="lg:col-span-2">
+            <div className="px-6 py-3 text-[10px] uppercase tracking-wider text-zinc-500 bg-zinc-50 font-bold border-b border-zinc-200">
+              By Project
+            </div>
+            <div className="divide-y divide-zinc-100">
+              {projects.map((p) => (
+                <Link
+                  key={p.id}
+                  to={`/projects/${p.id}`}
+                  className="flex items-center justify-between px-6 py-3 hover:bg-blue-50/40 transition-colors group"
+                  data-testid={`motion-project-${p.id}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-zinc-950 truncate">{p.title}</div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1">
+                        <Truck className="w-3 h-3 text-blue-600" />
+                        <span className="font-bold text-zinc-700">{p.lines_ordered}</span> open
+                      </span>
+                      {p.lines_received > 0 && (
+                        <>
+                          <span>·</span>
+                          <span className="inline-flex items-center gap-1">
+                            <PackageCheck className="w-3 h-3 text-emerald-600" />
+                            <span className="font-bold text-zinc-700">{p.lines_received}</span> received
+                          </span>
+                        </>
+                      )}
+                      {p.vendors.length > 0 && (
+                        <>
+                          <span>·</span>
+                          <span className="truncate">{p.vendors.map((v) => v.vendor_name).join(", ")}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="font-mono font-bold text-zinc-950 text-sm">{formatCurrency(p.open_value)}</div>
+                    <ChevronRight className="w-4 h-4 text-zinc-400 group-hover:text-blue-700 group-hover:translate-x-0.5 transition-transform" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* Per-vendor aggregate */}
+          <div>
+            <div className="px-6 py-3 text-[10px] uppercase tracking-wider text-zinc-500 bg-zinc-50 font-bold border-b border-zinc-200">
+              By Vendor — Chase List
+            </div>
+            <div className="divide-y divide-zinc-100">
+              {byVendor.slice(0, 8).map((v) => (
+                <div key={v.vendor_name} className="px-6 py-3" data-testid={`motion-vendor-${v.vendor_name}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-bold text-zinc-950 truncate">{v.vendor_name}</div>
+                    <div className="font-mono font-bold text-zinc-950 text-sm">{formatCurrency(v.value)}</div>
+                  </div>
+                  <div className="text-[11px] text-zinc-500 mt-0.5">
+                    {v.lines} line{v.lines === 1 ? "" : "s"} · {v.projects} project{v.projects === 1 ? "" : "s"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 export function StatusPill({ status }) {
   const map = {

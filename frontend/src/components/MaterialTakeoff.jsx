@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { Plus, Search, X, Trash2, FileText, Mail, Package, Boxes, CheckCircle2, Circle, Truck, PackageCheck } from "lucide-react";
+import { Plus, Search, X, Trash2, FileText, Mail, Package, Boxes, CheckCircle2, Circle, Truck, PackageCheck, Link2, TrendingDown, TrendingUp, Minus } from "lucide-react";
 import { toast } from "sonner";
 
 /**
@@ -11,7 +11,42 @@ import { toast } from "sonner";
  */
 export default function MaterialTakeoff({ deal, reload }) {
   const [showPicker, setShowPicker] = useState(false);
+  const [showVariance, setShowVariance] = useState(false);
+  const [varianceData, setVarianceData] = useState(null);
+  const [linkerLine, setLinkerLine] = useState(null); // takeoff line currently being linked
   const dealId = deal.id;
+
+  // Pull variance whenever the take-off changes (so Actual stays current with linked bills)
+  useEffect(() => {
+    let cancelled = false;
+    const fetchVariance = async () => {
+      try {
+        const r = await api.get(`/deals/${dealId}/takeoff-variance`);
+        if (!cancelled) setVarianceData(r.data);
+      } catch (e) {
+        if (!cancelled) setVarianceData(null);
+      }
+    };
+    fetchVariance();
+    return () => { cancelled = true; };
+  }, [dealId, deal.material_takeoff]);
+
+  // Build a map: takeoff_line_id → { actual, variance, variance_pct, linked_bills }
+  const varianceByLine = useMemo(() => {
+    const m = {};
+    if (varianceData?.lines) {
+      for (const ln of varianceData.lines) m[ln.id] = ln;
+    }
+    return m;
+  }, [varianceData]);
+
+  const varianceByVendor = useMemo(() => {
+    const m = {};
+    if (varianceData?.by_vendor) {
+      for (const v of varianceData.by_vendor) m[v.vendor_name] = v;
+    }
+    return m;
+  }, [varianceData]);
 
   // Group existing take-off lines by vendor
   const groups = useMemo(() => {
@@ -99,15 +134,38 @@ export default function MaterialTakeoff({ deal, reload }) {
                 Est. {formatCurrency(grandTotal)}
               </span>
             )}
+            {varianceData?.totals?.actual > 0 && (
+              <VarianceBadge
+                variance={varianceData.totals.variance}
+                variancePct={varianceData.totals.variance_pct}
+                linked={varianceData.totals.linked_lines}
+                total={varianceData.totals.lines}
+                actual={varianceData.totals.actual}
+              />
+            )}
           </span>
         </div>
-        <button
-          onClick={() => setShowPicker(true)}
-          className="inline-flex items-center gap-2 bg-blue-700 text-white px-3 h-9 text-[11px] font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm"
-          data-testid="takeoff-add-button"
-        >
-          <Plus className="w-3.5 h-3.5" /> Add Materials
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {groups.length > 0 && (
+            <button
+              onClick={() => setShowVariance((v) => !v)}
+              className={`inline-flex items-center gap-2 px-3 h-9 text-[11px] font-bold uppercase tracking-wider rounded-sm transition-colors ${
+                showVariance ? "bg-zinc-950 text-white" : "border border-zinc-300 text-zinc-700 hover:border-zinc-950"
+              }`}
+              data-testid="toggle-variance-view"
+              title="Show Estimated vs Actual per line"
+            >
+              <TrendingUp className="w-3.5 h-3.5" /> {showVariance ? "Hide Variance" : "Show Variance"}
+            </button>
+          )}
+          <button
+            onClick={() => setShowPicker(true)}
+            className="inline-flex items-center gap-2 bg-blue-700 text-white px-3 h-9 text-[11px] font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm"
+            data-testid="takeoff-add-button"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Materials
+          </button>
+        </div>
       </div>
 
       {groups.length === 0 ? (
@@ -147,6 +205,14 @@ export default function MaterialTakeoff({ deal, reload }) {
                       )}
                     </span>
                   )}
+                  {varianceByVendor[g.vendor_name]?.actual > 0 && (
+                    <VarianceBadge
+                      variance={varianceByVendor[g.vendor_name].variance}
+                      variancePct={varianceByVendor[g.vendor_name].variance_pct}
+                      actual={varianceByVendor[g.vendor_name].actual}
+                      compact
+                    />
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {g.vendor_id && (
@@ -181,7 +247,13 @@ export default function MaterialTakeoff({ deal, reload }) {
                       <th className="py-2 px-3 w-28">Size / Unit</th>
                       <th className="py-2 px-3">Product</th>
                       <th className="py-2 px-3 w-24 text-right">Unit Cost</th>
-                      <th className="py-2 px-3 w-24 text-right">Line Total</th>
+                      <th className="py-2 px-3 w-24 text-right">Estimated</th>
+                      {showVariance && (
+                        <>
+                          <th className="py-2 px-3 w-24 text-right" title="Sum of linked vendor-bill line items">Actual</th>
+                          <th className="py-2 px-3 w-28 text-right" title="Actual − Estimated">Variance</th>
+                        </>
+                      )}
                       <th className="py-2 px-3 w-12"></th>
                     </tr>
                   </thead>
@@ -249,15 +321,70 @@ export default function MaterialTakeoff({ deal, reload }) {
                         </td>
                         <td className="py-2 px-3 text-right font-mono text-[12px] text-zinc-600">{formatCurrency(ln.unit_cost)}</td>
                         <td className="py-2 px-3 text-right font-mono font-bold">{formatCurrency(ln.line_total)}</td>
+                        {showVariance && (() => {
+                          const v = varianceByLine[ln.id];
+                          const actual = v?.actual || 0;
+                          const variance = v?.variance || 0;
+                          const variancePct = v?.variance_pct;
+                          const isOver = variance > 0.5;
+                          const isUnder = variance < -0.5;
+                          return (
+                            <>
+                              <td className="py-2 px-3 text-right font-mono text-[12px]">
+                                {actual > 0 ? (
+                                  <span className="font-bold text-zinc-950">{formatCurrency(actual)}</span>
+                                ) : (
+                                  <button
+                                    onClick={() => setLinkerLine(ln)}
+                                    className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-blue-700 hover:bg-blue-50 px-1.5 py-0.5 rounded-sm"
+                                    data-testid={`link-bill-${ln.id}`}
+                                    title="Link a vendor bill line to this take-off line"
+                                  >
+                                    <Link2 className="w-3 h-3" /> Link bill
+                                  </button>
+                                )}
+                              </td>
+                              <td className={`py-2 px-3 text-right font-mono text-[12px] ${
+                                isOver ? "text-red-700" : isUnder ? "text-emerald-700" : "text-zinc-500"
+                              }`}>
+                                {actual > 0 ? (
+                                  <span className="inline-flex items-center gap-1 justify-end" title={`${variance >= 0 ? "Over" : "Under"} estimate by ${formatCurrency(Math.abs(variance))}`}>
+                                    {isOver && <TrendingUp className="w-3 h-3" />}
+                                    {isUnder && <TrendingDown className="w-3 h-3" />}
+                                    {!isOver && !isUnder && <Minus className="w-3 h-3" />}
+                                    <span className="font-bold">{variance >= 0 ? "+" : ""}{formatCurrency(variance)}</span>
+                                    {variancePct !== null && variancePct !== undefined && (
+                                      <span className="text-[10px] text-zinc-500 ml-1">({variancePct >= 0 ? "+" : ""}{variancePct}%)</span>
+                                    )}
+                                  </span>
+                                ) : (
+                                  <span className="text-zinc-300">—</span>
+                                )}
+                              </td>
+                            </>
+                          );
+                        })()}
                         <td className="py-2 px-3 text-right">
-                          <button
-                            onClick={() => removeLine(ln.id)}
-                            className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"
-                            title="Remove from take-off"
-                            data-testid={`del-line-${ln.id}`}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="inline-flex items-center gap-0.5">
+                            {showVariance && varianceByLine[ln.id]?.actual > 0 && (
+                              <button
+                                onClick={() => setLinkerLine(ln)}
+                                className="p-1.5 hover:bg-blue-100 text-blue-700 rounded-sm"
+                                title="Manage linked bills"
+                                data-testid={`manage-bills-${ln.id}`}
+                              >
+                                <Link2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => removeLine(ln.id)}
+                              className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"
+                              title="Remove from take-off"
+                              data-testid={`del-line-${ln.id}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -270,13 +397,27 @@ export default function MaterialTakeoff({ deal, reload }) {
       )}
 
       {grandTotal > 0 && (
-        <div className="mt-4 flex items-center justify-between gap-3 text-[11px] uppercase tracking-wider text-zinc-500">
-          <div>
+        <div className="mt-4 flex items-center justify-between gap-3 text-[11px] uppercase tracking-wider text-zinc-500 flex-wrap">
+          <div className="max-w-xl">
             Estimated cost is computed from catalog &quot;loaded cost&quot; (vendor price × shipping). It is{" "}
             <span className="font-bold text-zinc-700">never</span> shown on the Purchase Order PDF.
           </div>
-          <div className="font-mono font-bold text-zinc-950 text-base">
-            Total Estimated: {formatCurrency(grandTotal)}
+          <div className="text-right">
+            <div className="font-mono font-bold text-zinc-950 text-base">
+              Total Estimated: {formatCurrency(grandTotal)}
+            </div>
+            {varianceData?.totals?.actual > 0 && (
+              <div className="mt-1 font-mono text-[12px] text-zinc-600">
+                Actual {formatCurrency(varianceData.totals.actual)}  ·  Variance{" "}
+                <span className={`font-bold ${
+                  varianceData.totals.variance > 0.5 ? "text-red-700" :
+                  varianceData.totals.variance < -0.5 ? "text-emerald-700" : "text-zinc-700"
+                }`}>
+                  {varianceData.totals.variance >= 0 ? "+" : ""}{formatCurrency(varianceData.totals.variance)}
+                  {varianceData.totals.variance_pct !== null && ` (${varianceData.totals.variance_pct >= 0 ? "+" : ""}${varianceData.totals.variance_pct}%)`}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -291,6 +432,252 @@ export default function MaterialTakeoff({ deal, reload }) {
           }}
         />
       )}
+
+      {linkerLine && (
+        <BillLinker
+          deal={deal}
+          takeoffLine={linkerLine}
+          varianceLine={varianceByLine[linkerLine.id]}
+          onClose={() => setLinkerLine(null)}
+          onChanged={async () => {
+            // Refresh variance after linking
+            try {
+              const r = await api.get(`/deals/${dealId}/takeoff-variance`);
+              setVarianceData(r.data);
+            } catch (e) {
+              /* swallow - variance is best-effort */
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+
+/** Compact badge showing variance status — green=under, red=over, grey=at estimate */
+function VarianceBadge({ variance, variancePct, linked, total, actual, compact }) {
+  const isOver = variance > 0.5;
+  const isUnder = variance < -0.5;
+  const colorClasses = isOver
+    ? "bg-red-50 text-red-700 border-red-200"
+    : isUnder
+    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+    : "bg-zinc-100 text-zinc-700 border-zinc-200";
+  const Icon = isOver ? TrendingUp : isUnder ? TrendingDown : Minus;
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 border rounded-sm ${colorClasses}`}>
+      <Icon className="w-3 h-3" />
+      <span>Actual {formatCurrency(actual)}</span>
+      {!compact && (
+        <span className="opacity-70">
+          ({variance >= 0 ? "+" : ""}{formatCurrency(variance)}
+          {variancePct !== null && variancePct !== undefined ? `, ${variancePct >= 0 ? "+" : ""}${variancePct}%` : ""})
+        </span>
+      )}
+      {compact && variancePct !== null && variancePct !== undefined && (
+        <span className="opacity-70">({variancePct >= 0 ? "+" : ""}{variancePct}%)</span>
+      )}
+      {!compact && total !== undefined && (
+        <span className="opacity-70 ml-1">· {linked}/{total} linked</span>
+      )}
+    </span>
+  );
+}
+
+
+/**
+ * BillLinker — modal that lists all vendor-bill line items eligible to link to a
+ * specific take-off line. Suggests SKU-matches at the top.
+ */
+function BillLinker({ deal, takeoffLine, varianceLine, onClose, onChanged }) {
+  const [loading, setLoading] = useState(true);
+  const [billLines, setBillLines] = useState([]);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const init = async () => {
+      try {
+        const r = await api.get(`/deals/${deal.id}/linkable-bill-lines`);
+        if (cancelled) return;
+        setBillLines(r.data?.lines || []);
+      } catch (e) {
+        toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    init();
+    return () => { cancelled = true; };
+  }, [deal.id]);
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const r = await api.get(`/deals/${deal.id}/linkable-bill-lines`);
+      setBillLines(r.data?.lines || []);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const linkedHere = useMemo(
+    () => billLines.filter((bl) => bl.linked_to === takeoffLine.id),
+    [billLines, takeoffLine.id]
+  );
+  const suggested = useMemo(
+    () => billLines.filter((bl) => !bl.linked_to && bl.suggested_takeoff_line_id === takeoffLine.id),
+    [billLines, takeoffLine.id]
+  );
+  const others = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return billLines.filter((bl) => {
+      if (bl.linked_to === takeoffLine.id) return false;
+      if (!bl.linked_to && bl.suggested_takeoff_line_id === takeoffLine.id) return false;
+      if (q) {
+        return (bl.description || "").toLowerCase().includes(q) ||
+               (bl.sku || "").toLowerCase().includes(q) ||
+               (bl.vendor_name || "").toLowerCase().includes(q) ||
+               (bl.bill_number || "").toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [billLines, search, takeoffLine.id]);
+
+  const link = async (bl, target) => {
+    try {
+      await api.put(`/vendor-bills/${bl.bill_id}/lines/${bl.line_id}/link`, { takeoff_line_id: target });
+      await reload();
+      await onChanged();
+      toast.success(target ? "Linked" : "Unlinked");
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-zinc-950/80 backdrop-blur-sm flex items-center justify-center p-4" data-testid="bill-linker">
+      <div className="bg-white border border-zinc-300 rounded-sm w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-1">Link Vendor Bills</div>
+            <div className="font-heading text-lg font-black tracking-tight truncate">{takeoffLine.name}</div>
+            <div className="text-[11px] uppercase tracking-wider text-zinc-500 mt-0.5">
+              {takeoffLine.quantity} × {takeoffLine.unit}  ·  Estimated <span className="font-bold text-zinc-700 font-mono">{formatCurrency(takeoffLine.line_total)}</span>
+              {varianceLine && varianceLine.actual > 0 && (
+                <>
+                  {" · "} Actual <span className="font-bold text-zinc-700 font-mono">{formatCurrency(varianceLine.actual)}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-100 rounded-sm" data-testid="bill-linker-close"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="px-6 py-3 border-b border-zinc-200 bg-zinc-50">
+          <div className="relative">
+            <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search bill #, SKU, vendor, description..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full h-9 pl-9 pr-3 border border-zinc-300 rounded-sm text-sm"
+              data-testid="linker-search"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {loading ? (
+            <div className="py-10 text-center text-xs uppercase tracking-wider text-zinc-500">Loading…</div>
+          ) : billLines.length === 0 ? (
+            <div className="py-10 text-center text-sm text-zinc-500">
+              No vendor bills available to link yet. Upload a bill in the{" "}
+              <a href="/payables" className="text-blue-700 font-bold underline">Payables</a> module first.
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {linkedHere.length > 0 && (
+                <BillLineSection title="Linked to this line" lines={linkedHere} action="Unlink" onAction={(bl) => link(bl, null)} actionClass="text-red-700 hover:bg-red-50 border-red-200" />
+              )}
+              {suggested.length > 0 && (
+                <BillLineSection
+                  title="Suggested matches (same SKU)"
+                  badge="AUTO-MATCH"
+                  lines={suggested}
+                  action="Link"
+                  onAction={(bl) => link(bl, takeoffLine.id)}
+                  actionClass="text-blue-700 hover:bg-blue-50 border-blue-200"
+                />
+              )}
+              {others.length > 0 && (
+                <BillLineSection
+                  title="Other bills from same vendor / project"
+                  lines={others}
+                  action="Link"
+                  onAction={(bl) => link(bl, takeoffLine.id)}
+                  actionClass="text-blue-700 hover:bg-blue-50 border-blue-200"
+                  disabledMsg={(bl) => bl.linked_to && bl.linked_to !== takeoffLine.id ? "Already linked to another take-off line" : null}
+                />
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-3 border-t border-zinc-200 bg-zinc-50 flex items-center justify-between text-[11px] uppercase tracking-wider text-zinc-500">
+          <span>Each bill line links to at most one take-off line. Actual = sum of linked amounts.</span>
+          <button onClick={onClose} className="h-8 px-3 border border-zinc-300 hover:border-zinc-950 rounded-sm font-bold" data-testid="linker-done">Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function BillLineSection({ title, badge, lines, action, onAction, actionClass, disabledMsg }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">{title}</div>
+        {badge && <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-sm">{badge}</span>}
+      </div>
+      <div className="space-y-1.5">
+        {lines.map((bl) => {
+          const disabled = disabledMsg ? disabledMsg(bl) : null;
+          return (
+            <div key={`${bl.bill_id}-${bl.line_id}`} className="border border-zinc-200 rounded-sm p-3 flex items-start justify-between gap-3" data-testid={`bill-line-${bl.line_id}`}>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
+                  <span className="font-bold text-zinc-700">{bl.vendor_name || "Vendor"}</span>
+                  <span>·</span>
+                  <span>Bill #{bl.bill_number || "—"}</span>
+                  {bl.bill_date && <><span>·</span><span>{bl.bill_date}</span></>}
+                  {bl.sku && <><span>·</span><span className="font-mono">SKU {bl.sku}</span></>}
+                </div>
+                <div className="text-sm text-zinc-950">{bl.description || <span className="text-zinc-400 italic">No description</span>}</div>
+                <div className="text-[11px] text-zinc-600 mt-0.5 font-mono">
+                  Qty {bl.quantity}  ·  <span className="font-bold">{formatCurrency(bl.amount)}</span>
+                </div>
+              </div>
+              {disabled ? (
+                <div className="text-[10px] text-zinc-500 italic max-w-[120px] text-right">{disabled}</div>
+              ) : (
+                <button
+                  onClick={() => onAction(bl)}
+                  className={`px-3 h-8 border text-[10px] font-bold uppercase tracking-wider rounded-sm whitespace-nowrap ${actionClass}`}
+                  data-testid={`action-${bl.line_id}`}
+                >
+                  {action}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
