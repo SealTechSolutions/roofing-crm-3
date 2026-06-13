@@ -48,15 +48,24 @@ export default function Layout() {
           ))}
         </nav>
         <div className="p-4 border-t border-zinc-800">
-          <div className="flex items-center gap-3 mb-3">
+          <NavLink
+            to="/profile"
+            data-testid="nav-profile"
+            className={({ isActive }) =>
+              `flex items-center gap-3 mb-3 p-2 -m-2 rounded-sm transition-colors ${
+                isActive ? "bg-blue-700/20" : "hover:bg-zinc-900"
+              }`
+            }
+            title="Edit my profile"
+          >
             <div className="w-9 h-9 rounded-sm bg-blue-700 flex items-center justify-center text-white font-heading font-black">
               {(user?.name || "U")[0].toUpperCase()}
             </div>
-            <div className="min-w-0">
-              <div className="text-sm font-bold truncate" data-testid="current-user-name">{user?.name}</div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-bold truncate text-white" data-testid="current-user-name">{user?.name}</div>
               <div className="text-[10px] uppercase tracking-wider text-zinc-500 truncate">{user?.role || "user"}{user?.title ? " · " + user.title : ""}</div>
             </div>
-          </div>
+          </NavLink>
           <button
             data-testid="logout-button"
             onClick={logout}

@@ -89,7 +89,7 @@ export default function Users() {
         <table className="w-full text-sm" data-testid="users-table">
           <thead>
             <tr className="border-b-2 border-zinc-950 text-left">
-              <Th>Name</Th><Th>Email</Th><Th>Role</Th><Th>Title</Th><Th>Phone</Th><Th>Actions</Th>
+              <Th>Name</Th><Th>Email</Th><Th>Role</Th><Th>Job Title</Th><Th>Phone</Th><Th>Actions</Th>
             </tr>
           </thead>
           <tbody>
@@ -130,8 +130,8 @@ export default function Users() {
               <Field label="Role">
                 <Select data-testid="user-role" value={form.role} onChange={(v) => setForm({ ...form, role: v })} options={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))} />
               </Field>
-              <Field label="Title">
-                <Input data-testid="user-title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} placeholder="e.g., Lead Estimator" />
+              <Field label="Job Title" hint="e.g., General Manager, Lead Estimator. Appears on Purchase Orders.">
+                <Input data-testid="user-title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} placeholder="e.g., General Manager" />
               </Field>
               <Field label="Phone">
                 <Input data-testid="user-phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />

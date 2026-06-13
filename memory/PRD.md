@@ -47,6 +47,16 @@
 - ✅ Expand-all / Collapse-all shortcuts + per-vendor filter dropdown
 - ✅ Inline notes column merged under product name for better readability
 
+## Self-Service Profile + Password Change (2026-02)
+- ✅ New `PUT /api/auth/me` for self-edit (name / job title / phone — never email or role)
+- ✅ New `POST /api/auth/change-password` requiring current password, min 8 chars, must differ from current
+- ✅ `/profile` page with two cards: Profile Details + Change Password
+- ✅ Real-time password strength meter (Weak → Very Strong)
+- ✅ Show/hide toggles, autocomplete attributes for browser password managers
+- ✅ Sidebar avatar block is now a NavLink to `/profile` — click avatar to edit
+- ✅ Renamed "Title" → "Job Title" everywhere with helper text reminding it appears on POs
+- ✅ Server-side guard: rejects values that look like a bcrypt hash being saved as plain text
+
 ## Material Take-Off / Purchase Orders (2026-02)
 - ✅ New `material_takeoff[]` field on Deal — snapshots SKU/name/unit/vendor/loaded cost at add time
 - ✅ Project-level take-off card on DealDetail with vendor-grouped tables

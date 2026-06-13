@@ -286,10 +286,11 @@ export const Modal = ({ title, onClose, children, wide }) => (
   </div>
 );
 
-export const Field = ({ label, children }) => (
+export const Field = ({ label, hint, children }) => (
   <div>
     <label className="block text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-700 mb-2">{label}</label>
     {children}
+    {hint && <div className="mt-1 text-[11px] text-zinc-500 leading-snug">{hint}</div>}
   </div>
 );
 

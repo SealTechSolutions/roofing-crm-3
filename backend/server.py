@@ -548,6 +548,60 @@ async def me(current=Depends(get_current_user)):
     )
 
 
+
+class ProfileUpdateReq(BaseModel):
+    """Self-edit: a logged-in user updates their OWN profile (name / title / phone).
+    Email and role are intentionally NOT mutable here — those require admin."""
+    model_config = ConfigDict(extra="ignore")
+    name: Optional[str] = None
+    title: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class ChangePasswordReq(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    current_password: str
+    new_password: str
+
+
+@api_router.put("/auth/me", response_model=UserOut)
+async def update_my_profile(body: ProfileUpdateReq, current=Depends(get_current_user)):
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not patch:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    # Strip leading/trailing whitespace; reject anything that looks like a password hash
+    for k, v in list(patch.items()):
+        if isinstance(v, str):
+            patch[k] = v.strip()
+            if patch[k].startswith("$2") and len(patch[k]) > 50:
+                # Looks like a bcrypt hash — almost certainly user error
+                raise HTTPException(status_code=400, detail=f"Field '{k}' looks like a password hash; ignoring.")
+    await db.users.update_one({"id": current["id"]}, {"$set": patch})
+    user = await db.users.find_one({"id": current["id"]}, {"_id": 0, "password_hash": 0})
+    return user
+
+
+@api_router.post("/auth/change-password")
+async def change_my_password(body: ChangePasswordReq, current=Depends(get_current_user)):
+    user = await db.users.find_one({"id": current["id"]})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    # Verify current password
+    if not verify_password(body.current_password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    new_pw = (body.new_password or "").strip()
+    if len(new_pw) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    if new_pw == body.current_password:
+        raise HTTPException(status_code=400, detail="New password must be different from current password")
+    await db.users.update_one(
+        {"id": current["id"]},
+        {"$set": {"password_hash": hash_password(new_pw), "password_changed_at": now_iso()}},
+    )
+    return {"ok": True, "message": "Password changed successfully"}
+
+
+
 # ----- Users (admin only) -----
 def require_admin(current=Depends(get_current_user)) -> dict:
     if not is_admin(current):
