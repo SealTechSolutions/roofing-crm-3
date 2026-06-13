@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { Receipt, Plus, Search, Download, Send, Trash2, Eye } from "lucide-react";
+import { Receipt, Plus, Search, Download, Send, Trash2, Eye, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_STYLES = {
@@ -20,6 +20,7 @@ export default function Invoices() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [editor, setEditor] = useState(null); // invoice object or {} for new
   const [emailModal, setEmailModal] = useState(null);
+  const [statementsOpen, setStatementsOpen] = useState(false);
   const [deals, setDeals] = useState([]);
 
   const load = async () => {
@@ -88,13 +89,23 @@ export default function Invoices() {
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight">Invoices</h1>
           <div className="mt-2 text-xs uppercase tracking-wider text-zinc-500">Generate, send, and track invoices for projects and maintenance visits</div>
         </div>
-        <button
-          onClick={() => setEditor({})}
-          className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
-          data-testid="new-invoice-button"
-        >
-          <Plus className="w-4 h-4" /> New Invoice
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setStatementsOpen(true)}
+            className="inline-flex items-center gap-2 bg-white border border-zinc-300 text-zinc-950 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-zinc-50 rounded-sm transition-colors"
+            data-testid="open-statements-button"
+            title="Generate a Statement of Account PDF for any customer with open invoices"
+          >
+            <FileText className="w-4 h-4" /> Statements of Account
+          </button>
+          <button
+            onClick={() => setEditor({})}
+            className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
+            data-testid="new-invoice-button"
+          >
+            <Plus className="w-4 h-4" /> New Invoice
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -212,6 +223,10 @@ export default function Invoices() {
           onClose={() => setEmailModal(null)}
           onSent={() => { setEmailModal(null); load(); }}
         />
+      )}
+
+      {statementsOpen && (
+        <StatementsModal onClose={() => setStatementsOpen(false)} />
       )}
     </div>
   );
@@ -713,3 +728,178 @@ const KpiCard = ({ label, value, hint, testId, accent }) => (
     {hint && <div className="text-xs text-zinc-500 mt-2">{hint}</div>}
   </div>
 );
+
+
+// ---------- Statements of Account modal ----------
+function StatementsModal({ onClose }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [emailModal, setEmailModal] = useState(null); // customer row
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await api.get("/customers-with-open-balance");
+        if (alive) setRows(r.data);
+      } catch (e) {
+        toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const grandTotal = rows.reduce((s, r) => s + Number(r.open_balance || 0), 0);
+
+  const download = (row) => {
+    const token = localStorage.getItem("crm_token");
+    window.open(`${API}/contacts/${row.customer_id}/statement.pdf?token=${encodeURIComponent(token)}`, "_blank");
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-start sm:items-center justify-center p-4 overflow-y-auto" data-testid="statements-modal">
+      <div className="bg-white border border-zinc-200 rounded-sm w-full max-w-4xl my-8">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <FileText className="w-4 h-4 text-blue-700" />
+              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700">Receivables</div>
+            </div>
+            <h2 className="font-heading text-2xl font-black tracking-tight">Statements of Account</h2>
+            <div className="text-xs text-zinc-500 mt-1">Every customer with an open invoice balance. Download or email a per-customer aging statement.</div>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-950 text-xs uppercase tracking-wider font-bold" data-testid="statements-close">Close</button>
+        </div>
+
+        <div className="p-6">
+          {loading ? (
+            <div className="text-sm text-zinc-500 py-12 text-center">Loading customers…</div>
+          ) : rows.length === 0 ? (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-sm p-6 text-sm">
+              <b>All clear.</b> No customers currently have an open invoice balance.
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between text-xs uppercase tracking-wider text-zinc-500 mb-3 px-1">
+                <div>{rows.length} customer{rows.length === 1 ? "" : "s"} with open balance</div>
+                <div>
+                  Total outstanding: <span className="font-bold text-zinc-950" data-testid="statements-grand-total">{formatCurrency(grandTotal)}</span>
+                </div>
+              </div>
+              <div className="border border-zinc-200 rounded-sm overflow-hidden">
+                <table className="w-full text-sm" data-testid="statements-table">
+                  <thead className="bg-zinc-50 border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider">
+                    <tr>
+                      <th className="py-3 px-4">Customer</th>
+                      <th className="py-3 px-4">Email</th>
+                      <th className="py-3 px-4 text-center">Open Invoices</th>
+                      <th className="py-3 px-4 text-right">Open Balance</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {rows.map((r) => (
+                      <tr key={r.customer_id} className="hover:bg-zinc-50" data-testid={`statement-row-${r.customer_id}`}>
+                        <td className="py-3 px-4">
+                          <div className="font-bold">{r.company_name || r.contact_name || "—"}</div>
+                          {r.company_name && r.contact_name && (
+                            <div className="text-[11px] text-zinc-500">{r.contact_name}</div>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-xs text-zinc-600 font-mono break-all">{r.email || <span className="text-zinc-400 italic">— no email on file —</span>}</td>
+                        <td className="py-3 px-4 text-center font-mono">{r.invoice_count}</td>
+                        <td className="py-3 px-4 text-right font-bold font-mono text-blue-700">{formatCurrency(r.open_balance)}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2 justify-end">
+                            <button
+                              onClick={() => download(r)}
+                              className="inline-flex items-center gap-1.5 border border-zinc-300 px-2.5 h-8 text-[10px] font-bold uppercase tracking-wider hover:bg-zinc-50 rounded-sm"
+                              data-testid={`statement-download-${r.customer_id}`}
+                              title="Download Statement PDF"
+                            >
+                              <Download className="w-3.5 h-3.5" /> PDF
+                            </button>
+                            <button
+                              onClick={() => setEmailModal(r)}
+                              disabled={!r.email}
+                              className="inline-flex items-center gap-1.5 bg-blue-700 text-white px-2.5 h-8 text-[10px] font-bold uppercase tracking-wider hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-sm"
+                              data-testid={`statement-email-${r.customer_id}`}
+                              title={r.email ? "Email Statement to customer" : "Add an email to this customer's contact first"}
+                            >
+                              <Send className="w-3.5 h-3.5" /> Email
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {emailModal && (
+        <EmailStatementModal
+          customer={emailModal}
+          onClose={() => setEmailModal(null)}
+          onSent={() => setEmailModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+
+function EmailStatementModal({ customer, onClose, onSent }) {
+  const [toEmail, setToEmail] = useState(customer.email || "");
+  const [ccEmail, setCcEmail] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const send = async () => {
+    if (!toEmail.trim()) { toast.error("Enter a recipient email"); return; }
+    setSending(true);
+    try {
+      const r = await api.post(`/contacts/${customer.customer_id}/statement/email`, { to_email: toEmail.trim(), cc_email: ccEmail.trim() });
+      toast.success(r.data.message || "Statement sent");
+      onSent();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const label = customer.company_name || customer.contact_name || "Customer";
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4" data-testid="email-statement-modal">
+      <div className="bg-white border border-zinc-200 rounded-sm w-full max-w-md p-6">
+        <div className="mb-5 pb-4 border-b border-zinc-200">
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-1">Email Statement</div>
+          <div className="font-heading text-lg font-black tracking-tight">{label}</div>
+          <div className="text-xs text-zinc-500 mt-1">Open balance: <span className="font-bold text-zinc-950 font-mono">{formatCurrency(customer.open_balance)}</span> across {customer.invoice_count} invoice{customer.invoice_count === 1 ? "" : "s"}</div>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">To *</label>
+            <input value={toEmail} onChange={(e) => setToEmail(e.target.value)} className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm" data-testid="statement-to-email" />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">CC</label>
+            <input value={ccEmail} onChange={(e) => setCcEmail(e.target.value)} placeholder="(optional)" className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm" data-testid="statement-cc-email" />
+          </div>
+        </div>
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <button onClick={onClose} disabled={sending} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50" data-testid="cancel-email-statement">Cancel</button>
+          <button onClick={send} disabled={sending} className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 disabled:opacity-40 rounded-sm" data-testid="send-statement-email">
+            <Send className="w-4 h-4" /> {sending ? "Sending..." : "Send Statement"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -68,6 +68,17 @@
 - ✅ Added a `spread_page_2` flag (set on SILICONE_TEMPLATE) so the shorter restoration scopes open up their Page 2 spacers + bump the cover-photo height from 1.2" → 1.6"
 - ✅ Page 2 now fills ~75-85% of the sheet (vs. ~55%) without overflowing; total page count holds at exactly 3 for Silicone + all 12 other templates
 
+## Statement of Account (2026-02)
+- ✅ New `statement_pdf.py` — branded, single-page aging PDF with header, Bill-To + Remit-To blocks, **5-bucket aging summary** (Current / 1-30 / 31-60 / 61-90 / 90+), per-invoice detail with days-past-due, TOTAL BALANCE DUE row, and a remittance call-to-action
+- ✅ Endpoints:
+     `GET /api/customers-with-open-balance` — list every customer with an open invoice + total balance + oldest due date
+     `GET /api/contacts/{id}/statement-summary` — JSON aging preview
+     `GET /api/contacts/{id}/statement.pdf?token=` — download Statement PDF
+     `POST /api/contacts/{id}/statement/email` — Gmail SMTP email with branded HTML body
+- ✅ Frontend: **"Statements of Account"** button on the Invoices page header opens a modal listing every customer with open balance — per-row Download PDF + Email Statement actions, grand total at the top
+- ✅ Email row is disabled when the customer has no `email` on file with a clear tooltip explaining how to fix
+- ✅ Backend filters out Draft/Paid/Void invoices automatically; only Sent/Partial/Overdue with `balance_due > 0.01` show up
+
 ## Material Take-Off / Purchase Orders (2026-02)
 - ✅ New `material_takeoff[]` field on Deal — snapshots SKU/name/unit/vendor/loaded cost at add time
 - ✅ Project-level take-off card on DealDetail with vendor-grouped tables

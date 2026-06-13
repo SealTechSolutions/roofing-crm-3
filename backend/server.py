@@ -2150,6 +2150,214 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
     }
 
 
+# ----- Statement of Account (per-customer aging) -----
+async def _open_invoices_for_contact(contact_id: str) -> list:
+    """All invoices that bill this contact and still have a balance (not Paid/Void/Draft)."""
+    cursor = db.invoices.find(
+        {
+            "customer_contact_id": contact_id,
+            "is_deleted": {"$ne": True},
+            "status": {"$nin": ["Paid", "Void", "Draft"]},
+        },
+        {"_id": 0},
+    ).sort("invoice_date", 1)
+    out = []
+    async for inv in cursor:
+        bal = float(inv.get("balance_due") or 0)
+        if bal > 0.01:
+            out.append(inv)
+    return out
+
+
+@api_router.get("/contacts/{contact_id}/statement-summary")
+async def statement_summary(contact_id: str, current=Depends(get_current_user)):
+    """JSON preview of the statement (aging buckets + invoice count + total)."""
+    contact = await db.contacts.find_one({"id": contact_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not contact:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    invs = await _open_invoices_for_contact(contact_id)
+    from statement_pdf import compute_aging
+    as_of = datetime.now(timezone.utc).date()
+    aging = compute_aging(invs, as_of)
+    return {
+        "customer": {
+            "id": contact["id"],
+            "contact_name": contact.get("contact_name", ""),
+            "company_name": contact.get("company_name", ""),
+            "email": contact.get("email", ""),
+        },
+        "invoice_count": len(invs),
+        "as_of": as_of.isoformat(),
+        "aging": aging,
+    }
+
+
+@api_router.get("/customers-with-open-balance")
+async def customers_with_open_balance(current=Depends(get_current_user)):
+    """List every contact who has at least one open invoice, with their total balance.
+    Drives the Statement of Account picker on the Invoices page."""
+    pipeline = [
+        {"$match": {
+            "is_deleted": {"$ne": True},
+            "status": {"$nin": ["Paid", "Void", "Draft"]},
+            "balance_due": {"$gt": 0.01},
+        }},
+        {"$group": {
+            "_id": "$customer_contact_id",
+            "open_balance": {"$sum": "$balance_due"},
+            "invoice_count": {"$sum": 1},
+            "oldest_due": {"$min": "$due_date"},
+        }},
+        {"$match": {"_id": {"$ne": None}}},
+        {"$sort": {"open_balance": -1}},
+    ]
+    rows = await db.invoices.aggregate(pipeline).to_list(500)
+    # Hydrate contact details
+    out = []
+    for r in rows:
+        cid = r["_id"]
+        c = await db.contacts.find_one({"id": cid, "is_deleted": {"$ne": True}}, {"_id": 0, "id": 1, "contact_name": 1, "company_name": 1, "email": 1})
+        if not c:
+            continue
+        out.append({
+            "customer_id": cid,
+            "contact_name": c.get("contact_name", ""),
+            "company_name": c.get("company_name", ""),
+            "email": c.get("email", ""),
+            "open_balance": round(float(r.get("open_balance") or 0), 2),
+            "invoice_count": int(r.get("invoice_count") or 0),
+            "oldest_due": r.get("oldest_due") or "",
+        })
+    return out
+
+
+@api_router.get("/contacts/{contact_id}/statement.pdf")
+async def statement_pdf(
+    contact_id: str,
+    token: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    """Download the Statement of Account PDF for this customer (supports ?token= for browser links)."""
+    raw = None
+    if authorization and authorization.startswith("Bearer "):
+        raw = authorization[7:]
+    elif token:
+        raw = token
+    if not raw:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(raw, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["sub"]})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    contact = await db.contacts.find_one({"id": contact_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not contact:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    invs = await _open_invoices_for_contact(contact_id)
+    from statement_pdf import build_statement_pdf
+    as_of = datetime.now(timezone.utc).date().isoformat()
+    pdf_bytes = build_statement_pdf(contact, invs, as_of)
+    label = (contact.get("company_name") or contact.get("contact_name") or "customer").replace(" ", "_")
+    fname = f"statement-{label}-{as_of}.pdf"
+    return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@api_router.post("/contacts/{contact_id}/statement/email")
+async def email_statement(contact_id: str, body: dict = Body(...), current=Depends(get_current_user)):
+    """Email the Statement of Account PDF to the customer via Gmail SMTP."""
+    contact = await db.contacts.find_one({"id": contact_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not contact:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    to_email = (body.get("to_email") or contact.get("email") or "").strip()
+    cc_email = (body.get("cc_email") or "").strip()
+    if not to_email:
+        raise HTTPException(status_code=400, detail="No recipient email — please provide one.")
+
+    invs = await _open_invoices_for_contact(contact_id)
+    from statement_pdf import build_statement_pdf, compute_aging
+    as_of_date = datetime.now(timezone.utc).date()
+    as_of = as_of_date.isoformat()
+    pdf_bytes = build_statement_pdf(contact, invs, as_of)
+    aging = compute_aging(invs, as_of_date)
+
+    cust_label = contact.get("company_name") or contact.get("contact_name") or "your account"
+    grand = float(aging.get("total") or 0)
+    grand_str = f"${grand:,.2f}"
+
+    subject = f"Statement of Account — {cust_label} — {as_of_date.strftime('%B %d, %Y')}"
+
+    body_text = (
+        f"Hello,\n\n"
+        f"Please find attached your current Statement of Account from SealTech Building Solutions, "
+        f"covering all open invoices as of {as_of_date.strftime('%B %d, %Y')}.\n\n"
+        f"  Total Balance Due:  {grand_str}\n"
+        f"  Open Invoices:      {len(invs)}\n\n"
+        f"Remit payment to:\n"
+        f"  SealTech Building Solutions\n"
+        f"  2278 Mannatt Ct, Castle Rock, CO 80104\n\n"
+        f"If any of the invoices listed have already been paid, or if you have questions about any of them, "
+        f"please reply to this email or call us at 720-715-9955 so we can reconcile your account.\n\n"
+        f"Thank you for your business,\n"
+        f"SealTech Building Solutions\n"
+        f"720-715-9955  ·  info@sealtechbuildingsolutions.com"
+    )
+
+    body_html = f"""
+    <html><body style="font-family: Arial, Helvetica, sans-serif; color: #0A0A0A; max-width: 620px;">
+      <p style="margin: 0 0 16px;">Hello,</p>
+      <p style="margin: 0 0 16px;">Please find attached your current <b>Statement of Account</b> from SealTech Building Solutions, covering all open invoices as of {as_of_date.strftime('%B %d, %Y')}.</p>
+      <table style="border-collapse: collapse; margin: 16px 0;">
+        <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Total Balance Due</td><td style="padding: 4px 0; font-weight: bold; font-family: monospace; color: #1D4ED8;">{grand_str}</td></tr>
+        <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Open Invoices</td><td style="padding: 4px 0; font-family: monospace;">{len(invs)}</td></tr>
+      </table>
+      <p style="margin: 16px 0 8px; color: #52525B; font-size: 13px;"><b>Remit payment to:</b></p>
+      <p style="margin: 0 0 16px; line-height: 1.5;">
+        SealTech Building Solutions<br/>
+        2278 Mannatt Ct, Castle Rock, CO 80104
+      </p>
+      <p style="margin: 16px 0;">If any of the invoices listed have already been paid, or if you have questions about any of them, please reply to this email or call us at 720-715-9955 so we can reconcile your account.</p>
+      <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
+        <b style="color: #0A0A0A;">SealTech Building Solutions</b><br/>
+        720-715-9955  ·  info@sealtechbuildingsolutions.com  ·  www.sealtechbuildingsolutions.com
+      </p>
+    </body></html>
+    """
+
+    label = cust_label.replace(" ", "_")
+    fname = f"statement-{label}-{as_of}.pdf"
+    try:
+        from email_sender import send_email, EmailNotConfigured
+        result = send_email(
+            to=to_email,
+            cc=cc_email,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+            reply_to=os.environ.get("GMAIL_FROM_EMAIL") or None,
+            attachments=[{"filename": fname, "data": pdf_bytes, "mime": "application/pdf"}],
+        )
+    except EmailNotConfigured as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except smtplib.SMTPAuthenticationError as e:
+        raise HTTPException(status_code=500, detail=f"Gmail authentication failed — check the App Password. ({e.smtp_code}: {e.smtp_error.decode() if e.smtp_error else ''})")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email send failed: {type(e).__name__}: {e}")
+
+    return {
+        "ok": True,
+        "mocked": False,
+        "message": f"Statement of Account emailed to {to_email}" + (f" (cc: {cc_email})" if cc_email else ""),
+        "to_email": to_email,
+        "cc_email": cc_email,
+        "message_id": result.get("message_id"),
+        "total_balance": round(grand, 2),
+        "invoice_count": len(invs),
+    }
+
+
 # ----- Vendor Bills (Payables) -----
 def _recalc_bill(bill: dict) -> dict:
     """Compute subtotal/total from line items, and auto-fill due_date from terms if missing."""
