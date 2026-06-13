@@ -877,17 +877,27 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
 
     # For templates with a tier_table (e.g. FARM), Page 2 already absorbs the
     # comparison-table footprint, so the Page 1 pricing block is compact and
-    # leaves room for the cover photo. Render it here on Page 1.
+    # leaves room for the Inclusions blurb + an enlarged cover photo. Render
+    # them here on Page 1 so the page is fully utilized.
     if template.get("tier_table"):
-        story.append(Spacer(1, 0.12 * inch))
+        story.append(Spacer(1, 0.06 * inch))
+        story.append(Paragraph("Inclusions", s["h2"]))
+        total_sqft_p1 = data.get("total_sqft", 0) or 0
+        sq_p1 = int(round(total_sqft_p1 / 100))
+        color_p1 = data.get("color", "white")
+        label_p1 = data.get("roof_type_label") or (roof_type or "roof system")
+        inc_text_p1 = f"Approximately {total_sqft_p1:,.0f} SF ({sq_p1} SQ) {color_p1} {label_p1} system, including walls and flashings."
+        story.append(Paragraph(inc_text_p1, s["body"]))
+        story.append(Spacer(1, 0.08 * inch))
         if cover_photo_bytes:
             try:
-                img = Image(BytesIO(cover_photo_bytes), width=7.0 * inch, height=1.6 * inch, kind="proportional")
+                img = Image(BytesIO(cover_photo_bytes), width=7.5 * inch, height=3.1 * inch, kind="proportional")
+                img.hAlign = "CENTER"
                 story.append(img)
             except Exception:
                 story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
         else:
-            ph = Table([[" "]], colWidths=[7.0 * inch], rowHeights=[1.6 * inch])
+            ph = Table([[" "]], colWidths=[7.5 * inch], rowHeights=[3.1 * inch])
             ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
             story.append(ph)
             story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))
@@ -948,14 +958,17 @@ def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str
 
     story.append(Spacer(1, 0.06 * inch))
 
-    story.append(Paragraph("Inclusions", s["h2"]))
-    total_sqft = data.get("total_sqft", 0) or 0
-    sq = int(round(total_sqft / 100))
-    color = data.get("color", "white")
-    label = data.get("roof_type_label") or (roof_type or "roof system")
-    inc_text = f"Approximately {total_sqft:,.0f} SF ({sq} SQ) {color} {label} system, including walls and flashings."
-    story.append(Paragraph(inc_text, s["body"]))
-    story.append(Spacer(1, 0.06 * inch))
+    # Inclusions block — for tier_table templates (FARM) this is rendered on
+    # Page 1 instead, so skip it here to avoid duplication.
+    if not template.get("tier_table"):
+        story.append(Paragraph("Inclusions", s["h2"]))
+        total_sqft = data.get("total_sqft", 0) or 0
+        sq = int(round(total_sqft / 100))
+        color = data.get("color", "white")
+        label = data.get("roof_type_label") or (roof_type or "roof system")
+        inc_text = f"Approximately {total_sqft:,.0f} SF ({sq} SQ) {color} {label} system, including walls and flashings."
+        story.append(Paragraph(inc_text, s["body"]))
+        story.append(Spacer(1, 0.06 * inch))
 
     # Cover photo (skipped when template has a tier_table — the table itself fills the visual space)
     if not template.get("tier_table"):

@@ -105,7 +105,8 @@
 ## FARM Spec Sheet Polishing (2026-02)
 - ✅ FARM 4-tier comparison table renders on Page 2 with adaptive heading
 - ✅ Removed redundant Add-On Manufacturer Warranty section + "(Standard Warranty Included)" tag for FARM (warranty options are already in-body)
-- ✅ Cover photo (or placeholder) now sits on **Page 1 under the pricing table** for FARM scopes — Page 2/3 layout still holds at exactly 3 pages
+- ✅ Page 1 now shows the **Inclusions** blurb (e.g. "Approximately 31,000 SF (310 SQ) white Fluid Applied Reinforced Membrane system, including walls and flashings.") plus an **enlarged cover photo** (7.5" × 3.1") that fills the lower portion of the page; total page count stays at exactly 3
+- ✅ Page 2 no longer duplicates the Inclusions block when the template has a `tier_table`
 
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics)
