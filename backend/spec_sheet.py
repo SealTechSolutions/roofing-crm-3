@@ -275,6 +275,123 @@ PVC_REPLACEMENT_TEMPLATE = {
     ],
 }
 
+# ---------------------------------------------------------------------------
+#  New Construction templates — no existing roof to tear off or overlay
+# ---------------------------------------------------------------------------
+TPO_NEW_CONSTRUCTION_TEMPLATE = {
+    "title": "TPO NEW CONSTRUCTION SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
+    "scope_1": [
+        "Verify structural deck condition, slope, and drainage prior to installation.",
+        "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
+        "Clean deck of construction debris, dust, and contaminants.",
+        "Confirm placement of drains, scuppers, curbs, and penetrations per plan.",
+        "Remove and properly dispose of all debris from the property.",
+    ],
+    "scope_2_title": "TPO Membrane Installation",
+    "scope_2": [
+        "Install vapor retarder where required by spec or climate zone.",
+        "Install ISO insulation to achieve specified R-value, mechanically attached or fully adhered per manufacturer.",
+        "Install ½\" high-density cover board over insulation to provide a smooth, durable substrate.",
+        "Install 60-mil TPO membrane — fully adhered, mechanically attached, or RhinoBond per project specification.",
+        "Heat-weld all seams with calibrated hot-air welder; probe-test 100% of seams after cooling.",
+        "Install new code-required metal drip edge, gravel stop, and termination bar at all perimeters.",
+        "Flash all penetrations, curbs, walls, and corners with pre-formed or field-fabricated TPO accessories.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+EPDM_NEW_CONSTRUCTION_TEMPLATE = {
+    "title": "EPDM NEW CONSTRUCTION SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
+    "scope_1": [
+        "Verify structural deck condition, slope, and drainage prior to installation.",
+        "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
+        "Clean deck of construction debris, dust, and contaminants.",
+        "Confirm placement of drains, scuppers, curbs, and penetrations per plan.",
+        "Remove and properly dispose of all debris from the property.",
+    ],
+    "scope_2_title": "EPDM Membrane Installation",
+    "scope_2": [
+        "Install vapor retarder where required by spec or climate zone.",
+        "Install ISO insulation to achieve specified R-value, plus ½\" high-density cover board, fully adhered or mechanically attached.",
+        "Install 60-mil EPDM membrane — fully adhered with bonding adhesive, mechanically attached, or ballasted per project specification.",
+        "Splice all seams with factory-applied seam tape and EPDM splice primer; roll all laps with steel roller.",
+        "Install pre-formed pipe boots, inside/outside corners, and uncured EPDM flashing; terminate at walls with termination bar, cut-off mastic, and counter-flashing.",
+        "Install new code-required metal drip edge, gravel stop, and termination bar at all perimeters.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+MODBIT_NEW_CONSTRUCTION_TEMPLATE = {
+    "title": "MODIFIED BITUMEN NEW CONSTRUCTION SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
+    "scope_1": [
+        "Verify structural deck condition, slope, and drainage prior to installation.",
+        "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
+        "Clean deck of construction debris, dust, and contaminants.",
+        "Confirm placement of drains, scuppers, curbs, and penetrations per plan.",
+        "Remove and properly dispose of all debris from the property.",
+    ],
+    "scope_2_title": "Modified Bitumen System Installation",
+    "scope_2": [
+        "Install ISO insulation to achieve specified R-value, mechanically attached or hot-asphalt-adhered per manufacturer.",
+        "Install ½\" high-density cover board over insulation to provide a smooth, durable substrate.",
+        "Install SBS or APP modified bitumen base ply per project specification (mechanically attached, torch-applied, cold-process, or self-adhered).",
+        "Install granulated SBS or APP modified bitumen cap sheet, fully bonded with offset laps.",
+        "Heat-weld or cold-bond all end and side laps; broom-in and inspect for full bleed-out.",
+        "Flash all penetrations, walls, and curbs with two-ply modified bitumen flashings and metal counter-flashing; install new pitch pans filled with two-part urethane sealant where required.",
+        "Install new code-required metal drip edge, gravel stop, and termination bar at all perimeters.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+PVC_NEW_CONSTRUCTION_TEMPLATE = {
+    "title": "PVC NEW CONSTRUCTION SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
+    "scope_1": [
+        "Verify structural deck condition, slope, and drainage prior to installation.",
+        "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
+        "Clean deck of construction debris, dust, and contaminants.",
+        "Confirm placement of drains, scuppers, curbs, and penetrations per plan.",
+        "Remove and properly dispose of all debris from the property.",
+    ],
+    "scope_2_title": "PVC Membrane Installation",
+    "scope_2": [
+        "Install vapor retarder where required by spec or climate zone.",
+        "Install ISO insulation to achieve specified R-value, mechanically attached or fully adhered per manufacturer.",
+        "Install ½\" high-density cover board over insulation to provide a smooth, durable substrate.",
+        "Install 60-mil PVC membrane — fully adhered, mechanically attached, or RhinoBond per project specification.",
+        "Heat-weld all seams with calibrated hot-air welder; probe-test 100% of seams after cooling.",
+        "Install new code-required PVC-coated metal drip edge, gravel stop, and termination bar at all perimeters.",
+        "Flash all penetrations, curbs, walls, and corners with pre-formed or field-fabricated PVC accessories.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
+BUR_NEW_CONSTRUCTION_TEMPLATE = {
+    "title": "BUILT-UP ROOF NEW CONSTRUCTION SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
+    "scope_1": [
+        "Verify structural deck condition, slope, and drainage prior to installation.",
+        "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
+        "Clean deck of construction debris, dust, and contaminants.",
+        "Confirm placement of drains, scuppers, curbs, and penetrations per plan.",
+        "Remove and properly dispose of all debris from the property.",
+    ],
+    "scope_2_title": "Built-Up System Installation",
+    "scope_2": [
+        "Install ISO insulation to achieve specified R-value with mechanically attached or hot-mopped cover board.",
+        "Install mechanically attached or hot-mopped base sheet over insulation / cover board.",
+        "Install three (3) plies of Type IV fiberglass ply sheet in Type III/IV hot asphalt at 25 ± 5 lbs/SQ per ply.",
+        "Apply flood coat of hot asphalt at 60 ± 5 lbs/SQ and embed #6 gravel (400 lbs/SQ) OR apply granulated mineral cap sheet.",
+        "Install two-ply modified bitumen base flashings at walls and curbs, terminated with counter-flashing.",
+        "Install new pitch pans filled with two-part urethane sealant at irregular penetrations.",
+        "Install new code-required metal drip edge, gravel stop, and termination bar at all perimeters.",
+        "Final walk-through, water-test drains, and quality inspection with the owner.",
+    ],
+}
+
 # Kept as the generic fallback when "TPO" alone is selected (no over-lay / replacement distinction yet)
 TPO_TEMPLATE = TPO_OVERLAY_TEMPLATE
 
@@ -477,16 +594,50 @@ ROOF_TEMPLATE_MAP = {
 }
 
 
-def _resolve_template(roof_type: str | None) -> dict:
+NEW_CONSTRUCTION_MAP = {
+    "tpo": TPO_NEW_CONSTRUCTION_TEMPLATE,
+    "tpooverlay": TPO_NEW_CONSTRUCTION_TEMPLATE,
+    "tporeplacement": TPO_NEW_CONSTRUCTION_TEMPLATE,
+    "epdm": EPDM_NEW_CONSTRUCTION_TEMPLATE,
+    "epdmoverlay": EPDM_NEW_CONSTRUCTION_TEMPLATE,
+    "epdmreplacement": EPDM_NEW_CONSTRUCTION_TEMPLATE,
+    "epdmwballast": EPDM_NEW_CONSTRUCTION_TEMPLATE,
+    "pvc": PVC_NEW_CONSTRUCTION_TEMPLATE,
+    "pvcoverlay": PVC_NEW_CONSTRUCTION_TEMPLATE,
+    "pvcreplacement": PVC_NEW_CONSTRUCTION_TEMPLATE,
+    "modbit": MODBIT_NEW_CONSTRUCTION_TEMPLATE,
+    "modbitoverlay": MODBIT_NEW_CONSTRUCTION_TEMPLATE,
+    "modbitreplacement": MODBIT_NEW_CONSTRUCTION_TEMPLATE,
+    "modifiedbitumen": MODBIT_NEW_CONSTRUCTION_TEMPLATE,
+    "modifiedbitumenoverlay": MODBIT_NEW_CONSTRUCTION_TEMPLATE,
+    "modifiedbitumenreplacement": MODBIT_NEW_CONSTRUCTION_TEMPLATE,
+    "bur": BUR_NEW_CONSTRUCTION_TEMPLATE,
+    "burbuiltup": BUR_NEW_CONSTRUCTION_TEMPLATE,
+    "builtup": BUR_NEW_CONSTRUCTION_TEMPLATE,
+}
+
+
+def _is_new_construction(current_roof_type: str | None) -> bool:
+    """Returns True when the current roof indicates no existing roof to work over."""
+    if not current_roof_type:
+        return False
+    s = str(current_roof_type).strip().lower()
+    # Matches "none", "none (new construction)", "n/a", "new construction"
+    return s.startswith("none") or s == "n/a" or "new construction" in s
+
+
+def _resolve_template(roof_type: str | None, current_roof_type: str | None = None) -> dict:
     """Return the scope template matching the given roof_type label.
 
-    Falls back to the silicone template if no match is found so that existing
-    deals without a `proposed_roof_type` continue to render the original
-    restoration scope.
+    If `current_roof_type` indicates new construction, prefer the
+    new-construction variant of the membrane system (when one exists).
+    Falls back to the silicone restoration scope when nothing matches.
     """
+    key = "".join(ch for ch in str(roof_type or "").lower() if ch.isalnum())
+    if _is_new_construction(current_roof_type) and key in NEW_CONSTRUCTION_MAP:
+        return NEW_CONSTRUCTION_MAP[key]
     if not roof_type:
         return SILICONE_TEMPLATE
-    key = "".join(ch for ch in str(roof_type).lower() if ch.isalnum())
     return ROOF_TEMPLATE_MAP.get(key, SILICONE_TEMPLATE)
 
 
@@ -643,13 +794,18 @@ def _scope_block(s, title, items):
     return elems
 
 
-def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str | None = None) -> bytes:
+def build_spec_sheet(data: dict, cover_photo_bytes: bytes = None, roof_type: str | None = None, current_roof_type: str | None = None) -> bytes:
     """Build a SealTech-branded scope/spec sheet for the given roof type.
 
-    `roof_type` selects which scope template to render. If omitted, falls back
-    to the existing silicone restoration scope.
+    `roof_type` selects which scope template to render. If `current_roof_type`
+    indicates no existing roof (e.g. "None (new construction)"), the
+    new-construction variant of the system is used when available.
+    Falls back to the existing silicone restoration scope otherwise.
     """
-    template = _resolve_template(roof_type or data.get("roof_type_label"))
+    template = _resolve_template(
+        roof_type or data.get("roof_type_label"),
+        current_roof_type or data.get("current_roof_type"),
+    )
 
     buf = BytesIO()
     pdf = SimpleDocTemplate(buf, pagesize=letter,

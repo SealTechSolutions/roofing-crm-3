@@ -2584,13 +2584,37 @@ async def deal_spec_sheet(
         "PVC Over-Lay": "PVC Roof System Over Existing PVC Over-Lay",
         "PVC Replacement": "PVC Roof System Replacing PVC",
     }
+    # Membrane-system labels we recognize for new construction Product Type phrasing
+    NEW_CONSTRUCTION_LABELS = {
+        "TPO": "TPO",
+        "TPO Over-Lay": "TPO",
+        "TPO Replacement": "TPO",
+        "EPDM": "EPDM",
+        "EPDM Over-Lay": "EPDM",
+        "EPDM Replacement": "EPDM",
+        "EPDM w/ Ballast": "EPDM",
+        "PVC": "PVC",
+        "PVC Over-Lay": "PVC",
+        "PVC Replacement": "PVC",
+        "ModBit": "Modified Bitumen",
+        "ModBit Over-Lay": "Modified Bitumen",
+        "ModBit Replacement": "Modified Bitumen",
+        "BUR (Built-Up)": "Built-Up Roof",
+    }
     proposed = deal.get("proposed_roof_type") or "Silicone"
+    current = deal.get("current_roof_type") or ""
+    is_new = (
+        current.strip().lower().startswith("none")
+        or "new construction" in current.lower()
+    )
     if deal.get("product_description"):
         product_desc = deal["product_description"]
+    elif is_new and proposed in NEW_CONSTRUCTION_LABELS:
+        product_desc = f"{NEW_CONSTRUCTION_LABELS[proposed]} Roof System on New Construction"
     elif proposed in PRODUCT_TYPE_DEFAULTS:
         product_desc = PRODUCT_TYPE_DEFAULTS[proposed]
     else:
-        product_desc = f"{proposed} Roof System Over Existing {deal.get('current_roof_type','')}".strip()
+        product_desc = f"{proposed} Roof System Over Existing {current}".strip()
     color = deal.get("warranty_color") or "white"
 
     data = {
@@ -2621,7 +2645,12 @@ async def deal_spec_sheet(
             except Exception:
                 photo_bytes = None
 
-    pdf_bytes = build_spec_sheet(data, cover_photo_bytes=photo_bytes, roof_type=deal.get("proposed_roof_type"))
+    pdf_bytes = build_spec_sheet(
+        data,
+        cover_photo_bytes=photo_bytes,
+        roof_type=deal.get("proposed_roof_type"),
+        current_roof_type=deal.get("current_roof_type"),
+    )
     filename = f"sealtech-scope-{(deal.get('title') or 'project')}.pdf".replace(" ", "_")
     return Response(
         content=pdf_bytes,
