@@ -141,3 +141,107 @@ def test_assessment_linked_deal_hydration():
             assert listed.get("deal_title") == deal["title"]
     finally:
         requests.delete(f"{API}/assessments/{a['id']}", headers=h, timeout=10)
+
+
+def test_convert_assessment_to_scope_full_flow():
+    """End-to-end: create deal → create assessment with full findings → convert → verify
+    deal's scope fields populated with structured content from the assessment."""
+    h = _login()
+    # Create dedicated deal
+    deal_body = {"title": f"CONVERT_TEST_{uuid.uuid4().hex[:6]}", "project_type": "Repair", "proposed_roof_type": "TPO"}
+    deal = requests.post(f"{API}/deals", json=deal_body, headers=h, timeout=15).json()
+    did = deal["id"]
+    # Create assessment with rich data + restoration recommendation
+    a_body = {
+        "deal_id": did,
+        "property_name": "Test Plaza",
+        "property_address": "777 Plaza Way",
+        "square_footage": 30000,
+        "rec_restoration_program": True,
+        "recommended_strategy": "Restore membrane and improve drainage",
+        "immediate_actions": ["Stop active leaks", "Clean entire surface"],
+        "near_term_actions": ["Annual inspection"],
+        "long_term_actions": ["Re-coat in year 10"],
+        "finding_r1": {"component": "Roof Membrane", "recommendation": "Apply silicone restoration"},
+        "finding_r2": {"component": "Flashings", "recommendation": "Re-flash all penetrations"},
+        "finding_r3": {"component": "Penetrations", "observations": "23 penetrations need attention"},
+        "finding_r4": {"component": "Drainage", "recommendation": "Add 4 scuppers"},
+        "finding_r5": {"component": "Equipment", "recommendation": "Re-set HVAC curbs"},
+    }
+    a = requests.post(f"{API}/assessments", json=a_body, headers=h, timeout=15).json()
+    aid = a["id"]
+    try:
+        # Convert
+        r = requests.post(f"{API}/assessments/{aid}/convert-to-scope", json={}, headers=h, timeout=15)
+        assert r.status_code == 200, r.text
+        result = r.json()
+        assert result["ok"] is True
+        assert result["deal_id"] == did
+        assert result["recommended_label"] == "Restoration"
+        assert result["other_requirements_lines"] == 5  # all 5 findings have content
+        assert result["project_requirements_lines"] >= 3  # strategy + 2 immediate + 1 near-term
+
+        # Verify deal was updated
+        updated_deal = requests.get(f"{API}/deals/{did}", headers=h, timeout=10).json()
+        assert updated_deal["proposed_roof_type"] == "Construction Project"
+        assert "Restoration Scope" in updated_deal["construction_scope_subtitle"]
+        assert "Test Plaza" in updated_deal["construction_scope_subtitle"]
+        assert updated_deal["project_type_override"] == "Restoration"
+        assert updated_deal["property_sqft"] == 30000.0
+        # PR contains immediate + near-term actions
+        pr = updated_deal["construction_project_requirements"]
+        assert "Stop active leaks" in pr
+        assert "Annual inspection" in pr
+        assert "Restore membrane" in pr
+        # Other Reqs contains R-1..R-5
+        other = updated_deal["construction_other_requirements"]
+        assert "Apply silicone restoration" in other
+        assert "Re-flash all penetrations" in other
+        assert "Add 4 scuppers" in other
+        # R-3 used observations fallback
+        assert "23 penetrations" in other
+        # Exclusions contains long-term + standard
+        excl = updated_deal["construction_exclusions"]
+        assert "Re-coat in year 10" in excl
+        assert "Structural repairs" in excl
+
+        # Assessment was stamped with converted_at
+        a2 = requests.get(f"{API}/assessments/{aid}", headers=h, timeout=10).json()
+        assert a2.get("converted_to_scope_at")
+    finally:
+        requests.delete(f"{API}/assessments/{aid}", headers=h, timeout=10)
+        requests.delete(f"{API}/deals/{did}", headers=h, timeout=10)
+
+
+def test_convert_requires_linked_deal():
+    """Convert without a linked deal must 400."""
+    h = _login()
+    a = requests.post(f"{API}/assessments", json={"property_name": f"NO_DEAL_{uuid.uuid4().hex[:6]}"}, headers=h, timeout=15).json()
+    try:
+        r = requests.post(f"{API}/assessments/{a['id']}/convert-to-scope", json={}, headers=h, timeout=10)
+        assert r.status_code == 400
+        assert "deal" in r.json()["detail"].lower()
+    finally:
+        requests.delete(f"{API}/assessments/{a['id']}", headers=h, timeout=10)
+
+
+def test_convert_picks_correct_recommendation_label():
+    """Verify the recommended_label resolver picks the right option based on checkboxes."""
+    h = _login()
+    deal = requests.post(f"{API}/deals", json={"title": f"REC_PICK_{uuid.uuid4().hex[:6]}"}, headers=h, timeout=15).json()
+    did = deal["id"]
+    test_cases = [
+        ({"rec_full_replacement": True}, "Full Replacement"),
+        ({"rec_partial_replacement": True}, "Partial Replacement"),
+        ({"rec_repair_and_monitor": True}, "Repair & Maintenance"),
+        ({"rec_drainage_improvements": True}, "Drainage Improvements"),
+        ({}, "Roof Restoration Program"),  # no checkbox → fallback
+    ]
+    try:
+        for rec_patch, expected_label in test_cases:
+            a = requests.post(f"{API}/assessments", json={"deal_id": did, "property_name": "Recheck", **rec_patch}, headers=h, timeout=15).json()
+            r = requests.post(f"{API}/assessments/{a['id']}/convert-to-scope", json={}, headers=h, timeout=10).json()
+            assert r["recommended_label"] == expected_label, f"For patch {rec_patch}, got {r['recommended_label']} expected {expected_label}"
+            requests.delete(f"{API}/assessments/{a['id']}", headers=h, timeout=10)
+    finally:
+        requests.delete(f"{API}/deals/{did}", headers=h, timeout=10)

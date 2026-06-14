@@ -4,7 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import {
   ClipboardCheck, ChevronLeft, ChevronRight, Save, FileText, Mail, CheckCircle2,
-  Plus, X, Trash2, Image as ImageIcon, Upload, AlertTriangle,
+  Plus, X, Trash2, Image as ImageIcon, Upload, AlertTriangle, ArrowRightCircle,
 } from "lucide-react";
 
 const BLANK_SCORE = { score: 0, reasoning: "" };
@@ -233,6 +233,34 @@ export default function AssessmentEditor() {
     }
   };
 
+  const convertToScope = async () => {
+    if (isNew) { toast.error("Save the assessment first"); return; }
+    if (!doc.deal_id) {
+      toast.error("Link this assessment to a Project (Step 1) before converting.");
+      return;
+    }
+    const anyRec = doc.rec_restoration_program || doc.rec_repair_and_monitor ||
+                   doc.rec_partial_replacement || doc.rec_full_replacement ||
+                   doc.rec_maintenance_program || doc.rec_drainage_improvements;
+    const warning = !anyRec
+      ? "No SealTech Recommendation checkbox is selected (Step 5). The scope will default to 'Roof Restoration Program'.\n\n"
+      : "";
+    if (!window.confirm(
+      `${warning}This will pre-fill the linked Project's Construction Scope using:\n` +
+      `• Recommended Strategy + Immediate Actions → Project Requirements\n` +
+      `• R-1..R-5 Recommendations → Other Requirements\n` +
+      `• Long-term Actions + standard exclusions → Exclusions\n\n` +
+      "Existing scope text on the Deal will be overwritten. Continue?"
+    )) return;
+    try {
+      const r = await api.post(`/assessments/${id}/convert-to-scope`);
+      toast.success(`Scope pre-filled (${r.data.recommended_label}) — opening Project...`);
+      setTimeout(() => navigate(`/projects/${r.data.deal_id}`), 600);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    }
+  };
+
   const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
   const prev = () => setStep((s) => Math.max(0, s - 1));
 
@@ -272,6 +300,16 @@ export default function AssessmentEditor() {
                   <CheckCircle2 className="w-3.5 h-3.5" /> Mark Final
                 </button>
               )}
+              <button
+                onClick={convertToScope}
+                disabled={!doc.deal_id}
+                title={doc.deal_id ? "Pre-fill linked Project's scope from this assessment" : "Link a Project (Step 1) to enable"}
+                className="inline-flex items-center gap-2 border border-bronze-600 px-3 h-9 text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ borderColor: "#A0703A", color: "#A0703A" }}
+                data-testid="convert-to-scope-btn"
+              >
+                <ArrowRightCircle className="w-3.5 h-3.5" /> Convert to Scope
+              </button>
             </>
           )}
           <button onClick={() => save("stay")} disabled={saving} className="inline-flex items-center gap-2 bg-blue-700 text-white px-3 h-9 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 disabled:opacity-60" data-testid="save-btn">

@@ -310,6 +310,119 @@ def create_router(db, get_current_user) -> APIRouter:
         )
         return {"ok": True, "id": assessment_id}
 
+    # ---------- Convert Assessment → Scope ----------
+    @router.post("/{assessment_id}/convert-to-scope")
+    async def convert_to_scope(
+        assessment_id: str,
+        body: dict = Body(default={}),
+        current=Depends(get_current_user),
+    ):
+        """Pre-fill the linked Deal's Construction Scope from this assessment's findings + recommendation.
+        Closes the loop from diagnosis → proposal in one click.
+
+        Rules:
+          • Requires `deal_id` either on the assessment OR in the request body
+          • Picks the recommended Option (Restoration > Replacement > Repair > "Construction Project")
+            based on which SealTech Recommendation checkbox is on
+          • Maps R-1..R-5 findings → Other Requirements (per-component scope lines)
+          • Immediate Actions → Project Requirements (top bullets)
+          • Long-term Actions → Exclusions (out-of-scope clarifications)
+          • Sets project_type_override + construction_scope_subtitle from the recommendation
+          • Updates property_sqft if available
+        """
+        a = await _ensure(assessment_id)
+        deal_id = (body.get("deal_id") or a.get("deal_id") or "").strip()
+        if not deal_id:
+            raise HTTPException(status_code=400, detail="No linked Deal — pass deal_id or link the assessment to a project first.")
+        deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+        if not deal:
+            raise HTTPException(status_code=404, detail="Deal not found")
+
+        # ---- Pick recommended option ----
+        if a.get("rec_restoration_program"):
+            recommended_label = "Restoration"
+        elif a.get("rec_full_replacement"):
+            recommended_label = "Full Replacement"
+        elif a.get("rec_partial_replacement"):
+            recommended_label = "Partial Replacement"
+        elif a.get("rec_repair_and_monitor"):
+            recommended_label = "Repair & Maintenance"
+        elif a.get("rec_maintenance_program"):
+            recommended_label = "Maintenance Program"
+        elif a.get("rec_drainage_improvements"):
+            recommended_label = "Drainage Improvements"
+        else:
+            recommended_label = "Roof Restoration Program"
+
+        # ---- Project Requirements (top of scope) ----
+        pr_lines = list(a.get("immediate_actions") or [])
+        if a.get("near_term_actions"):
+            pr_lines.extend([f"{ln}  (Near-term)" for ln in a["near_term_actions"]])
+        if a.get("recommended_strategy"):
+            pr_lines.insert(0, a["recommended_strategy"])
+        pr_text = "\n".join(line for line in pr_lines if line and line.strip())
+
+        # ---- Other Requirements (per-component findings) ----
+        other_lines = []
+        for code, key in [("R-1", "finding_r1"), ("R-2", "finding_r2"), ("R-3", "finding_r3"),
+                          ("R-4", "finding_r4"), ("R-5", "finding_r5")]:
+            f = a.get(key) or {}
+            component = f.get("component") or code
+            rec = (f.get("recommendation") or "").strip()
+            if rec:
+                other_lines.append(f"{component}: {rec}")
+            elif (f.get("observations") or "").strip():
+                other_lines.append(f"{component}: Address as noted in assessment — {f['observations'].strip()[:120]}")
+        other_text = "\n".join(other_lines)
+
+        # ---- Exclusions (long-term + standard) ----
+        exclusion_lines = list(a.get("long_term_actions") or [])
+        exclusion_lines.extend([
+            "Structural repairs beyond surface-level deck preparation",
+            "Interior finishes or damage remediation",
+            "HVAC mechanical work (coordination only)",
+            "Permits and engineering letters (provided as separate line item if required)",
+        ])
+        exclusion_text = "\n".join(exclusion_lines)
+
+        # ---- Subtitle + override ----
+        subtitle = f"{recommended_label} Scope — {a.get('property_name') or a.get('property_address') or 'Project'}"
+        project_type_override = recommended_label
+
+        # ---- Build update payload ----
+        update_doc = {
+            "proposed_roof_type": "Construction Project",  # routes to 2-page Construction PDF template
+            "construction_project_requirements": pr_text or deal.get("construction_project_requirements", ""),
+            "construction_other_requirements": other_text or deal.get("construction_other_requirements", ""),
+            "construction_exclusions": exclusion_text or deal.get("construction_exclusions", ""),
+            "construction_scope_subtitle": subtitle,
+            "project_type_override": project_type_override,
+            "scope_source_assessment_id": assessment_id,
+            "scope_updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if a.get("square_footage") and not deal.get("property_sqft"):
+            update_doc["property_sqft"] = float(a["square_footage"])
+
+        await db.deals.update_one({"id": deal_id}, {"$set": update_doc})
+        # Stamp assessment with the converted timestamp
+        await db.assessments.update_one(
+            {"id": assessment_id},
+            {"$set": {
+                "converted_to_scope_at": datetime.now(timezone.utc).isoformat(),
+                "converted_to_scope_by_user_id": current.get("id"),
+                "deal_id": deal_id,  # ensure link is persisted
+            }},
+        )
+
+        return {
+            "ok": True,
+            "deal_id": deal_id,
+            "recommended_label": recommended_label,
+            "project_requirements_lines": len(pr_text.split("\n")) if pr_text else 0,
+            "other_requirements_lines": len(other_lines),
+            "exclusions_lines": len(exclusion_lines),
+        }
+
     # ---------- PDF ----------
     @router.get("/{assessment_id}/pdf")
     async def get_assessment_pdf(assessment_id: str, _=Depends(get_current_user)):

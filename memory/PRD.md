@@ -392,9 +392,10 @@
 - Capital Planning Forecast: 1/3/5/10-year outlooks. Recommended Roof Asset Plan™ with budget priority + 3 action horizons.
 - 12-page branded PDF generated via ReportLab (`assessment_pdf.py`) embeds photos from object storage; reconciliation page count uses two-pass rendering.
 - "Mark Final" toggles status; "View PDF" opens auth-fetched blob in new tab; "Email PDF" sends via `assessments@` alias.
+- **Convert Assessment → Scope** button on the editor: pre-fills the linked Project's 2-page Construction PDF with Recommended Strategy + Immediate/Near-term Actions → Project Requirements, R-1..R-5 recommendations → Other Requirements, Long-term Actions + standard exclusions → Exclusions. Auto-picks scope subtitle from the SealTech Recommendation checkbox (Restoration / Full Replacement / Partial Replacement / Repair & Maintenance / Maintenance Program / Drainage Improvements).
 - Soft-delete to Admin Trash (restorable).
-- Endpoints: `GET/POST/PUT/DELETE /api/assessments`, `POST /api/assessments/{id}/finalize`, `GET /api/assessments/{id}/pdf`, `POST /api/assessments/{id}/email`.
-- ✅ Tested: 9/9 backend pytest + full frontend e2e (100% pass).
+- Endpoints: `GET/POST/PUT/DELETE /api/assessments`, `POST /api/assessments/{id}/finalize`, `GET /api/assessments/{id}/pdf`, `POST /api/assessments/{id}/email`, `POST /api/assessments/{id}/convert-to-scope`.
+- ✅ Tested: 6/6 backend pytest (incl. 3 convert-to-scope tests) + full frontend e2e (100% pass).
 
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
