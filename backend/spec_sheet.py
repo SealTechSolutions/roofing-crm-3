@@ -967,7 +967,7 @@ def _build_construction_2page(
     pdf = SimpleDocTemplate(
         buf, pagesize=letter,
         leftMargin=0.5 * inch, rightMargin=0.5 * inch,
-        topMargin=0.55 * inch, bottomMargin=0.75 * inch,
+        topMargin=0.30 * inch, bottomMargin=0.55 * inch,
         title="Project Scope",
     )
     s = _styles()
@@ -1020,11 +1020,11 @@ def _build_construction_2page(
         ("TEXTCOLOR", (0, 0), (0, -1), BLUE),
         ("TEXTCOLOR", (1, 0), (1, -1), DARK),
         ("LINEBELOW", (0, 0), (-1, -1), 0.25, BORDER),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
     ]))
     story.append(info_tbl)
-    story.append(Spacer(1, 0.12 * inch))
+    story.append(Spacer(1, 0.06 * inch))
 
     # ---- Scope table — 3 buckets in one outlined block ----
     scope_subtitle = (data.get("construction_scope_subtitle") or "").strip()
@@ -1081,7 +1081,7 @@ def _build_construction_2page(
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
     ]))
     story.append(scope_tbl)
-    story.append(Spacer(1, 0.08 * inch))
+    story.append(Spacer(1, 0.05 * inch))
 
     # ---- Project Total — single price row ----
     price = float(
@@ -1118,7 +1118,7 @@ def _build_construction_2page(
         "We are committed to delivering exceptional craftsmanship, transparency, and lasting value on every project we undertake.",
         appreciation_style,
     ))
-    story.append(Spacer(1, 0.08 * inch))
+    story.append(Spacer(1, 0.05 * inch))
 
     # ---- Signer block ----
     # Construction Scope is always signed by Darren Oliver, CSI, IIBEC
@@ -1127,7 +1127,7 @@ def _build_construction_2page(
     sc = "CSI, IIBEC"
     signer_line = f"<b>{sn}, {sc}</b><br/>SealTech Building Solutions"
     story.append(Paragraph(signer_line, body_compact))
-    story.append(Spacer(1, 0.06 * inch))
+    story.append(Spacer(1, 0.04 * inch))
 
     # ---- Acceptance block ----
     story.append(Paragraph("Acceptance Of Scope", h2_compact))
@@ -1137,7 +1137,7 @@ def _build_construction_2page(
         "&quot;Owner&quot; refers to the legal owner of the property or their duly authorized representative.",
         body_compact,
     ))
-    story.append(Spacer(1, 0.08 * inch))
+    story.append(Spacer(1, 0.05 * inch))
 
     accept_rows = [
         ["By:", "________________________________", "Title:", "________________________________"],
