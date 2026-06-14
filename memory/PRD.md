@@ -282,6 +282,16 @@
 - ✅ Books page now has **8 tabs**: COA · Activity · P&L · BS · Late Fees · Period Close · Inter-Co · Bank Rec.
 - ✅ Tested: 20/20 new pytest + full regression pass (`/app/test_reports/iteration_8.json`)
 
+## Construction & Non-Roofing Projects Support (2026-02) ✅
+- ✅ Dropdown labels updated: "Current Roof Type" → "Current Roof Type / Or Construction Project"; "Proposed Roof Type" → "Proposed Roof Type / Other Construction Project"
+- ✅ New options: `Other Construction Work` (current side), `Construction Project` + `Other` (proposed side); Project Type already had `Other`
+- ✅ New `custom_scope` free-form text field on Deal model
+- ✅ New `CUSTOM_SCOPE_TEMPLATE` in `spec_sheet.py` with `dynamic_scope=True` flag; `_resolve_template` short-circuits to it for Construction Project / Other / Other Construction Work (beating the new-construction lookup)
+- ✅ PDF builder splits custom_scope text by paragraph break — first paragraph → "Scope of Work" bullets, rest → "Project Requirements"; still produces exactly **3 pages** (cover · scope · terms)
+- ✅ Page-1 "PRODUCT TYPE" label renders "Construction Project — Custom Scope" instead of the nonsensical auto-generated "Construction Project Roof System Over..."
+- ✅ Frontend: Deals form shows the Custom Scope textarea only when proposed=Construction Project/Other OR current=Other Construction Work; DealDetail page renders the saved scope in a "Custom Scope (on proposal PDF)" panel
+- ✅ Tested: 9/9 pytest + 12/12 frontend checks (`/app/test_reports/iteration_10.json`, `/app/backend/tests/test_construction_scope.py`)
+
 ## Books Module — Phase 7 (Locked-Period UI Warning) (2026-02) ✅
 - ✅ New `gl.check_period_lock(entity_id, posting_date)` helper
 - ✅ Backend `_invoice_gl_warnings` and `_bill_gl_warnings` populate a `gl_warnings: [{type, side, kind, entity_id, posting_date, lock_through, message}]` list on Invoice + VendorBill responses when the GL post is deferred (issuer-side, payment-side, AND inter-co mirror-side coverage). CRM persistence is unaffected.
