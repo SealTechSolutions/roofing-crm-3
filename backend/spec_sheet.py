@@ -1029,18 +1029,31 @@ def _build_construction_2page(
     # ---- Scope table — 3 buckets in one outlined block ----
     scope_subtitle = (data.get("construction_scope_subtitle") or "").strip()
 
-    scope_cells = []
-    # Header row
-    scope_cells.append([Paragraph("<b>Construction Project Custom Scope</b>", h2_compact)])
-    # "Scope of Work" header (left-aligned by h3_compact style)
-    scope_cells.append([Paragraph("<b>Scope of Work</b>", h3_compact)])
-    # Centered subtitle on its own row (e.g., "Landscape Scope") in blue
+    # The header band ("Scope of Work" + optional subtitle) is rendered as its OWN
+    # 3-column table so we can left-align "Scope of Work" and center the subtitle
+    # on the page width. The buckets below remain a separate full-width table.
     if scope_subtitle:
         subtitle_style = ParagraphStyle(
             "subtitle_blue", parent=s["bold"], fontSize=10, leading=12,
             textColor=BLUE, alignment=1,  # 1 = TA_CENTER
         )
-        scope_cells.append([Paragraph(scope_subtitle, subtitle_style)])
+        sow_row = Table(
+            [[
+                Paragraph("<b>Scope of Work</b>", h3_compact),
+                Paragraph(scope_subtitle, subtitle_style),
+                "",
+            ]],
+            colWidths=[2.5 * inch, 2.5 * inch, 2.5 * inch],
+        )
+    else:
+        sow_row = Table(
+            [[Paragraph("<b>Scope of Work</b>", h3_compact)]],
+            colWidths=[7.5 * inch],
+        )
+
+    scope_cells = []
+    scope_cells.append([Paragraph("<b>Construction Project Custom Scope</b>", h2_compact)])
+    scope_cells.append([sow_row])
 
     def _bullets_para(items: list[str]) -> Paragraph:
         if not items:

@@ -386,21 +386,18 @@ export default function Deals() {
 
                 {/* ===== Scope of Work — Project Requirements + Other Requirements together ===== */}
                 <div className="border-2 border-blue-200 rounded-sm p-4 bg-blue-50/30 space-y-4">
-                  <div className="-mt-1">
-                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-800 pb-2">
+                  {/* Header band: "Scope of Work" on the left, subtitle input centered on the same row. */}
+                  <div className="grid grid-cols-3 items-center gap-3 -mt-1">
+                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-800">
                       Scope of Work
                     </div>
-                    <div>
-                      <label className="block text-[9px] font-bold uppercase tracking-[0.12em] text-blue-700 mb-1 text-center">
-                        Scope Subtitle (prints centered under "Scope of Work" in blue)
-                      </label>
-                      <Input
-                        data-testid="deal-construction-scope-subtitle"
-                        value={form.construction_scope_subtitle || ""}
-                        onChange={(v) => setForm({ ...form, construction_scope_subtitle: v })}
-                        placeholder="e.g., Landscape Scope, Concrete Scope"
-                      />
-                    </div>
+                    <Input
+                      data-testid="deal-construction-scope-subtitle"
+                      value={form.construction_scope_subtitle || ""}
+                      onChange={(v) => setForm({ ...form, construction_scope_subtitle: v })}
+                      placeholder="Scope subtitle — e.g., Landscape Scope"
+                    />
+                    <div></div>
                   </div>
 
                   <Field label="Project Requirements">
