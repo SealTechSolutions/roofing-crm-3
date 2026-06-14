@@ -45,6 +45,7 @@ SAMPLE_DATA = {
     "opt_20": 31787,
     "opt_15": 0,
     "opt_10": 0,
+    "construction_scope_subtitle": "Landscape Scope",
     "construction_project_requirements": (
         "Site preparation — clear necessary material, debris, excavate, and layout entire 330' long project section\n"
         "Structural fill placement and grading - Supply Clean Class 1 Structural Fill for stable compaction\n"
@@ -168,6 +169,31 @@ def test_explicit_exclusions_override_defaults():
     assert "concrete cutting" in p1
     # Default boilerplate must NOT appear when caller provides their own
     assert "Permit fees" not in p1
+
+
+def test_scope_subtitle_renders_in_blue():
+    """The optional scope subtitle ('Landscape Scope', 'Concrete Scope', etc.)
+    must appear on Page 1 next to the 'Scope of Work' header. When blank, no
+    placeholder leaks onto the PDF."""
+    data = {**SAMPLE_DATA, "construction_scope_subtitle": "Landscape Scope"}
+    pdf = _render(data)
+    p1 = _extract_page(pdf, 0)
+    assert "Landscape Scope" in p1
+    # Lives on the same band as "Scope of Work" — i.e. close to it positionally
+    sow_idx = p1.find("Scope of Work")
+    ls_idx = p1.find("Landscape Scope")
+    assert sow_idx != -1 and ls_idx != -1
+    # Both should appear before the first bucket header
+    pr_idx = p1.find("Project Requirements")
+    assert sow_idx < pr_idx and ls_idx < pr_idx
+
+
+def test_scope_subtitle_omitted_when_blank():
+    data = {**SAMPLE_DATA, "construction_scope_subtitle": ""}
+    pdf = _render(data)
+    p1 = _extract_page(pdf, 0)
+    assert "Landscape Scope" not in p1
+    assert "Concrete Scope" not in p1
 
 
 def test_writes_sample_pdf():

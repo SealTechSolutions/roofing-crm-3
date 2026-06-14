@@ -80,6 +80,7 @@ const empty = {
   construction_project_requirements: "",
   construction_other_requirements: "",
   construction_exclusions: DEFAULT_CONSTRUCTION_EXCLUSIONS,
+  construction_scope_subtitle: "",
   project_type_override: "",
   property_sqft: 0,
   perimeter_lnft: 0,
@@ -385,8 +386,21 @@ export default function Deals() {
 
                 {/* ===== Scope of Work — Project Requirements + Other Requirements together ===== */}
                 <div className="border-2 border-blue-200 rounded-sm p-4 bg-blue-50/30 space-y-4">
-                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-800 -mt-1">
-                    Scope of Work
+                  <div className="flex items-end justify-between gap-4 -mt-1">
+                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-800 pb-1.5">
+                      Scope of Work
+                    </div>
+                    <div className="flex-1 max-w-xs">
+                      <label className="block text-[9px] font-bold uppercase tracking-[0.12em] text-blue-700 mb-1 text-right">
+                        Scope Subtitle (prints right of "Scope of Work" in blue)
+                      </label>
+                      <Input
+                        data-testid="deal-construction-scope-subtitle"
+                        value={form.construction_scope_subtitle || ""}
+                        onChange={(v) => setForm({ ...form, construction_scope_subtitle: v })}
+                        placeholder="e.g., Landscape Scope, Concrete Scope"
+                      />
+                    </div>
                   </div>
 
                   <Field label="Project Requirements">

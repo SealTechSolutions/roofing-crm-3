@@ -421,6 +421,7 @@ class DealIn(BaseModel):
     construction_project_requirements: str = ""  # one bullet per line
     construction_other_requirements: str = ""    # materials / equipment / metal — one bullet per line
     construction_exclusions: str = ""            # one bullet per line
+    construction_scope_subtitle: str = ""        # blue label printed next to "Scope of Work" on PDF (e.g. "Landscape Scope")
     project_type_override: str = ""              # overrides PROJECT TYPE label on the construction PDF
     property_sqft: float = 0.0
     perimeter_lnft: float = 0.0
@@ -3639,6 +3640,7 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
         "construction_project_requirements": (deal.get("construction_project_requirements") or "").strip(),
         "construction_other_requirements": (deal.get("construction_other_requirements") or "").strip(),
         "construction_exclusions": (deal.get("construction_exclusions") or "").strip(),
+        "construction_scope_subtitle": (deal.get("construction_scope_subtitle") or "").strip(),
         "project_type_override": (deal.get("project_type_override") or "").strip(),
     }
 
