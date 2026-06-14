@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { ChevronRight, Printer, AlertTriangle, Play } from "lucide-react";
+import { ChevronRight, Printer, AlertTriangle, Play, Download } from "lucide-react";
 
 const fmtMoney = (n) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n || 0);
@@ -253,6 +253,184 @@ export function LateFeeAccrualTool({ entities }) {
     </div>
   );
 }
+
+// =========================================================
+// Aging Reports (A/R + A/P)
+// =========================================================
+export function AgingReport({ entityId, entityName, kind = "ar" }) {
+  // kind: "ar" → Accounts Receivable | "ap" → Accounts Payable
+  const isAr = kind === "ar";
+  const [asOf, setAsOf] = useState(todayISO());
+  const [data, setData] = useState(null);
+  const [expanded, setExpanded] = useState({});
+
+  useEffect(() => {
+    if (!entityId) return;
+    const path = isAr ? "ar-aging" : "ap-aging";
+    api.get(`/books/reports/${path}?entity_id=${entityId}&as_of=${asOf}`)
+      .then((r) => setData(r.data))
+      .catch((e) => toast.error(formatApiError(e?.response?.data?.detail) || e.message));
+  }, [entityId, asOf, isAr]);
+
+  if (!data) return <div className="px-8 py-6 text-sm text-zinc-500">Loading...</div>;
+
+  const t = data.totals || {};
+  const groups = data.groups || [];
+  const buckets = [
+    { key: "current", label: "Current / Not Yet Due", tone: "bg-emerald-100 text-emerald-800" },
+    { key: "b1_30", label: "1–30 Days", tone: "bg-blue-100 text-blue-800" },
+    { key: "b31_60", label: "31–60 Days", tone: "bg-amber-100 text-amber-800" },
+    { key: "b61_90", label: "61–90 Days", tone: "bg-orange-100 text-orange-800" },
+    { key: "b90_plus", label: "90+ Days", tone: "bg-rose-100 text-rose-800" },
+  ];
+
+  const exportCsv = () => {
+    const rows = [];
+    rows.push([isAr ? "Customer" : "Vendor", "Doc #", "Date", "Due Date", "Days Past Due", "Bucket", "Balance", "Total", "Paid", "Status", "Project"]);
+    for (const g of groups) {
+      for (const r of g.rows) {
+        rows.push([g.label, r.number, r.date, r.due_date, r.days_past_due, r.bucket, r.balance, r.total, r.amount_paid, r.status, r.project_title]);
+      }
+    }
+    const csv = rows.map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${isAr ? "AR" : "AP"}_Aging_${entityName || "entity"}_${asOf}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const toggle = (label) => setExpanded((e) => ({ ...e, [label]: !e[label] }));
+
+  return (
+    <div className="px-8 py-6" data-testid={`${kind}-aging-report`}>
+      <ReportToolbar
+        title={isAr ? "A/R Aging" : "A/P Aging"}
+        subtitle={`${entityName || "—"} · As of ${data.as_of} · ${t.count || 0} open ${isAr ? "invoice" : "bill"}${(t.count || 0) === 1 ? "" : "s"}`}
+      >
+        <div className="flex items-center gap-2">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">As Of</label>
+          <input
+            type="date"
+            value={asOf}
+            onChange={(e) => setAsOf(e.target.value)}
+            className="h-8 px-2 border border-zinc-300 rounded-sm text-sm font-mono"
+            data-testid={`${kind}-aging-asof`}
+          />
+          <button
+            onClick={exportCsv}
+            data-testid={`${kind}-aging-export`}
+            disabled={(t.count || 0) === 0}
+            className="inline-flex items-center gap-1 h-8 px-3 border border-zinc-300 rounded-sm text-[10px] font-bold uppercase tracking-wider hover:bg-zinc-50 disabled:opacity-40"
+          >
+            <Download className="w-3 h-3" /> CSV
+          </button>
+          <button onClick={() => window.print()} className="inline-flex items-center gap-1 h-8 px-3 border border-zinc-300 rounded-sm text-[10px] font-bold uppercase tracking-wider hover:bg-zinc-50">
+            <Printer className="w-3 h-3" /> Print
+          </button>
+        </div>
+      </ReportToolbar>
+
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
+        {buckets.map((b) => (
+          <div key={b.key} className="border border-zinc-200 rounded-sm p-3 bg-white" data-testid={`${kind}-bucket-${b.key}`}>
+            <div className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest rounded-sm ${b.tone}`}>{b.label}</div>
+            <div className="text-lg font-black mt-1 font-mono text-zinc-900">{fmtMoney(t[b.key])}</div>
+          </div>
+        ))}
+        <div className="border-2 border-blue-700 rounded-sm p-3 bg-blue-50/40" data-testid={`${kind}-bucket-total`}>
+          <div className="inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest rounded-sm bg-blue-700 text-white">Total Open</div>
+          <div className="text-lg font-black mt-1 font-mono text-blue-900">{fmtMoney(t.balance)}</div>
+        </div>
+      </div>
+
+      {groups.length === 0 ? (
+        <div className="bg-white border border-zinc-200 rounded-sm p-12 text-center text-sm text-zinc-500">
+          No open {isAr ? "invoices" : "vendor bills"} for <strong>{entityName || "this entity"}</strong> as of {data.as_of}.
+        </div>
+      ) : (
+        <div className="bg-white border border-zinc-200 rounded-sm overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 border-b border-zinc-200 text-[10px] uppercase tracking-widest font-bold text-zinc-500">
+              <tr>
+                <th className="text-left px-4 py-2">{isAr ? "Customer" : "Vendor"}</th>
+                <th className="text-right px-3 py-2 w-24">Current</th>
+                <th className="text-right px-3 py-2 w-24">1–30</th>
+                <th className="text-right px-3 py-2 w-24">31–60</th>
+                <th className="text-right px-3 py-2 w-24">61–90</th>
+                <th className="text-right px-3 py-2 w-24">90+</th>
+                <th className="text-right px-3 py-2 w-28">Open Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((g) => (
+                <React.Fragment key={g.label}>
+                  <tr
+                    className="border-b border-zinc-200 cursor-pointer hover:bg-zinc-50"
+                    onClick={() => toggle(g.label)}
+                    data-testid={`${kind}-group-${g.label}`}
+                  >
+                    <td className="px-4 py-2.5 font-bold text-zinc-900">
+                      <span className="inline-block mr-1.5 text-zinc-400">{expanded[g.label] ? "▼" : "▶"}</span>
+                      {g.label}
+                      <span className="text-[10px] text-zinc-500 font-normal ml-2">({g.count} {g.count === 1 ? "doc" : "docs"})</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono text-zinc-700">{g.current > 0 ? fmtMoney(g.current) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-blue-700">{g.b1_30 > 0 ? fmtMoney(g.b1_30) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-amber-700">{g.b31_60 > 0 ? fmtMoney(g.b31_60) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-orange-700">{g.b61_90 > 0 ? fmtMoney(g.b61_90) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-rose-700 font-bold">{g.b90_plus > 0 ? fmtMoney(g.b90_plus) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-black text-zinc-900">{fmtMoney(g.balance)}</td>
+                  </tr>
+                  {expanded[g.label] && g.rows.map((r) => (
+                    <tr key={r.id} className="border-b border-zinc-100 bg-zinc-50/40">
+                      <td className="px-4 py-2 pl-12 text-xs text-zinc-700">
+                        <Link
+                          to={`${isAr ? "/invoices" : "/payables"}?focus=${encodeURIComponent(r.id)}`}
+                          className="font-mono text-blue-700 hover:text-blue-900"
+                        >
+                          {r.number || "(no number)"}
+                        </Link>
+                        <span className="text-zinc-400 mx-1.5">·</span>
+                        <span className="text-zinc-600">{r.project_title || "—"}</span>
+                        <span className="text-zinc-400 mx-1.5">·</span>
+                        <span className="text-zinc-500">Due {r.due_date || "—"}</span>
+                        <span className="text-zinc-400 mx-1.5">·</span>
+                        <span className={r.days_past_due > 60 ? "text-rose-700 font-bold" : "text-zinc-500"}>
+                          {r.days_past_due < 0 ? `in ${-r.days_past_due}d` : `${r.days_past_due}d past`}
+                        </span>
+                      </td>
+                      <td colSpan={5} className="px-3 py-2 text-right text-[10px] uppercase tracking-wider text-zinc-400">
+                        Total {fmtMoney(r.total)} · Paid {fmtMoney(r.amount_paid)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-sm text-zinc-900 font-bold">{fmtMoneyExact(r.balance)}</td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+              <tr className="bg-blue-50 border-t-2 border-blue-700">
+                <td className="px-4 py-3 text-[11px] font-black uppercase tracking-widest text-blue-900">Total</td>
+                <td className="px-3 py-3 text-right font-mono font-black text-zinc-900">{fmtMoney(t.current)}</td>
+                <td className="px-3 py-3 text-right font-mono font-black text-blue-700">{fmtMoney(t.b1_30)}</td>
+                <td className="px-3 py-3 text-right font-mono font-black text-amber-700">{fmtMoney(t.b31_60)}</td>
+                <td className="px-3 py-3 text-right font-mono font-black text-orange-700">{fmtMoney(t.b61_90)}</td>
+                <td className="px-3 py-3 text-right font-mono font-black text-rose-700">{fmtMoney(t.b90_plus)}</td>
+                <td className="px-3 py-3 text-right font-mono font-black text-blue-900 text-base">{fmtMoney(t.balance)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="text-[10px] text-zinc-500 mt-3">
+        Excludes draft, voided, and inter-company {isAr ? "invoices" : "vendor bills"}. Click a row to drill down.
+      </div>
+    </div>
+  );
+}
+
 
 // =========================================================
 // Building blocks

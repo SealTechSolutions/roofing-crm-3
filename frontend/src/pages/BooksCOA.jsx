@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2, FileCheck, Network, Banknote, PencilLine, RotateCcw } from "lucide-react";
+import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2, FileCheck, Network, Banknote, PencilLine, RotateCcw, Clock } from "lucide-react";
 import { maskPhoneInput, maskTaxIdInput } from "@/lib/format";
-import { ProfitLossReport, BalanceSheetReport, LateFeeAccrualTool } from "@/pages/BooksReports";
+import { ProfitLossReport, BalanceSheetReport, LateFeeAccrualTool, AgingReport } from "@/pages/BooksReports";
 import { PeriodCloseTool } from "@/pages/BooksPeriodClose";
 import { InterCompanyReport, BankReconciliationTool } from "@/pages/BooksInterCoBank";
 
@@ -52,8 +52,8 @@ export default function BooksCOA() {
   const [showEntityEdit, setShowEntityEdit] = useState(false);
   const [showEntityNew, setShowEntityNew] = useState(false);
 
-  // Tabs: coa | activity | pl | bs | latefees | close | interco | bankrec
-  const VALID_VIEWS = ["coa", "activity", "pl", "bs", "latefees", "close", "interco", "bankrec"];
+  // Tabs: coa | activity | pl | bs | ar-aging | ap-aging | latefees | close | interco | bankrec
+  const VALID_VIEWS = ["coa", "activity", "pl", "bs", "ar-aging", "ap-aging", "latefees", "close", "interco", "bankrec"];
   const [view, setView] = useState(() => {
     const fromHash = (typeof window !== "undefined" && window.location.hash || "").replace("#", "");
     return VALID_VIEWS.includes(fromHash) ? fromHash : "coa";
@@ -269,6 +269,8 @@ export default function BooksCOA() {
           <TabButton active={view === "activity"} onClick={() => setView("activity")} icon={Activity} label="Journal Activity" testId="tab-activity" />
           <TabButton active={view === "pl"} onClick={() => setView("pl")} icon={TrendingUp} label="P&L" testId="tab-pl" />
           <TabButton active={view === "bs"} onClick={() => setView("bs")} icon={Scale} label="Balance Sheet" testId="tab-bs" />
+          <TabButton active={view === "ar-aging"} onClick={() => setView("ar-aging")} icon={Clock} label="A/R Aging" testId="tab-ar-aging" />
+          <TabButton active={view === "ap-aging"} onClick={() => setView("ap-aging")} icon={Clock} label="A/P Aging" testId="tab-ap-aging" />
           <TabButton active={view === "latefees"} onClick={() => setView("latefees")} icon={Wand2} label="Late Fees" testId="tab-latefees" />
           <TabButton active={view === "close"} onClick={() => setView("close")} icon={FileCheck} label="Period Close" testId="tab-close" />
           <TabButton active={view === "interco"} onClick={() => setView("interco")} icon={Network} label="Inter-Co" testId="tab-interco" />
@@ -475,6 +477,16 @@ export default function BooksCOA() {
       {/* Body — Balance Sheet */}
       {view === "bs" && (
         <BalanceSheetReport entityId={entityId} entityName={currentEntity?.name} />
+      )}
+
+      {/* Body — A/R Aging */}
+      {view === "ar-aging" && (
+        <AgingReport entityId={entityId} entityName={currentEntity?.name} kind="ar" />
+      )}
+
+      {/* Body — A/P Aging */}
+      {view === "ap-aging" && (
+        <AgingReport entityId={entityId} entityName={currentEntity?.name} kind="ap" />
       )}
 
       {/* Body — Late-Fee Accrual */}

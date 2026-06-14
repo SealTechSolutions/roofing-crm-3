@@ -537,6 +537,26 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
         from gl import report_balance_sheet
         return await report_balance_sheet(db, entity_id, as_of)
 
+    @router.get("/reports/ar-aging")
+    async def report_ar_aging_endpoint(
+        entity_id: str,
+        as_of: Optional[str] = None,
+        current=Depends(get_current_user),
+    ):
+        """A/R Aging — open invoices bucketed by days past due, grouped by customer."""
+        from gl import report_ar_aging
+        return await report_ar_aging(db, entity_id, as_of)
+
+    @router.get("/reports/ap-aging")
+    async def report_ap_aging_endpoint(
+        entity_id: str,
+        as_of: Optional[str] = None,
+        current=Depends(get_current_user),
+    ):
+        """A/P Aging — open vendor bills bucketed by days past due, grouped by vendor."""
+        from gl import report_ap_aging
+        return await report_ap_aging(db, entity_id, as_of)
+
     # ---------- Late-Fee Accrual Batch ----------
     @router.post("/late-fees/accrue")
     async def late_fees_accrue(

@@ -813,3 +813,120 @@ async def inter_company_report(db) -> dict:
         "total_out_of_balance": round(total_out, 2),
         "all_balanced": total_out < 0.01,
     }
+
+
+# ============================================================
+# Aging Reports — A/R and A/P
+# ============================================================
+async def _build_aging(
+    db,
+    *,
+    collection: str,                        # "invoices" or "vendor_bills"
+    entity_id: str,
+    as_of: Optional[str],
+    group_label_key: str,                   # field on the doc to group by (customer or vendor name)
+    fallback_key: Optional[str] = None,     # secondary field if group_label_key missing
+) -> dict:
+    """Generic aging-report builder. Buckets: current (not yet due), 1-30, 31-60, 61-90, 90+."""
+    as_of_date = (
+        datetime.strptime((as_of or "")[:10], "%Y-%m-%d").date()
+        if as_of else datetime.now(timezone.utc).date()
+    )
+
+    q = {
+        "entity_id": entity_id,
+        "is_deleted": {"$ne": True},
+        "status": {"$nin": ["Draft", "Void"]},
+        # Exclude inter-company — those live on their own books and confuse normal AR/AP
+        "$or": [{"counter_entity_id": None}, {"counter_entity_id": ""}, {"counter_entity_id": {"$exists": False}}],
+    }
+    docs = await db[collection].find(q, {"_id": 0}).to_list(50000)
+
+    buckets_blank = {"current": 0.0, "b1_30": 0.0, "b31_60": 0.0, "b61_90": 0.0, "b90_plus": 0.0}
+    groups: dict[str, dict] = {}
+    totals = {**buckets_blank, "balance": 0.0, "count": 0}
+
+    for d in docs:
+        balance = float(d.get("balance_due") or 0.0)
+        if balance <= 0.01:
+            # Fall back to total - paid in case balance_due not maintained
+            try:
+                balance = round(float(d.get("total") or 0) - float(d.get("amount_paid") or 0), 2)
+            except (TypeError, ValueError):
+                balance = 0.0
+            if balance <= 0.01:
+                continue
+
+        due_raw = (d.get("due_date") or d.get("invoice_date") or d.get("bill_date") or "")[:10]
+        try:
+            due = datetime.strptime(due_raw, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            # Treat undated as "due today" so it still surfaces in the report
+            due = as_of_date
+        days_past = (as_of_date - due).days
+
+        if days_past < 0:
+            bucket = "current"
+        elif days_past <= 30:
+            bucket = "b1_30"
+        elif days_past <= 60:
+            bucket = "b31_60"
+        elif days_past <= 90:
+            bucket = "b61_90"
+        else:
+            bucket = "b90_plus"
+
+        label = (d.get(group_label_key) or "").strip()
+        if not label and fallback_key:
+            label = (d.get(fallback_key) or "").strip()
+        if not label:
+            label = "(Unspecified)"
+
+        g = groups.setdefault(label, {"label": label, "balance": 0.0, "count": 0, **buckets_blank, "rows": []})
+        g[bucket] = round(g[bucket] + balance, 2)
+        g["balance"] = round(g["balance"] + balance, 2)
+        g["count"] += 1
+        g["rows"].append({
+            "id": d.get("id"),
+            "number": d.get("invoice_number") or d.get("bill_number") or "",
+            "date": (d.get("invoice_date") or d.get("bill_date") or "")[:10],
+            "due_date": due_raw,
+            "days_past_due": days_past,
+            "bucket": bucket,
+            "balance": balance,
+            "total": float(d.get("total") or 0),
+            "amount_paid": float(d.get("amount_paid") or 0),
+            "status": d.get("status") or "",
+            "project_title": d.get("project_title") or "",
+        })
+        totals[bucket] = round(totals[bucket] + balance, 2)
+        totals["balance"] = round(totals["balance"] + balance, 2)
+        totals["count"] += 1
+
+    # Sort: largest balance first; sort each group's rows by oldest due-date first
+    rows = sorted(groups.values(), key=lambda g: -g["balance"])
+    for g in rows:
+        g["rows"].sort(key=lambda r: r.get("due_date") or "")
+
+    return {
+        "as_of": as_of_date.isoformat(),
+        "entity_id": entity_id,
+        "groups": rows,
+        "totals": totals,
+    }
+
+
+async def report_ar_aging(db, entity_id: str, as_of: Optional[str] = None) -> dict:
+    """Accounts Receivable aging — open invoices bucketed by days-past-due, grouped by customer."""
+    return await _build_aging(
+        db, collection="invoices", entity_id=entity_id, as_of=as_of,
+        group_label_key="bill_to_company", fallback_key="bill_to_name",
+    )
+
+
+async def report_ap_aging(db, entity_id: str, as_of: Optional[str] = None) -> dict:
+    """Accounts Payable aging — open vendor bills bucketed by days-past-due, grouped by vendor."""
+    return await _build_aging(
+        db, collection="vendor_bills", entity_id=entity_id, as_of=as_of,
+        group_label_key="vendor_name", fallback_key="vendor",
+    )
