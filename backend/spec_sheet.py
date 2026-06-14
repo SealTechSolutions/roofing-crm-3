@@ -1030,21 +1030,17 @@ def _build_construction_2page(
     scope_subtitle = (data.get("construction_scope_subtitle") or "").strip()
 
     scope_cells = []
-    # Header row: Title spans both columns
-    scope_cells.append([Paragraph("<b>Construction Project Custom Scope</b>", h2_compact), ""])
-    # "Scope of Work" header on the LEFT, optional scope subtitle (e.g. "Landscape Scope")
-    # on the RIGHT in blue, sharing a single horizontal band.
+    # Header row
+    scope_cells.append([Paragraph("<b>Construction Project Custom Scope</b>", h2_compact)])
+    # "Scope of Work" header (left-aligned by h3_compact style)
+    scope_cells.append([Paragraph("<b>Scope of Work</b>", h3_compact)])
+    # Centered subtitle on its own row (e.g., "Landscape Scope") in blue
     if scope_subtitle:
         subtitle_style = ParagraphStyle(
             "subtitle_blue", parent=s["bold"], fontSize=10, leading=12,
-            textColor=BLUE, alignment=2,  # 2 = TA_RIGHT
+            textColor=BLUE, alignment=1,  # 1 = TA_CENTER
         )
-        scope_cells.append([
-            Paragraph("<b>Scope of Work</b>", h3_compact),
-            Paragraph(scope_subtitle, subtitle_style),
-        ])
-    else:
-        scope_cells.append([Paragraph("<b>Scope of Work</b>", h3_compact), ""])
+        scope_cells.append([Paragraph(scope_subtitle, subtitle_style)])
 
     def _bullets_para(items: list[str]) -> Paragraph:
         if not items:
@@ -1052,33 +1048,25 @@ def _build_construction_2page(
         return Paragraph("<br/>".join([f"•&nbsp;&nbsp;{i}" for i in items]), body_compact)
 
     if project_reqs:
-        scope_cells.append([Paragraph("<b>Project Requirements</b>", h3_compact), ""])
-        scope_cells.append([_bullets_para(project_reqs), ""])
+        scope_cells.append([Paragraph("<b>Project Requirements</b>", h3_compact)])
+        scope_cells.append([_bullets_para(project_reqs)])
     if other_reqs:
-        scope_cells.append([Paragraph("<b>Other Requirements</b>", h3_compact), ""])
-        scope_cells.append([_bullets_para(other_reqs), ""])
+        scope_cells.append([Paragraph("<b>Other Requirements</b>", h3_compact)])
+        scope_cells.append([_bullets_para(other_reqs)])
     if exclusions:
-        scope_cells.append([Paragraph("<b>Exclusions</b>", h3_compact), ""])
-        scope_cells.append([_bullets_para(exclusions), ""])
+        scope_cells.append([Paragraph("<b>Exclusions</b>", h3_compact)])
+        scope_cells.append([_bullets_para(exclusions)])
 
-    # Two-column layout: bullets occupy the full width via SPAN, header row keeps the subtitle on the right.
-    scope_tbl = Table(scope_cells, colWidths=[5.0 * inch, 2.5 * inch])
-    style_cmds = [
+    scope_tbl = Table(scope_cells, colWidths=[7.5 * inch])
+    scope_tbl.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
         ("RIGHTPADDING", (0, 0), (-1, -1), 10),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
-        # Span the title row across both cols
-        ("SPAN", (0, 0), (-1, 0)),
-        # Span every row EXCEPT the "Scope of Work / subtitle" row (row index 1)
-        # so bullets get the full 7.5" width.
+        ("BACKGROUND", (0, 0), (0, 0), LIGHT),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]
-    for row_idx in range(2, len(scope_cells)):
-        style_cmds.append(("SPAN", (0, row_idx), (-1, row_idx)))
-    scope_tbl.setStyle(TableStyle(style_cmds))
+    ]))
     story.append(scope_tbl)
     story.append(Spacer(1, 0.08 * inch))
 

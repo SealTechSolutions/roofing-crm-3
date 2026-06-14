@@ -386,13 +386,13 @@ export default function Deals() {
 
                 {/* ===== Scope of Work — Project Requirements + Other Requirements together ===== */}
                 <div className="border-2 border-blue-200 rounded-sm p-4 bg-blue-50/30 space-y-4">
-                  <div className="flex items-end justify-between gap-4 -mt-1">
-                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-800 pb-1.5">
+                  <div className="-mt-1">
+                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-800 pb-2">
                       Scope of Work
                     </div>
-                    <div className="flex-1 max-w-xs">
-                      <label className="block text-[9px] font-bold uppercase tracking-[0.12em] text-blue-700 mb-1 text-right">
-                        Scope Subtitle (prints right of "Scope of Work" in blue)
+                    <div>
+                      <label className="block text-[9px] font-bold uppercase tracking-[0.12em] text-blue-700 mb-1 text-center">
+                        Scope Subtitle (prints centered under "Scope of Work" in blue)
                       </label>
                       <Input
                         data-testid="deal-construction-scope-subtitle"
