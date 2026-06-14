@@ -599,7 +599,7 @@ CUSTOM_SCOPE_TEMPLATE = {
     "scope_1_title": "Scope of Work",
     "scope_1": ["Free-form scope to be supplied per project (see deal record)."],
     "scope_2_title": "Project Requirements",
-    "scope_2": ["Standard SealTech workmanship guarantee. All materials per manufacturer specification."],
+    "scope_2": ["Materials, labor, and workmanship per industry standard."],
 }
 
 
@@ -750,9 +750,9 @@ def _header_block(s, doc, template_title: str, template: dict | None = None):
     elems.append(Spacer(1, 0.35 * inch))
 
     product_line = doc.get("product_type", "—")
-    # Templates with a tier_table (e.g. FARM) already enumerate warranty tiers in-body,
-    # so skip the "(Standard Warranty Included)" annotation here.
-    if template and template.get("tier_table"):
+    # Skip the "(Standard Warranty Included)" annotation when the template is FARM (tier_table
+    # enumerates tiers in-body) OR Construction Project / Other (no warranty applies).
+    if template and (template.get("tier_table") or template.get("dynamic_scope")):
         product_cell = Paragraph(product_line, s["body"])
     else:
         product_cell = Paragraph(
@@ -790,13 +790,41 @@ def _header_block(s, doc, template_title: str, template: dict | None = None):
 def _pricing_table(s, doc, template: dict | None = None):
     elems = []
     has_tier_table = bool(template and template.get("tier_table"))
-    # 25-yr tier is only available on FARM (tier_table) templates; ignored elsewhere.
-    has_25 = has_tier_table and (float(doc.get("opt_25") or 0) > 0 or float(doc.get("w25") or 0) > 0)
+    is_dynamic = bool(template and template.get("dynamic_scope"))
     table_font = 9
     cell_pad = 7
     total_font = 10
     total_pad = 8
     gap_after = 0.12 * inch
+    # Construction Project / Other — single price, no warranty language
+    if is_dynamic:
+        elems.append(Paragraph(
+            f'{doc.get("product_type", "Project Investment")}',
+            s["h2"],
+        ))
+        price = float(doc.get("opt_20") or doc.get("opt_15") or doc.get("opt_10") or 0)
+        single = [
+            ["Description", "Project Total"],
+            ["Construction Project — Custom Scope", _currency(price)],
+        ]
+        t = Table(single, colWidths=[4.5 * inch, 3.0 * inch])
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BLUE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME", (0, 1), (-1, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), total_font),
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
+            ("BACKGROUND", (0, 1), (-1, 1), LIGHT),
+            ("TOPPADDING", (0, 0), (-1, -1), total_pad),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), total_pad),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        elems.append(t)
+        elems.append(Spacer(1, gap_after))
+        return elems
     header_suffix = "" if has_tier_table else ' <font size="9"><i>(Standard Warranty Included)</i></font>'
     elems.append(Paragraph(
         f'{doc.get("product_type", "Roof System Investment")}{header_suffix}',
@@ -923,8 +951,7 @@ def build_spec_sheet(
                 scope2 = _to_bullets("\n".join(paragraphs[1:]))
             else:
                 scope1 = _to_bullets(raw)
-                scope2 = ["Materials, labor, and workmanship per industry standard.",
-                          "Standard SealTech workmanship guarantee applies."]
+                scope2 = ["Materials, labor, and workmanship per industry standard."]
             # Build a fresh template dict so we don't mutate the module constant
             template = {**template, "scope_1": scope1, "scope_2": scope2}
 
@@ -1044,8 +1071,9 @@ def build_spec_sheet(
         story.append(Spacer(1, 0.06 * inch))
 
     # Inclusions block — for tier_table templates (FARM) this is rendered on
-    # Page 1 instead, so skip it here to avoid duplication.
-    if not template.get("tier_table"):
+    # Page 1 instead, so skip it here. For Construction Project / Other we also skip —
+    # the free-form Custom Scope already enumerates exactly what's included.
+    if not template.get("tier_table") and not template.get("dynamic_scope"):
         story.append(Paragraph("Inclusions", s["h2"]))
         total_sqft = data.get("total_sqft", 0) or 0
         sq = int(round(total_sqft / 100))

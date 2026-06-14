@@ -418,6 +418,14 @@ export default function Deals() {
                 <Input data-testid="deal-product-desc" value={form.product_description} onChange={(v) => setForm({ ...form, product_description: v })} placeholder="e.g., Silicone Roof System w/Granules Over Single-Ply Investment" />
               </Field>
               {(() => {
+                const isConstruction = /^(construction project|other)$/i.test(form.proposed_roof_type || "") || /other construction work/i.test(form.current_roof_type || "");
+                if (isConstruction) {
+                  return (
+                    <div className="text-[11px] text-zinc-500 mt-3 italic" data-testid="construction-no-warranty">
+                      Construction Project — no manufacturer warranty tiers. Skip the warranty add-on rows.
+                    </div>
+                  );
+                }
                 const isFarm = /farm|fluid applied/i.test(form.proposed_roof_type || "");
                 return (
                   <>
@@ -440,24 +448,39 @@ export default function Deals() {
                         <Input data-testid="deal-color" value={form.warranty_color} onChange={(v) => setForm({ ...form, warranty_color: v })} placeholder="white" />
                       </Field>
                     </div>
+                    <div className="text-xs text-zinc-500 mt-2">
+                      <b>Standard rates</b> (per SQ, $-minimum):&nbsp;
+                      <span className="font-mono">10-Yr&nbsp;$9.00/$1,250</span> &middot;
+                      <span className="font-mono">15-Yr&nbsp;$12.00/$1,500</span> &middot;
+                      <span className="font-mono">20-Yr&nbsp;$15.00/$1,750</span>.&nbsp;
+                      <b>Hail Rider</b> <span className="font-mono">$3.50/SQ</span> + 25-Yr (<span className="font-mono">$17.50/$2,000</span>) are <b>FARM only</b>.&nbsp;
+                      Option B→20-yr · Option C→15-yr · Option D→10-yr (Option A→25-yr appears only when Proposed Roof Type is FARM).
+                    </div>
                   </>
                 );
               })()}
-              <div className="text-xs text-zinc-500 mt-2">
-                <b>Standard rates</b> (per SQ, $-minimum):&nbsp;
-                <span className="font-mono">10-Yr&nbsp;$9.00/$1,250</span> &middot;
-                <span className="font-mono">15-Yr&nbsp;$12.00/$1,500</span> &middot;
-                <span className="font-mono">20-Yr&nbsp;$15.00/$1,750</span>.&nbsp;
-                <b>Hail Rider</b> <span className="font-mono">$3.50/SQ</span> + 25-Yr (<span className="font-mono">$17.50/$2,000</span>) are <b>FARM only</b>.&nbsp;
-                Option B→20-yr · Option C→15-yr · Option D→10-yr (Option A→25-yr appears only when Proposed Roof Type is FARM).
-              </div>
             </div>
 
             <div className="pt-4 border-t border-zinc-200">
               <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">
-                {form.deal_type === "Assessment" ? "Assessment — 3 Roof System Options" : "Scope — Pricing Options"}
+                {(() => {
+                  const isConstruction = /^(construction project|other)$/i.test(form.proposed_roof_type || "") || /other construction work/i.test(form.current_roof_type || "");
+                  if (isConstruction) return "Project Pricing — Single Price";
+                  return form.deal_type === "Assessment" ? "Assessment — 3 Roof System Options" : "Scope — Pricing Options";
+                })()}
               </div>
               {(() => {
+                const isConstruction = /^(construction project|other)$/i.test(form.proposed_roof_type || "") || /other construction work/i.test(form.current_roof_type || "");
+                if (isConstruction) {
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Field label="Project Price ($)">
+                        <Input data-testid="deal-construction-price" type="number" min="0" step="0.01" value={form.proposal_option_1} onChange={(v) => setForm({ ...form, proposal_option_1: v, proposal_option_2: 0, proposal_option_3: 0, proposal_option_25yr: 0 })} placeholder="Single project total" />
+                      </Field>
+                      <div className="text-[11px] text-zinc-500 mt-7 italic">No 25/20/15/10-yr tiers on Construction Projects — proposal PDF will print one price.</div>
+                    </div>
+                  );
+                }
                 const isFarm = /farm|fluid applied/i.test(form.proposed_roof_type || "");
                 return (
                   <div className={`grid gap-4 ${isFarm ? "grid-cols-2 md:grid-cols-4" : "grid-cols-1 md:grid-cols-3"}`}>

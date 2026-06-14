@@ -292,6 +292,12 @@
 - ✅ Frontend: Deals form shows the Custom Scope textarea only when proposed=Construction Project/Other OR current=Other Construction Work; DealDetail page renders the saved scope in a "Custom Scope (on proposal PDF)" panel
 - ✅ Tested: 9/9 pytest + 12/12 frontend checks (`/app/test_reports/iteration_10.json`, `/app/backend/tests/test_construction_scope.py`)
 
+## Construction Projects — Single Price, No Warranty (2026-02) ✅
+- ✅ Form (Deals.jsx): when proposed = Construction Project / Other (or current = Other Construction Work), warranty add-on rows are replaced by a "no manufacturer warranty tiers" notice, and the pricing block collapses to **ONE field** `Project Price ($)` (writes to `proposal_option_1`; options 2/3/25yr forced to 0).
+- ✅ DealDetail.jsx: shows a single `Project Price` row instead of Option A/B/C/D.
+- ✅ PDF (spec_sheet.py): `_pricing_table` short-circuits when `template.dynamic_scope=True` and renders a single-row "Construction Project — Custom Scope · Project Total $XX,XXX" block. PRODUCT TYPE header drops the "(Standard Warranty Included)" tag. Page-2 roof-specific Inclusions block also suppressed.
+- ✅ Verified by pypdf: $26,000 shows · no 10/15/20-yr warranty text anywhere · no "roof system, including walls and flashings" · Custom scope still rendered · Exclusions + Terms preserved.
+
 ## Books Module — Phase 7 (Locked-Period UI Warning) (2026-02) ✅
 - ✅ New `gl.check_period_lock(entity_id, posting_date)` helper
 - ✅ Backend `_invoice_gl_warnings` and `_bill_gl_warnings` populate a `gl_warnings: [{type, side, kind, entity_id, posting_date, lock_through, message}]` list on Invoice + VendorBill responses when the GL post is deferred (issuer-side, payment-side, AND inter-co mirror-side coverage). CRM persistence is unaffected.
