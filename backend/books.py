@@ -120,6 +120,7 @@ class EntityIn(BaseModel):
     entity_type: str = ""  # LLC, C-Corp, S-Corp, Sole Prop
     is_parent: bool = False
     tax_id: str = ""
+    tax_id_kind: str = "EIN"  # "EIN" | "SSN"
     address: str = ""
     city: str = ""
     state: str = ""

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
 import { Wrench, Search, FileSpreadsheet, FileText, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { formatPhoneDisplay } from "@/lib/format";
 
 const STATUS_STYLES = {
   Overdue: "bg-red-100 text-red-800 border-red-300",
@@ -196,7 +197,7 @@ export default function Maintenance() {
                   <tr key={r.id} className="border-b border-zinc-100 hover:bg-blue-50/40" data-testid={`maint-row-${r.id}`}>
                     <td className="py-3 px-4">
                       <div className="font-bold text-zinc-950">{r.contact_name || "—"}</div>
-                      <div className="text-[11px] text-zinc-500">{r.contact_phone || ""}</div>
+                      <div className="text-[11px] text-zinc-500">{formatPhoneDisplay(r.contact_phone)}</div>
                     </td>
                     <td className="py-3 px-4">
                       <div className="text-zinc-700">{r.property_name || r.title || "—"}</div>

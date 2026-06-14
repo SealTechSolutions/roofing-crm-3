@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, KeyRound, Copy, ShieldCheck, X } from "lucide-rea
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { formatPhoneDisplay } from "@/lib/format";
 
 const ROLES = ["admin", "manager", "sales"];
 const ROLE_LABELS = { admin: "Admin", manager: "Manager", sales: "Sales / Estimator" };
@@ -103,7 +104,7 @@ export default function Users() {
                   </span>
                 </td>
                 <td className="px-6 py-3 text-zinc-600 text-xs">{u.title || "—"}</td>
-                <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{u.phone || "—"}</td>
+                <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{formatPhoneDisplay(u.phone) || "—"}</td>
                 <td className="px-6 py-3">
                   <div className="flex items-center gap-1">
                     <button data-testid={`regen-${u.id}`} onClick={() => regen(u)} title="Regenerate password" className="p-1.5 hover:bg-zinc-200 rounded-sm"><KeyRound className="w-3.5 h-3.5" /></button>
@@ -134,7 +135,7 @@ export default function Users() {
                 <Input data-testid="user-title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} placeholder="e.g., General Manager" />
               </Field>
               <Field label="Phone">
-                <Input data-testid="user-phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
+                <Input data-testid="user-phone" format="phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
               </Field>
             </Grid2>
             {!editing && (

@@ -7,6 +7,7 @@ import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
 import MaterialTakeoff from "@/components/MaterialTakeoff";
 import { ScopePreview } from "@/pages/Deals";
+import { formatPhoneDisplay } from "@/lib/format";
 
 export default function DealDetail() {
   const { id } = useParams();
@@ -860,7 +861,7 @@ export default function DealDetail() {
             <>
               <Row label="Name" value={contact.contact_name} bold />
               <Row label="Company" value={contact.company_name} />
-              <Row label="Phone" value={contact.phone} />
+              <Row label="Phone" value={formatPhoneDisplay(contact.phone)} />
               <Row label="Email" value={contact.email} />
               <Row label="Address" value={contact.address} />
             </>
@@ -874,7 +875,7 @@ export default function DealDetail() {
               <Row label="Name" value={property.property_name} bold />
               <Row label="Address" value={property.property_address} />
               <Row label="On-Site Contact" value={property.property_contact_name} />
-              <Row label="Phone" value={property.property_contact_phone} />
+              <Row label="Phone" value={formatPhoneDisplay(property.property_contact_phone)} />
             </>
           ) : (
             <div className="text-sm text-zinc-500">No property linked.</div>

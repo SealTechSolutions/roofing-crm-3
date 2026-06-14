@@ -4,6 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2, FileCheck, Network, Banknote, PencilLine, RotateCcw } from "lucide-react";
+import { maskPhoneInput, maskTaxIdInput } from "@/lib/format";
 import { ProfitLossReport, BalanceSheetReport, LateFeeAccrualTool } from "@/pages/BooksReports";
 import { PeriodCloseTool } from "@/pages/BooksPeriodClose";
 import { InterCompanyReport, BankReconciliationTool } from "@/pages/BooksInterCoBank";
@@ -531,6 +532,7 @@ function EntityModal({ mode, initial, onClose, onSaved }) {
     entity_type: initial?.entity_type || "LLC",
     is_parent: initial?.is_parent || false,
     tax_id: initial?.tax_id || "",
+    tax_id_kind: initial?.tax_id_kind || "EIN",
     address: initial?.address || "",
     city: initial?.city || "",
     state: initial?.state || "",
@@ -593,11 +595,47 @@ function EntityModal({ mode, initial, onClose, onSaved }) {
               {ENTITY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </Field>
-          <Field label="Tax ID / EIN">
-            <input value={draft.tax_id} onChange={(e) => setDraft({ ...draft, tax_id: e.target.value })} className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-blue-700" />
+          <Field label={`Tax ID / ${draft.tax_id_kind === "SSN" ? "SSN" : "EIN"}`}>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="entity-tax-kind"
+                    checked={draft.tax_id_kind !== "SSN"}
+                    onChange={() => setDraft({ ...draft, tax_id_kind: "EIN", tax_id: maskTaxIdInput(draft.tax_id, "EIN") })}
+                    data-testid="entity-tax-kind-ein"
+                  />
+                  EIN
+                </label>
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="entity-tax-kind"
+                    checked={draft.tax_id_kind === "SSN"}
+                    onChange={() => setDraft({ ...draft, tax_id_kind: "SSN", tax_id: maskTaxIdInput(draft.tax_id, "SSN") })}
+                    data-testid="entity-tax-kind-ssn"
+                  />
+                  SSN
+                </label>
+              </div>
+              <input
+                data-testid="entity-tax-id"
+                value={maskTaxIdInput(draft.tax_id, draft.tax_id_kind === "SSN" ? "SSN" : "EIN")}
+                onChange={(e) => setDraft({ ...draft, tax_id: maskTaxIdInput(e.target.value, draft.tax_id_kind === "SSN" ? "SSN" : "EIN") })}
+                placeholder={draft.tax_id_kind === "SSN" ? "XXX-XX-XXXX" : "XX-XXXXXXX"}
+                className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-blue-700 font-mono"
+              />
+            </div>
           </Field>
           <Field label="Phone">
-            <input value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-blue-700" />
+            <input
+              data-testid="entity-phone"
+              value={maskPhoneInput(draft.phone)}
+              onChange={(e) => setDraft({ ...draft, phone: maskPhoneInput(e.target.value) })}
+              placeholder="XXX-XXX-XXXX"
+              className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-blue-700 font-mono"
+            />
           </Field>
           <Field label="Email">
             <input value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-blue-700" />

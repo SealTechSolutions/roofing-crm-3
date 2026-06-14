@@ -305,6 +305,14 @@
 - ✅ Cosmetic: fixed `<span>`-in-`<option>` hydration warning on Bank Rec account dropdown
 - ✅ Tested: 15/15 new pytest + 20/20 Phase-6 regression + live Sonner toast capture (`/app/test_reports/iteration_9.json`, `/app/backend/tests/test_books_phase7_gl_warnings.py`)
 
+## Phone & Tax-ID Auto-Formatting (2026-02) ✅
+- ✅ New `/app/frontend/src/lib/format.js` with `maskPhoneInput`, `formatPhoneDisplay`, `maskTaxIdInput`. Phone helper normalizes any input (`5551234567`, `555.123.4567`, `(555) 123-4567`, `1-555-123-4567`) to `555-123-4567`; strips leading country-code "1"; preserves trailing extensions (`x100`, `ext 4`).
+- ✅ Shared `Input` component (Contacts.jsx, used by Contacts/Properties/Vendors/Users/Deals) extended with `format="phone" | "ein" | "ssn"` prop — live-masks as the user types AND re-formats on blur (catches paste-then-tab edge case).
+- ✅ Phone fields wired across the app: Contacts (work/mobile/primary/fax), Properties (on-site contact phone), Vendors & Subcontractors (work/mobile/primary/fax), Users, Profile, Books → Entity Modal.
+- ✅ Phone display formatting applied to list rows: Contacts, Properties, Vendors, Users, Maintenance, DealDetail — legacy records with un-hyphenated numbers now render with hyphens too.
+- ✅ Tax-ID EIN/SSN selector: added `tax_id_kind` field on Entity (`books.py`) and `tin_kind` on Vendor (`server.py`); both default to `"EIN"`. UI shows a radio toggle (EIN ↔ SSN) right above the input; switching kinds re-masks the existing digits to the new format (33-1234567 ↔ 331-23-4567). EIN mask = `XX-XXXXXXX`, SSN mask = `XXX-XX-XXXX`, both capped at 9 digits.
+- ✅ Tested: 8/8 frontend formatting scenarios (paste dots, parens, leading-1, EIN typing, EIN→SSN switch re-mask, fresh SSN, entity phone) + Contacts list legacy-data display.
+
 ## Books Module — Manual Journal Entries (2026-02) ✅
 - ✅ New `ManualJournalIn` Pydantic model + `POST /api/books/journal-entries/manual` (admin-only) — validates 2+ lines, balanced DR/CR, mutually-exclusive DR/CR per line, accounts owned by the selected entity, and respects the per-entity `lock_through` period lock.
 - ✅ Posts via `gl.post_journal` with `source_type="manual"`, `kind="adjustment"`, tagged `is_manual=true` + `posted_by_name` for audit traceability.

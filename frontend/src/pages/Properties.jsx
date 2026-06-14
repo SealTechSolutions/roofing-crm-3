@@ -6,6 +6,7 @@ import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import { US_STATES, DEFAULT_STATE } from "@/constants/states";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { formatPhoneDisplay } from "@/lib/format";
 
 const empty = {
   property_name: "",
@@ -120,7 +121,7 @@ export default function Properties() {
                     {[p.property_address, [p.property_city, p.property_state].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}
                   </td>
                   <td className="px-6 py-3 text-zinc-700">{p.property_contact_name}</td>
-                  <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{p.property_contact_phone}</td>
+                  <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{formatPhoneDisplay(p.property_contact_phone)}</td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1">
                       <button data-testid={`edit-property-${p.id}`} onClick={() => openEdit(p)} className="p-1.5 hover:bg-zinc-200 rounded-sm"><Pencil className="w-3.5 h-3.5" /></button>
@@ -172,7 +173,7 @@ export default function Properties() {
               </Field>
             </Grid2>
             <Field label="On-Site Contact Phone">
-              <Input data-testid="property-contact-phone" value={form.property_contact_phone} onChange={(v) => setForm({ ...form, property_contact_phone: v })} />
+              <Input data-testid="property-contact-phone" format="phone" value={form.property_contact_phone} onChange={(v) => setForm({ ...form, property_contact_phone: v })} />
             </Field>
             <Field label="Notes">
               <textarea

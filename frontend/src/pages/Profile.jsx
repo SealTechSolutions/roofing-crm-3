@@ -3,6 +3,7 @@ import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { User, KeyRound, Save, Eye, EyeOff, ShieldAlert } from "lucide-react";
+import { maskPhoneInput } from "@/lib/format";
 
 export default function Profile() {
   const { user, refreshUser } = useAuth();
@@ -89,8 +90,8 @@ function ProfileSection({ user, onSaved }) {
         </Field>
         <Field label="Phone" hint="Direct line shown on Purchase Orders to vendors.">
           <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            value={maskPhoneInput(phone)}
+            onChange={(e) => setPhone(maskPhoneInput(e.target.value))}
             placeholder="e.g., 720-715-9955"
             className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm focus:border-blue-700 focus:outline-none"
             data-testid="profile-phone"

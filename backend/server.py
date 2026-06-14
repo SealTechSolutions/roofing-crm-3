@@ -389,6 +389,7 @@ class VendorIn(BaseModel):
     fax: str = ""
     email: str = ""
     tin_ein: str = ""
+    tin_kind: str = "EIN"  # "EIN" | "SSN" — controls input mask + display formatting
     address: str = ""
     address_line2: str = ""
     city: str = ""

@@ -7,6 +7,7 @@ import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import Documents from "@/components/Documents";
 import { US_STATES, DEFAULT_STATE } from "@/constants/states";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { formatPhoneDisplay, maskTaxIdInput } from "@/lib/format";
 
 export default function Vendors({ kind = "Vendor" }) {
   const isSub = kind === "Subcontractor";
@@ -133,7 +134,7 @@ export default function Vendors({ kind = "Vendor" }) {
                     {v.contact_name || "—"}
                     {v.contact_title && <div className="text-[10px] text-zinc-500">{v.contact_title}</div>}
                   </td>
-                  <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{v.mobile_phone || v.work_phone || v.phone}</td>
+                  <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{formatPhoneDisplay(v.mobile_phone || v.work_phone || v.phone)}</td>
                   <td className="px-6 py-3 text-zinc-600 text-xs">{v.email}</td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1">
@@ -169,22 +170,52 @@ export default function Vendors({ kind = "Vendor" }) {
                 <Input data-testid={`${kind.toLowerCase()}-website`} value={form.website} onChange={(v) => setForm({ ...form, website: v })} placeholder="https://vendor.com" />
               </Field>
               <Field label="Work Phone">
-                <Input data-testid={`${kind.toLowerCase()}-work-phone`} value={form.work_phone} onChange={(v) => setForm({ ...form, work_phone: v })} />
+                <Input data-testid={`${kind.toLowerCase()}-work-phone`} format="phone" value={form.work_phone} onChange={(v) => setForm({ ...form, work_phone: v })} />
               </Field>
               <Field label="Mobile Phone">
-                <Input data-testid={`${kind.toLowerCase()}-mobile-phone`} value={form.mobile_phone} onChange={(v) => setForm({ ...form, mobile_phone: v })} />
+                <Input data-testid={`${kind.toLowerCase()}-mobile-phone`} format="phone" value={form.mobile_phone} onChange={(v) => setForm({ ...form, mobile_phone: v })} />
               </Field>
               <Field label="Fax">
-                <Input data-testid={`${kind.toLowerCase()}-fax`} value={form.fax} onChange={(v) => setForm({ ...form, fax: v })} />
+                <Input data-testid={`${kind.toLowerCase()}-fax`} format="phone" value={form.fax} onChange={(v) => setForm({ ...form, fax: v })} />
               </Field>
               <Field label="Other / Primary Phone">
-                <Input data-testid={`${kind.toLowerCase()}-phone`} value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
+                <Input data-testid={`${kind.toLowerCase()}-phone`} format="phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
               </Field>
               <Field label="Email">
                 <Input data-testid={`${kind.toLowerCase()}-email`} type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
               </Field>
-              <Field label="TIN / EIN">
-                <Input data-testid={`${kind.toLowerCase()}-tin`} value={form.tin_ein} onChange={(v) => setForm({ ...form, tin_ein: v })} placeholder="XX-XXXXXXX" />
+              <Field label={form.tin_kind === "SSN" ? "TIN / SSN" : "TIN / EIN"}>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`${kind.toLowerCase()}-tin-kind`}
+                        checked={form.tin_kind !== "SSN"}
+                        onChange={() => setForm({ ...form, tin_kind: "EIN", tin_ein: maskTaxIdInput(form.tin_ein, "EIN") })}
+                        data-testid={`${kind.toLowerCase()}-tin-kind-ein`}
+                      />
+                      EIN
+                    </label>
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`${kind.toLowerCase()}-tin-kind`}
+                        checked={form.tin_kind === "SSN"}
+                        onChange={() => setForm({ ...form, tin_kind: "SSN", tin_ein: maskTaxIdInput(form.tin_ein, "SSN") })}
+                        data-testid={`${kind.toLowerCase()}-tin-kind-ssn`}
+                      />
+                      SSN
+                    </label>
+                  </div>
+                  <Input
+                    data-testid={`${kind.toLowerCase()}-tin`}
+                    format={form.tin_kind === "SSN" ? "ssn" : "ein"}
+                    value={form.tin_ein}
+                    onChange={(v) => setForm({ ...form, tin_ein: v })}
+                    placeholder={form.tin_kind === "SSN" ? "XXX-XX-XXXX" : "XX-XXXXXXX"}
+                  />
+                </div>
               </Field>
             </Grid2>
             <Field label="Address Line 1">

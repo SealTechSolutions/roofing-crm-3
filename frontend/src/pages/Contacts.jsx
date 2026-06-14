@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { US_STATES, DEFAULT_STATE } from "@/constants/states";
+import { maskPhoneInput, maskTaxIdInput, formatPhoneDisplay } from "@/lib/format";
 
 const CONTACT_TYPES = ["Owner", "Property Manager", "Tenant", "Other"];
 
@@ -143,7 +144,7 @@ export default function Contacts() {
                   </td>
                   <td className="px-6 py-3 text-[10px] uppercase tracking-wider text-zinc-700">{c.contact_type || "—"}</td>
                   <td className="px-6 py-3 text-zinc-700">{c.company_name}</td>
-                  <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{c.mobile_phone || c.work_phone || c.phone}</td>
+                  <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{formatPhoneDisplay(c.mobile_phone || c.work_phone || c.phone)}</td>
                   <td className="px-6 py-3 text-zinc-600 text-xs">{c.email}</td>
                   <td className="px-6 py-3 text-zinc-600 text-xs">{[c.city, c.state].filter(Boolean).join(", ")}</td>
                   <td className="px-6 py-3">
@@ -179,16 +180,16 @@ export default function Contacts() {
                 <Input data-testid="contact-website" value={form.website} onChange={(v) => setForm({ ...form, website: v })} placeholder="https://company.com" />
               </Field>
               <Field label="Work Phone">
-                <Input data-testid="contact-work-phone" value={form.work_phone} onChange={(v) => setForm({ ...form, work_phone: v })} />
+                <Input data-testid="contact-work-phone" format="phone" value={form.work_phone} onChange={(v) => setForm({ ...form, work_phone: v })} />
               </Field>
               <Field label="Mobile Phone">
-                <Input data-testid="contact-mobile-phone" value={form.mobile_phone} onChange={(v) => setForm({ ...form, mobile_phone: v })} />
+                <Input data-testid="contact-mobile-phone" format="phone" value={form.mobile_phone} onChange={(v) => setForm({ ...form, mobile_phone: v })} />
               </Field>
               <Field label="Fax">
-                <Input data-testid="contact-fax" value={form.fax} onChange={(v) => setForm({ ...form, fax: v })} />
+                <Input data-testid="contact-fax" format="phone" value={form.fax} onChange={(v) => setForm({ ...form, fax: v })} />
               </Field>
               <Field label="Other / Primary Phone">
-                <Input data-testid="contact-phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
+                <Input data-testid="contact-phone" format="phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
               </Field>
             </Grid2>
             <Field label="Address Line 1">
@@ -296,7 +297,7 @@ export const Field = ({ label, hint, children }) => (
 
 export const Grid2 = ({ children }) => <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{children}</div>;
 
-export const Input = ({ value, onChange, type = "text", ...props }) => {
+export const Input = ({ value, onChange, type = "text", format, taxIdKind, ...props }) => {
   // For number inputs, hide a leading 0 placeholder so users can just start typing
   // without first deleting the "0". Local string state lets the user type freely
   // (including "0", "0.5") and the display syncs back to the numeric prop on blur.
@@ -308,6 +309,13 @@ export const Input = ({ value, onChange, type = "text", ...props }) => {
       if (value === 0 || value === "0" || value === null || value === undefined) return "";
       return value;
     }
+    if (format === "phone") {
+      // Always show hyphenated form (handles pasted dots/spaces/parens + legacy data)
+      return maskPhoneInput(value ?? "");
+    }
+    if (format === "ein" || format === "ssn") {
+      return maskTaxIdInput(value ?? "", format === "ssn" ? "SSN" : "EIN");
+    }
     return value ?? "";
   })();
 
@@ -317,6 +325,10 @@ export const Input = ({ value, onChange, type = "text", ...props }) => {
       setLocalStr(v);
       const parsed = parseFloat(v);
       onChange(Number.isFinite(parsed) ? parsed : 0);
+    } else if (format === "phone") {
+      onChange(maskPhoneInput(v));
+    } else if (format === "ein" || format === "ssn") {
+      onChange(maskTaxIdInput(v, format === "ssn" ? "SSN" : "EIN"));
     } else {
       onChange(v);
     }
@@ -324,6 +336,10 @@ export const Input = ({ value, onChange, type = "text", ...props }) => {
 
   const handleBlur = (e) => {
     if (type === "number") setLocalStr(null);
+    if (format === "phone") {
+      // Re-format on blur to catch paste-then-tab without an intermediate keystroke
+      onChange(maskPhoneInput(e.target.value));
+    }
     if (props.onBlur) props.onBlur(e);
   };
 
