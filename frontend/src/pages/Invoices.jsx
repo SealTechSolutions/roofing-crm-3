@@ -612,11 +612,13 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
           {/* Books — Entity routing */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Books Entity (GL posting)</label>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                Books Entity (GL Posting) <span className="text-emerald-700 font-black ml-1">· INVOICE FROM</span>
+              </label>
               <select
                 value={form.entity_id}
                 onChange={(e) => setForm({ ...form, entity_id: e.target.value })}
-                className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+                className="mt-1 w-full h-9 px-2 border border-emerald-300 rounded-sm text-sm bg-emerald-50/40"
                 data-testid="invoice-entity-select"
               >
                 <option value="">— No GL Posting —</option>
@@ -626,14 +628,16 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
                   </option>
                 ))}
               </select>
-              <div className="text-[10px] text-zinc-500 mt-1">Sales & A/R post to this entity's COA.</div>
+              <div className="text-[10px] text-zinc-500 mt-1"><strong>The entity sending the invoice.</strong> Its books get the A/R + revenue.</div>
             </div>
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Counter Entity (Inter-Co)</label>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                Counter Entity (Inter-Co) <span className="text-amber-700 font-black ml-1">· INVOICE TO</span>
+              </label>
               <select
                 value={form.counter_entity_id}
                 onChange={(e) => setForm({ ...form, counter_entity_id: e.target.value })}
-                className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+                className="mt-1 w-full h-9 px-2 border border-amber-300 rounded-sm text-sm bg-amber-50/40"
                 disabled={!form.entity_id}
                 data-testid="invoice-counter-entity-select"
               >
@@ -642,7 +646,7 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
                   <option key={e.id} value={e.id}>{e.name}</option>
                 ))}
               </select>
-              <div className="text-[10px] text-zinc-500 mt-1">If billing another SealTech entity → posts via 1900/4900 and auto-mirrors 6700/2900.</div>
+              <div className="text-[10px] text-zinc-500 mt-1"><strong>Only for Inter-Company invoices</strong> — the SealTech entity being billed (its books auto-mirror 6700/2900).</div>
             </div>
           </div>
 
