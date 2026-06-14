@@ -144,6 +144,22 @@ class AccountIn(BaseModel):
     is_active: bool = True
 
 
+class ManualJournalLineIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    account_id: str
+    debit: float = 0.0
+    credit: float = 0.0
+    memo: str = ""
+
+
+class ManualJournalIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    entity_id: str
+    date: str  # ISO YYYY-MM-DD posting date
+    memo: str = ""
+    lines: List[ManualJournalLineIn]
+
+
 def _clean(doc: dict) -> dict:
     """Strip Mongo _id from outgoing docs."""
     if not doc:
@@ -372,6 +388,116 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
         async for j in db.journal_entries.find(q).sort("date", -1).limit(max(1, min(500, limit))):
             out.append(_clean(j))
         return out
+
+    # ---------- Manual Journal Entries (owner draws, year-end adjustments) ----------
+    @router.post("/journal-entries/manual")
+    async def create_manual_journal(body: ManualJournalIn, current=Depends(require_admin)):
+        ent = await db.entities.find_one({"id": body.entity_id})
+        if not ent:
+            raise HTTPException(status_code=404, detail="Entity not found")
+        if not ent.get("is_active", True):
+            raise HTTPException(status_code=400, detail="Entity is inactive — cannot post journal")
+        if not body.date or len(body.date) < 10:
+            raise HTTPException(status_code=400, detail="Posting date is required (YYYY-MM-DD)")
+        if not body.lines or len(body.lines) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 journal lines are required")
+
+        # Period lock check (manual entries respect the lock — no bypass)
+        lock = (ent.get("lock_through") or "").strip()
+        if lock and body.date <= lock:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Period is locked through {lock}. Reopen the period before posting on {body.date}.",
+            )
+
+        # Build & validate lines
+        built_lines = []
+        total_debit = 0.0
+        total_credit = 0.0
+        for idx, ln in enumerate(body.lines):
+            d = round(float(ln.debit or 0), 2)
+            c = round(float(ln.credit or 0), 2)
+            if d <= 0 and c <= 0:
+                continue  # skip empty rows
+            if d > 0 and c > 0:
+                raise HTTPException(status_code=400, detail=f"Line {idx + 1}: a line cannot have both a debit and a credit")
+            acct = await db.chart_of_accounts.find_one(
+                {"id": ln.account_id, "entity_id": body.entity_id, "is_active": True}, {"_id": 0}
+            )
+            if not acct:
+                raise HTTPException(status_code=400, detail=f"Line {idx + 1}: account not found or inactive for this entity")
+            built_lines.append({
+                "account_id": acct["id"],
+                "account_number": acct["number"],
+                "account_name": acct["name"],
+                "account_type": acct["type"],
+                "debit": d,
+                "credit": c,
+                "memo": ln.memo or "",
+            })
+            total_debit += d
+            total_credit += c
+
+        if len(built_lines) < 2:
+            raise HTTPException(status_code=400, detail="At least 2 non-zero lines are required")
+        if abs(round(total_debit - total_credit, 2)) > 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Journal does not balance: debits ${total_debit:,.2f} vs credits ${total_credit:,.2f}",
+            )
+
+        from gl import post_journal
+        source_id = str(uuid.uuid4())
+        doc = await post_journal(
+            db,
+            entity_id=body.entity_id,
+            source_type="manual",
+            source_id=source_id,
+            kind="adjustment",
+            lines=built_lines,
+            memo=body.memo or "Manual adjustment",
+            posting_date=body.date,
+            posted_by_user_id=current.get("id"),
+        )
+        if not doc:
+            raise HTTPException(status_code=500, detail="Failed to post journal entry")
+        # Tag as manual for UI affordances (reverse button)
+        await db.journal_entries.update_one(
+            {"id": doc["id"]},
+            {"$set": {"is_manual": True, "posted_by_name": current.get("name") or current.get("email", "")}},
+        )
+        doc["is_manual"] = True
+        doc["posted_by_name"] = current.get("name") or current.get("email", "")
+        return doc
+
+    @router.post("/journal-entries/{journal_id}/reverse")
+    async def reverse_manual_journal(journal_id: str, current=Depends(require_admin)):
+        j = await db.journal_entries.find_one({"id": journal_id})
+        if not j:
+            raise HTTPException(status_code=404, detail="Journal entry not found")
+        if j.get("source_type") != "manual":
+            raise HTTPException(status_code=400, detail="Only manual journal entries can be reversed from the Activity feed")
+        if j.get("is_reversed"):
+            raise HTTPException(status_code=400, detail="Journal entry is already reversed")
+        # Respect the period lock on the original entry's date
+        ent = await db.entities.find_one({"id": j["entity_id"]}, {"_id": 0, "lock_through": 1})
+        lock = ((ent or {}).get("lock_through") or "").strip()
+        if lock and j.get("date", "") <= lock:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot reverse — original posting date {j.get('date')} is within locked period (through {lock}).",
+            )
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await db.journal_entries.update_one(
+            {"id": journal_id},
+            {"$set": {
+                "is_reversed": True,
+                "reversed_at": now_iso,
+                "reversed_by_user_id": current.get("id"),
+                "updated_at": now_iso,
+            }},
+        )
+        return {"ok": True, "id": journal_id}
 
     # ---------- Reports / KPIs ----------
     @router.get("/reports/kpis")

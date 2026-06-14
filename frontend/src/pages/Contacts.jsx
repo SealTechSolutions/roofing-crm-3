@@ -296,15 +296,48 @@ export const Field = ({ label, hint, children }) => (
 
 export const Grid2 = ({ children }) => <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{children}</div>;
 
-export const Input = ({ value, onChange, type = "text", ...props }) => (
-  <input
-    type={type}
-    value={value ?? ""}
-    onChange={(e) => onChange(type === "number" ? parseFloat(e.target.value || 0) : e.target.value)}
-    className="w-full h-10 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-700 text-sm"
-    {...props}
-  />
-);
+export const Input = ({ value, onChange, type = "text", ...props }) => {
+  // For number inputs, hide a leading 0 placeholder so users can just start typing
+  // without first deleting the "0". Local string state lets the user type freely
+  // (including "0", "0.5") and the display syncs back to the numeric prop on blur.
+  const [localStr, setLocalStr] = useState(null);
+
+  const displayValue = (() => {
+    if (type === "number") {
+      if (localStr !== null) return localStr;
+      if (value === 0 || value === "0" || value === null || value === undefined) return "";
+      return value;
+    }
+    return value ?? "";
+  })();
+
+  const handleChange = (e) => {
+    const v = e.target.value;
+    if (type === "number") {
+      setLocalStr(v);
+      const parsed = parseFloat(v);
+      onChange(Number.isFinite(parsed) ? parsed : 0);
+    } else {
+      onChange(v);
+    }
+  };
+
+  const handleBlur = (e) => {
+    if (type === "number") setLocalStr(null);
+    if (props.onBlur) props.onBlur(e);
+  };
+
+  return (
+    <input
+      type={type}
+      {...props}
+      value={displayValue}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      className="w-full h-10 px-3 border border-zinc-300 bg-white rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-700 text-sm"
+    />
+  );
+};
 
 export const Select = ({ value, onChange, options, ...props }) => (
   <select

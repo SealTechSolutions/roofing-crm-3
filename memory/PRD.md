@@ -305,11 +305,18 @@
 - ✅ Cosmetic: fixed `<span>`-in-`<option>` hydration warning on Bank Rec account dropdown
 - ✅ Tested: 15/15 new pytest + 20/20 Phase-6 regression + live Sonner toast capture (`/app/test_reports/iteration_9.json`, `/app/backend/tests/test_books_phase7_gl_warnings.py`)
 
+## Books Module — Manual Journal Entries (2026-02) ✅
+- ✅ New `ManualJournalIn` Pydantic model + `POST /api/books/journal-entries/manual` (admin-only) — validates 2+ lines, balanced DR/CR, mutually-exclusive DR/CR per line, accounts owned by the selected entity, and respects the per-entity `lock_through` period lock.
+- ✅ Posts via `gl.post_journal` with `source_type="manual"`, `kind="adjustment"`, tagged `is_manual=true` + `posted_by_name` for audit traceability.
+- ✅ New `POST /api/books/journal-entries/{id}/reverse` (admin-only) — only manual entries can be reversed from the Activity feed; also respects the period lock on the original posting date.
+- ✅ Frontend `BooksCOA.jsx` Activity tab: violet "New Journal Entry" CTA + full modal composer (date picker, memo, multi-row DR/CR table with account dropdowns grouped by Asset/Liability/Equity/etc., live "✓ Balanced" / "Out of balance by $X" indicator, Add/Remove line, line-level memos, post button gated on balanced+memo).
+- ✅ Manual entries get a violet "Manual Adjustment" badge in the activity feed and a "Reverse" button (admin-only) in place of the source-doc link; reversed entries are visually crossed out and opacity-dimmed.
+- ✅ "Manual Adjustment" added to the kind filter dropdown.
+- ✅ Tested: 7/7 new pytest (`/app/backend/tests/test_books_manual_journal.py`) + frontend smoke (composer modal renders, account dropdown grouped, live balance indicator works).
+
 ## Backlog (P0 — next Books phases)
-- Books — Manual journal-entry composer on the Activity tab (DR/CR pair + memo + date) for owner draws, depreciation overrides, year-end adjustments
 - Books — A/R Aging, A/P Aging, Cash Flow report tabs (next 3 reports CPAs always ask for)
 - Books — Per-entity configurable late-fee rate (today hardcoded 1.5%)
-- Books Phase 4: Inter-company auto-mirroring (Parent ↔ Sub-co) and Bank Reconciliation
 
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics) — DONE

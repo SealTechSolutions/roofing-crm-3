@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2, FileCheck, Network, Banknote } from "lucide-react";
+import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2, FileCheck, Network, Banknote, PencilLine, RotateCcw } from "lucide-react";
 import { ProfitLossReport, BalanceSheetReport, LateFeeAccrualTool } from "@/pages/BooksReports";
 import { PeriodCloseTool } from "@/pages/BooksPeriodClose";
 import { InterCompanyReport, BankReconciliationTool } from "@/pages/BooksInterCoBank";
@@ -463,7 +463,7 @@ export default function BooksCOA() {
 
       {/* Body — Journal Activity */}
       {view === "activity" && (
-        <JournalFeed entityId={entityId} entities={entities} />
+        <JournalFeed entityId={entityId} entities={entities} isAdmin={isAdmin} />
       )}
 
       {/* Body — Profit & Loss */}
@@ -694,15 +694,17 @@ const KIND_LABELS = {
   payment: { label: "Payment Received", tone: "bg-emerald-100 text-emerald-800", icon: Receipt },
   bill_received: { label: "Bill Received", tone: "bg-amber-100 text-amber-800", icon: Receipt },
   bill_payment: { label: "Bill Paid", tone: "bg-rose-100 text-rose-800", icon: Receipt },
+  adjustment: { label: "Manual Adjustment", tone: "bg-violet-100 text-violet-800", icon: PencilLine },
 };
 
 const fmtMoney = (n) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n || 0);
 
-function JournalFeed({ entityId, entities }) {
+function JournalFeed({ entityId, entities, isAdmin }) {
   const [rows, setRows] = useState(null);
   const [includeReversed, setIncludeReversed] = useState(false);
   const [kindFilter, setKindFilter] = useState("All");
+  const [showComposer, setShowComposer] = useState(false);
 
   const load = async () => {
     if (!entityId) { setRows([]); return; }
@@ -733,6 +735,17 @@ function JournalFeed({ entityId, entities }) {
     return { dr, cr };
   }, [filtered]);
 
+  const reverseEntry = async (j) => {
+    if (!window.confirm(`Reverse manual journal entry posted ${j.date}?\n\n"${j.memo || ""}"\n\nThis cannot be undone.`)) return;
+    try {
+      await api.post(`/books/journal-entries/${j.id}/reverse`);
+      toast.success("Manual journal entry reversed");
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    }
+  };
+
   return (
     <div className="px-8 py-6" data-testid="journal-feed">
       {/* Activity filters */}
@@ -748,6 +761,7 @@ function JournalFeed({ entityId, entities }) {
           <option value="payment">Payment Received</option>
           <option value="bill_received">Bill Received</option>
           <option value="bill_payment">Bill Paid</option>
+          <option value="adjustment">Manual Adjustment</option>
         </select>
         <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-600">
           <input
@@ -758,7 +772,16 @@ function JournalFeed({ entityId, entities }) {
           />
           Include reversed
         </label>
-        <div className="text-xs uppercase tracking-wider font-bold text-zinc-500 ml-auto" data-testid="journal-count">
+        {isAdmin && entityId && (
+          <button
+            data-testid="new-journal-entry-btn"
+            onClick={() => setShowComposer(true)}
+            className="ml-auto px-3 py-2 text-xs font-bold uppercase tracking-wider bg-violet-700 text-white hover:bg-violet-800 transition-colors flex items-center gap-2"
+          >
+            <PencilLine className="w-3.5 h-3.5" /> New Journal Entry
+          </button>
+        )}
+        <div className={`text-xs uppercase tracking-wider font-bold text-zinc-500 ${isAdmin && entityId ? "" : "ml-auto"}`} data-testid="journal-count">
           {filtered.length} entries · DR {fmtMoney(totals.dr)} · CR {fmtMoney(totals.cr)}
         </div>
       </div>
@@ -775,6 +798,7 @@ function JournalFeed({ entityId, entities }) {
           {filtered.map((j) => {
             const kind = KIND_LABELS[j.kind] || { label: j.kind, tone: "bg-zinc-100 text-zinc-700", icon: Activity };
             const KindIcon = kind.icon;
+            const isManual = j.source_type === "manual";
             const sourcePath = j.source_type === "vendor_bill"
               ? `/payables?focus=${encodeURIComponent(j.source_id)}`
               : `/invoices?focus=${encodeURIComponent(j.source_id)}`;
@@ -793,6 +817,9 @@ function JournalFeed({ entityId, entities }) {
                       <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded-sm ${kind.tone}`}>{kind.label}</span>
                       {j.is_reversed && <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest bg-rose-100 text-rose-800 rounded-sm">Reversed</span>}
                       <span className="font-mono text-[11px] text-zinc-500">{j.date}</span>
+                      {isManual && j.posted_by_name && (
+                        <span className="font-mono text-[11px] text-zinc-500">· by {j.posted_by_name}</span>
+                      )}
                     </div>
                     <div className={`mt-1 font-bold text-zinc-900 truncate ${j.is_reversed ? "line-through" : ""}`} title={j.memo}>
                       {j.memo || "—"}
@@ -814,13 +841,27 @@ function JournalFeed({ entityId, entities }) {
                   </div>
                   <div className="flex flex-col items-end gap-2 flex-shrink-0">
                     <div className="font-mono font-black text-base text-zinc-900">{fmtMoney(j.total_debit)}</div>
-                    <Link
-                      to={sourcePath}
-                      className="text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:text-blue-900 inline-flex items-center gap-1"
-                      data-testid={`source-link-${j.id}`}
-                    >
-                      Open {j.source_type === "vendor_bill" ? "Bill" : "Invoice"} <ChevronRight className="w-3 h-3" />
-                    </Link>
+                    {isManual ? (
+                      isAdmin && !j.is_reversed ? (
+                        <button
+                          onClick={() => reverseEntry(j)}
+                          className="text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:text-rose-900 inline-flex items-center gap-1"
+                          data-testid={`reverse-journal-${j.id}`}
+                        >
+                          <RotateCcw className="w-3 h-3" /> Reverse
+                        </button>
+                      ) : (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Manual</span>
+                      )
+                    ) : (
+                      <Link
+                        to={sourcePath}
+                        className="text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:text-blue-900 inline-flex items-center gap-1"
+                        data-testid={`source-link-${j.id}`}
+                      >
+                        Open {j.source_type === "vendor_bill" ? "Bill" : "Invoice"} <ChevronRight className="w-3 h-3" />
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>
@@ -828,6 +869,272 @@ function JournalFeed({ entityId, entities }) {
           })}
         </div>
       )}
+
+      {showComposer && (
+        <ManualJournalModal
+          entityId={entityId}
+          entityName={entityName}
+          onClose={() => setShowComposer(false)}
+          onSaved={() => { setShowComposer(false); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============ Manual Journal Entry Composer ============
+const blankLine = () => ({ account_id: "", debit: "", credit: "", memo: "" });
+
+function ManualJournalModal({ entityId, entityName, onClose, onSaved }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(today);
+  const [memo, setMemo] = useState("");
+  const [lines, setLines] = useState([blankLine(), blankLine()]);
+  const [accounts, setAccounts] = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!entityId) return;
+    api.get(`/books/accounts?entity_id=${entityId}`)
+      .then((r) => setAccounts(r.data || []))
+      .catch((e) => toast.error(formatApiError(e?.response?.data?.detail) || e.message));
+  }, [entityId]);
+
+  const updateLine = (idx, patch) => {
+    setLines((prev) => prev.map((ln, i) => (i === idx ? { ...ln, ...patch } : ln)));
+  };
+  const addLine = () => setLines((prev) => [...prev, blankLine()]);
+  const removeLine = (idx) => setLines((prev) => prev.length > 2 ? prev.filter((_, i) => i !== idx) : prev);
+
+  const numericLines = lines.map((ln) => ({
+    account_id: ln.account_id,
+    debit: parseFloat(ln.debit) || 0,
+    credit: parseFloat(ln.credit) || 0,
+    memo: ln.memo || "",
+  }));
+  const totals = numericLines.reduce(
+    (acc, ln) => ({ dr: acc.dr + ln.debit, cr: acc.cr + ln.credit }),
+    { dr: 0, cr: 0 }
+  );
+  const diff = +(totals.dr - totals.cr).toFixed(2);
+  const balanced = Math.abs(diff) < 0.01 && totals.dr > 0;
+
+  const groupedAccounts = useMemo(() => {
+    const groups = {};
+    for (const a of accounts) {
+      groups[a.type] = groups[a.type] || [];
+      groups[a.type].push(a);
+    }
+    for (const k of Object.keys(groups)) groups[k].sort((a, b) => (a.number || "").localeCompare(b.number || ""));
+    return groups;
+  }, [accounts]);
+
+  const save = async () => {
+    if (!balanced) {
+      toast.error("Journal must balance and have at least one debit");
+      return;
+    }
+    const payloadLines = numericLines.filter((ln) => ln.account_id && (ln.debit > 0 || ln.credit > 0));
+    if (payloadLines.length < 2) {
+      toast.error("At least 2 non-zero lines with an account are required");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.post("/books/journal-entries/manual", {
+        entity_id: entityId,
+        date,
+        memo,
+        lines: payloadLines,
+      });
+      toast.success("Manual journal entry posted");
+      onSaved();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" data-testid="manual-journal-modal">
+      <div className="bg-white max-w-4xl w-full max-h-[92vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-widest text-violet-700">New Manual Journal Entry</div>
+            <div className="text-lg font-black uppercase tracking-wider text-zinc-900 mt-0.5">{entityName || "—"}</div>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-900" data-testid="close-manual-journal">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Posting Date *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full border border-zinc-300 px-3 py-2 text-sm font-mono focus:outline-none focus:border-violet-700"
+                data-testid="manual-journal-date"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Memo / Description *</label>
+              <input
+                type="text"
+                value={memo}
+                onChange={(e) => setMemo(e.target.value)}
+                placeholder="e.g., Owner draw — Q3 distribution, Year-end accrual"
+                className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-violet-700"
+                data-testid="manual-journal-memo"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Journal Lines</div>
+              <button
+                onClick={addLine}
+                className="text-xs font-bold uppercase tracking-wider text-violet-700 hover:text-violet-900 inline-flex items-center gap-1"
+                data-testid="add-journal-line"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add line
+              </button>
+            </div>
+            <table className="w-full text-sm border border-zinc-200">
+              <thead className="bg-zinc-50 text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
+                <tr>
+                  <th className="text-left px-3 py-2 w-12">#</th>
+                  <th className="text-left px-3 py-2">Account</th>
+                  <th className="text-right px-3 py-2 w-32">Debit</th>
+                  <th className="text-right px-3 py-2 w-32">Credit</th>
+                  <th className="text-left px-3 py-2">Line Memo</th>
+                  <th className="px-3 py-2 w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((ln, idx) => (
+                  <tr key={idx} className="border-t border-zinc-200">
+                    <td className="px-3 py-2 font-mono text-xs text-zinc-500">{idx + 1}</td>
+                    <td className="px-3 py-2">
+                      <select
+                        value={ln.account_id}
+                        onChange={(e) => updateLine(idx, { account_id: e.target.value })}
+                        className="w-full border border-zinc-300 px-2 py-1.5 text-sm focus:outline-none focus:border-violet-700"
+                        data-testid={`manual-journal-account-${idx}`}
+                      >
+                        <option value="">— Select account —</option>
+                        {Object.keys(groupedAccounts).map((t) => (
+                          <optgroup key={t} label={t}>
+                            {groupedAccounts[t].map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.number} · {a.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={ln.debit}
+                        onChange={(e) => updateLine(idx, { debit: e.target.value, credit: e.target.value ? "" : ln.credit })}
+                        placeholder="0.00"
+                        className="w-full border border-zinc-300 px-2 py-1.5 text-sm font-mono text-right focus:outline-none focus:border-violet-700"
+                        data-testid={`manual-journal-debit-${idx}`}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={ln.credit}
+                        onChange={(e) => updateLine(idx, { credit: e.target.value, debit: e.target.value ? "" : ln.debit })}
+                        placeholder="0.00"
+                        className="w-full border border-zinc-300 px-2 py-1.5 text-sm font-mono text-right focus:outline-none focus:border-violet-700"
+                        data-testid={`manual-journal-credit-${idx}`}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="text"
+                        value={ln.memo}
+                        onChange={(e) => updateLine(idx, { memo: e.target.value })}
+                        placeholder="Optional"
+                        className="w-full border border-zinc-300 px-2 py-1.5 text-sm focus:outline-none focus:border-violet-700"
+                        data-testid={`manual-journal-line-memo-${idx}`}
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {lines.length > 2 && (
+                        <button
+                          onClick={() => removeLine(idx)}
+                          className="text-zinc-400 hover:text-rose-600"
+                          data-testid={`remove-journal-line-${idx}`}
+                          title="Remove line"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-zinc-50 border-t-2 border-zinc-300">
+                <tr>
+                  <td colSpan={2} className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-zinc-700 text-right">Totals</td>
+                  <td className="px-3 py-2 font-mono font-black text-blue-700 text-right" data-testid="manual-journal-total-dr">
+                    {fmtMoney(totals.dr)}
+                  </td>
+                  <td className="px-3 py-2 font-mono font-black text-emerald-700 text-right" data-testid="manual-journal-total-cr">
+                    {fmtMoney(totals.cr)}
+                  </td>
+                  <td colSpan={2} className="px-3 py-2 text-xs font-bold">
+                    {balanced ? (
+                      <span className="text-emerald-700" data-testid="manual-journal-balance-status">✓ Balanced</span>
+                    ) : (
+                      <span className="text-rose-700" data-testid="manual-journal-balance-status">
+                        Out of balance by {fmtMoney(Math.abs(diff))}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div className="bg-violet-50 border border-violet-200 px-4 py-3 text-xs text-violet-900">
+            <strong>Use cases:</strong> owner draws (DR 3900 Distributions / CR 1000 Bank), year-end accruals,
+            depreciation true-ups, reclassifications, and any adjustment not tied to an invoice or vendor bill.
+            Manual entries can be reversed from the Activity feed; system-generated entries cannot.
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-zinc-200 flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-500 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            data-testid="save-manual-journal"
+            onClick={save}
+            disabled={saving || !balanced || !memo.trim()}
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-violet-700 text-white hover:bg-violet-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? "Posting..." : "Post Journal Entry"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
