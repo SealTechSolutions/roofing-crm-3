@@ -159,7 +159,16 @@ CURRENT_ROOF_TYPES = [
 DEAL_STATUSES = ["Lead", "Sent", "Won", "Lost", "Past Lead"]
 DEAL_TYPES = ["Assessment", "Scope"]
 VENDOR_KINDS = ["Vendor", "Subcontractor"]
-VENDOR_CATEGORIES = ["Material Supplier", "Labor", "Subcontractor", "Other"]
+VENDOR_CATEGORIES = [
+    "Material Supplier",
+    "Equipment Supplier",
+    "Porta Potty Supplier",
+    "Dumpster Supplier",
+    "Storage Container Supplier",
+    "Labor",
+    "Subcontractor",
+    "Other",
+]
 COST_CATEGORIES = ["Materials", "Labor", "Subcontractor", "Other"]
 MILESTONE_STATUSES = ["Pending", "Invoiced", "Paid"]
 COST_ITEM_STATUSES = ["Pending", "Paid"]

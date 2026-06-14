@@ -53,7 +53,7 @@ DEFAULT_COA = [
     # 5000s — COGS
     {"number": "5000", "name": "Materials — Direct", "type": "COGS", "category": "Job Cost", "system": True},
     {"number": "5010", "name": "Subcontractor Labor", "type": "COGS", "category": "Job Cost", "system": True},
-    {"number": "5020", "name": "Equipment Rental", "type": "COGS", "category": "Job Cost"},
+    {"number": "5020", "name": "Equipment Rental", "type": "COGS", "category": "Job Cost", "system": True},
     {"number": "5030", "name": "Direct Labor / Crew Wages", "type": "COGS", "category": "Job Cost"},
     {"number": "5040", "name": "Job Supplies", "type": "COGS", "category": "Job Cost"},
     {"number": "5050", "name": "Permits & Inspections", "type": "COGS", "category": "Job Cost"},

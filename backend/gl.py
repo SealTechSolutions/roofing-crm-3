@@ -44,12 +44,26 @@ def revenue_account_for(invoice: dict, deal: Optional[dict]) -> str:
 
 
 def cogs_account_for(vendor: Optional[dict]) -> str:
-    """Decide between 5010 Subcontractor Labor and 5000 Materials Direct."""
-    kind = ""
-    if vendor:
-        kind = (vendor.get("kind") or "").lower()
-    if kind == "subcontractor":
+    """Map a vendor → the COGS account their bills should hit.
+
+    - Subcontractor (kind OR category)              → 5010 Subcontractor Labor
+    - Equipment / Porta Potty / Dumpster / Storage  → 5020 Equipment Rental
+      Container Supplier                              (site-service rentals share one COGS bucket)
+    - Everything else (incl. Material Supplier)     → 5000 Materials — Direct
+    """
+    if not vendor:
+        return "5000"
+    kind = (vendor.get("kind") or "").lower()
+    cat = (vendor.get("category") or "").lower()
+    if kind == "subcontractor" or cat == "subcontractor":
         return "5010"
+    if cat in (
+        "equipment supplier",
+        "porta potty supplier",
+        "dumpster supplier",
+        "storage container supplier",
+    ):
+        return "5020"
     return "5000"
 
 
