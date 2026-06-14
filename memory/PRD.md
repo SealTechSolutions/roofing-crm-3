@@ -382,6 +382,20 @@
 - Endpoints: `POST /api/vendor-bills/csv-preview` (multipart), `POST /api/vendor-bills/csv-commit` (JSON).
 - ✅ Tested: 9/9 backend pytest + frontend e2e (100% pass).
 
+### Commercial Roof Assessment Reports (Feb 2026)
+- New "Assessments" module with sidebar nav, list page, and 5-step wizard editor; also accessible from Deal Detail via "New Assessment" button (auto-links and prefills property/contact).
+- 5-step wizard: **Cover & Property → Roof Asset Score → Condition Findings → Analysis & Options → Plan & Recommendation**.
+- Roof Asset Dashboard™ — 8 metrics (Roof Asset Score, Condition Rating, Remaining Service Life, Restoration Suitability, Capital Risk, Hail Resilience, Maintenance Status, Warranty Status) each with slider + numeric input + reasoning line. Color-coded (≥80 green, 60-79 amber, <60 red).
+- R-1 through R-5 Asset Condition Findings, each with severity dropdown, observations/risk/recommendation textareas, and up to 4 photos pulled from the linked deal's project_photos library (with in-editor upload-new flow).
+- Aerial roof image picker (single photo) + Restoration Suitability rating buttons + 6 supporting-factor checkboxes + 8-row scope checkboxes.
+- Repair-vs-Restoration-vs-Replacement comparison: 3 options with cost / life extension / disruption + advantages/disadvantages/limitations bullet lists.
+- Capital Planning Forecast: 1/3/5/10-year outlooks. Recommended Roof Asset Plan™ with budget priority + 3 action horizons.
+- 12-page branded PDF generated via ReportLab (`assessment_pdf.py`) embeds photos from object storage; reconciliation page count uses two-pass rendering.
+- "Mark Final" toggles status; "View PDF" opens auth-fetched blob in new tab; "Email PDF" sends via `assessments@` alias.
+- Soft-delete to Admin Trash (restorable).
+- Endpoints: `GET/POST/PUT/DELETE /api/assessments`, `POST /api/assessments/{id}/finalize`, `GET /api/assessments/{id}/pdf`, `POST /api/assessments/{id}/email`.
+- ✅ Tested: 9/9 backend pytest + full frontend e2e (100% pass).
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
