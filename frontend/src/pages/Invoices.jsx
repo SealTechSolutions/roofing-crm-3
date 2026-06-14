@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API, showGlWarnings } from "@/lib/api";
-import { Receipt, Plus, Search, Download, Send, Trash2, Eye, FileText } from "lucide-react";
+import { Receipt, Plus, Search, Download, Send, Trash2, Eye, FileText, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_STYLES = {
@@ -233,6 +233,80 @@ export default function Invoices() {
 }
 
 // ---------- Invoice editor ----------
+/** Two-dropdown picker for Inter-Company invoices: FROM (issuer) → TO (counter).
+ *  Validates the two are different entities and applies the template on click.
+ */
+function IcQuickPicker({ entities, defaultFromId, onApply, onCancel }) {
+  const [fromId, setFromId] = useState(defaultFromId || (entities[0]?.id || ""));
+  const [toId, setToId] = useState("");
+  const fromEnt = entities.find((e) => e.id === fromId);
+  const toEnt = entities.find((e) => e.id === toId);
+  const canApply = fromId && toId && fromId !== toId;
+  return (
+    <div className="mt-3 grid grid-cols-1 md:grid-cols-5 gap-2 items-end" data-testid="ic-quick-picker">
+      <div className="md:col-span-2">
+        <label className="text-[10px] font-bold uppercase tracking-wider text-violet-700">Bill FROM (issuer)</label>
+        <select
+          value={fromId}
+          onChange={(e) => setFromId(e.target.value)}
+          className="mt-1 w-full h-9 px-2 border border-violet-300 rounded-sm text-sm bg-white"
+          data-testid="ic-picker-from"
+        >
+          <option value="">— Select entity —</option>
+          {entities.map((e) => (
+            <option key={e.id} value={e.id} disabled={e.id === toId}>
+              {e.name}{e.role ? ` — ${e.role}` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="md:col-span-2">
+        <label className="text-[10px] font-bold uppercase tracking-wider text-violet-700">Bill TO (counter)</label>
+        <select
+          value={toId}
+          onChange={(e) => setToId(e.target.value)}
+          className="mt-1 w-full h-9 px-2 border border-violet-300 rounded-sm text-sm bg-white"
+          data-testid="ic-picker-to"
+        >
+          <option value="">— Select entity —</option>
+          {entities.map((e) => (
+            <option key={e.id} value={e.id} disabled={e.id === fromId}>
+              {e.name}{e.role ? ` — ${e.role}` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => canApply && onApply(fromId, toId)}
+          disabled={!canApply}
+          data-testid="ic-picker-apply"
+          className="h-9 px-3 text-[10px] font-bold uppercase tracking-wider bg-violet-700 text-white rounded-sm hover:bg-violet-800 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Apply
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          data-testid="ic-picker-cancel"
+          className="h-9 px-3 text-[10px] font-bold uppercase tracking-wider border border-violet-300 text-violet-700 rounded-sm hover:bg-violet-100"
+        >
+          Cancel
+        </button>
+      </div>
+      {fromEnt && toEnt && fromId !== toId && (
+        <div className="md:col-span-5 text-[10px] text-violet-800 bg-white border border-violet-200 rounded-sm p-2 mt-1">
+          <strong>{fromEnt.name}</strong> will invoice <strong>{toEnt.name}</strong>.
+          On save: <span className="font-mono">DR 1900 IC A/R / CR 4900 IC Revenue</span> on {fromEnt.name},
+          mirrored as <span className="font-mono">DR 6700 IC Expense / CR 2900 IC A/P</span> on {toEnt.name}.
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
   const isNew = !invoice?.id;
   const [existingInvoices, setExistingInvoices] = useState([]); // for the linked deal
@@ -272,6 +346,7 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
   }));
   const [saving, setSaving] = useState(false);
   const [entities, setEntities] = useState([]);
+  const [icPickerOpen, setIcPickerOpen] = useState(false);
 
   // Load Books entities for the entity picker
   useEffect(() => {
@@ -284,6 +359,34 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
     }).catch(() => setEntities([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Apply an Inter-Company invoice template: set both entity sides + auto-fill Bill To from the counter entity.
+  const applyIcTemplate = (fromEntityId, toEntityId) => {
+    const fromEnt = entities.find((e) => e.id === fromEntityId);
+    const toEnt = entities.find((e) => e.id === toEntityId);
+    if (!fromEnt || !toEnt) return;
+    const role = (fromEnt.role || "").trim();
+    setForm((f) => ({
+      ...f,
+      deal_id: "",  // IC charges are usually not project-scoped
+      entity_id: fromEntityId,
+      counter_entity_id: toEntityId,
+      bill_to_company: toEnt.legal_name || toEnt.name || "",
+      bill_to_name: "Accounts Payable",
+      bill_to_address: toEnt.remit_to_address || toEnt.address || "",
+      bill_to_address_line2: "",
+      bill_to_city: toEnt.city || "",
+      bill_to_state: toEnt.state || "",
+      bill_to_zip: toEnt.zip_code || "",
+      bill_to_email: toEnt.email || f.bill_to_email,
+      project_title: role ? `Inter-Company Charge — ${role}` : "Inter-Company Charge",
+      project_address: "",
+      project_total: 0,
+      invoice_type: "",
+    }));
+    setIcPickerOpen(false);
+    toast.success(`Inter-Company invoice: ${fromEnt.name} → ${toEnt.name}`);
+  };
 
   // Whenever deal_id is set (new or existing invoice), load CO list + existing invoices for context
   useEffect(() => {
@@ -473,6 +576,39 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-950 text-xl">×</button>
         </div>
         <div className="p-5 space-y-5">
+          {/* Inter-Company Invoice quick-template */}
+          {isNew && (
+            <div className="border border-violet-200 bg-violet-50/40 rounded-sm p-3" data-testid="ic-template-panel">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-violet-700" />
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.15em] text-violet-800">Inter-Company Invoice</div>
+                    <div className="text-[10px] text-violet-700/80">Bill one of your entities from another (commissions, rent, IC labor, etc). Auto-fills Bill-To from the receiving entity.</div>
+                  </div>
+                </div>
+                {!icPickerOpen && (
+                  <button
+                    type="button"
+                    onClick={() => setIcPickerOpen(true)}
+                    data-testid="ic-template-open-btn"
+                    className="text-[10px] font-bold uppercase tracking-wider bg-violet-700 text-white px-3 py-1.5 rounded-sm hover:bg-violet-800"
+                  >
+                    Use Template
+                  </button>
+                )}
+              </div>
+              {icPickerOpen && (
+                <IcQuickPicker
+                  entities={entities}
+                  defaultFromId={form.entity_id}
+                  onApply={applyIcTemplate}
+                  onCancel={() => setIcPickerOpen(false)}
+                />
+              )}
+            </div>
+          )}
+
           {/* Books — Entity routing */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
@@ -510,12 +646,14 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* Link to project */}
+          {/* Link to project (OPTIONAL — leave blank for rent, commissions, IC charges, misc invoices) */}
           {isNew && (
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Link to Project (auto-fills Bill To)</label>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                Link to Project <span className="text-zinc-400 font-normal normal-case ml-1">(optional — skip for rent, commissions, IC charges, or any non-project invoice)</span>
+              </label>
               <select value={form.deal_id} onChange={(e) => handleDealChange(e.target.value)} className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white" data-testid="invoice-deal-select">
-                <option value="">— None / Manual —</option>
+                <option value="">— None / Manual (no project) —</option>
                 {deals.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
               </select>
             </div>
