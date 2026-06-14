@@ -18,6 +18,7 @@ import Payables from "@/pages/Payables";
 import Materials from "@/pages/Materials";
 import Library from "@/pages/Library";
 import BooksCOA from "@/pages/BooksCOA";
+import CoiReminders from "@/pages/CoiReminders";
 import Profile from "@/pages/Profile";
 import "@/App.css";
 
@@ -65,6 +66,7 @@ function App() {
               <Route path="/deals/:id" element={<DealDetail />} />
               <Route path="/vendors" element={<Vendors kind="Vendor" />} />
               <Route path="/subcontractors" element={<Vendors kind="Subcontractor" />} />
+              <Route path="/coi-reminders" element={<CoiReminders />} />
               <Route path="/maintenance" element={<Maintenance />} />
               <Route path="/invoices" element={<Invoices />} />
               <Route path="/payables" element={<Payables />} />

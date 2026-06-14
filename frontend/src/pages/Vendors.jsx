@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, formatApiError, formatCurrency } from "@/lib/api";
-import { Plus, Pencil, Trash2, Truck, HardHat, FolderOpen, BarChart3, Star, ClipboardList } from "lucide-react";
+import { Plus, Pencil, Trash2, Truck, HardHat, FolderOpen, BarChart3, Star, ClipboardList, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
@@ -94,6 +95,16 @@ export default function Vendors({ kind = "Vendor" }) {
             >
               <BarChart3 className="w-4 h-4" /> Scorecards
             </button>
+          )}
+          {isSub && (
+            <Link
+              to="/coi-reminders"
+              data-testid="coi-reminders-link"
+              className="inline-flex items-center gap-2 bg-white border border-blue-700 text-blue-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-50 rounded-sm transition-colors"
+              title="Annual Certificate of Insurance email reminder system"
+            >
+              <ShieldCheck className="w-4 h-4" /> COI Reminders
+            </Link>
           )}
           <button
             data-testid={`new-${kind.toLowerCase()}-button`}

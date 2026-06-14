@@ -7,6 +7,7 @@ load_dotenv(ROOT_DIR / '.env')
 import os
 import logging
 import uuid
+import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
@@ -31,6 +32,7 @@ from exports import to_excel, to_pdf, CATEGORIES as EXPORT_CATEGORIES
 from spec_sheet import build_spec_sheet
 from books import make_router as make_books_router, seed_default_entities
 import gl
+import coi_reminders
 
 
 # ----- DB -----
@@ -4571,6 +4573,16 @@ async def on_startup():
     except Exception as e:
         logger.warning(f"Books seeding failed: {e}")
 
+    # Kick off the COI reminder scheduler (non-blocking background task).
+    # Idempotent — uses last_sent_date/next_send_date stored in coi_reminder_settings.
+    try:
+        await db.coi_reminder_settings.create_index("key", unique=True)
+        await db.coi_reminder_history.create_index("sent_at")
+        asyncio.create_task(coi_reminders.scheduler_loop(db))
+        logger.info("COI reminder scheduler started")
+    except Exception as e:
+        logger.warning(f"COI scheduler failed to start (non-fatal): {e}")
+
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@roofingcrm.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
     existing = await db.users.find_one({"email": admin_email})
@@ -4657,6 +4669,7 @@ async def shutdown_db_client():
 
 # ----- Router & CORS -----
 api_router.include_router(make_books_router(db, get_current_user, require_admin))
+api_router.include_router(coi_reminders.create_router(db, require_admin))
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
