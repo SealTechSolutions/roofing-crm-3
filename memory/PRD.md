@@ -270,11 +270,29 @@
 - ✅ Books page now has 6 tabs (`coa`, `activity`, `pl`, `bs`, `latefees`, `close`); hash-routed
 - ✅ Tested: 12/12 new pytest + 100% frontend Playwright pass (`/app/test_reports/iteration_7.json`, `/app/backend/tests/test_books_period_close.py`)
 
+## Books Module — Phase 4 (Inter-Company + Bank Rec) (2026-02) ✅
+- ✅ Invoices and Vendor Bills carry a new `counter_entity_id` field. When set, GL hooks auto-post both **issuer-side** (DR 1900 / CR 4900 for invoice; DR 6700 / CR 2900 for bill) AND a **mirror** journal on the counter entity (source_type `invoice_ic_mirror` / `vendor_bill_ic_mirror`). Both journals tagged `counter_entity_id` + `is_inter_company` for the reconciliation pivot.
+- ✅ Symmetric in both directions — Parent → WSCS, WSCS → Parent, Darren → WSCS, etc. all balance to the penny.
+- ✅ Mirrors handle status change, entity change, counter change, and delete (full reversal).
+- ✅ New `GET /api/books/reports/inter-company` — pivots every A↔B pair, surfaces diff_recv_vs_payable + diff_payable_vs_recv with `balanced` and `all_balanced` flags.
+- ✅ New `bank_rec.py` module: `bank_reconciliations` + `bank_clearings` collections.
+- ✅ Endpoints: `/bank-rec/accounts`, `/bank-rec/lines`, `/bank-rec/list`, `/bank-rec/{id}`, `POST /bank-rec/save` (admin), `POST /bank-rec/{id}/reopen` (admin), `DELETE /bank-rec/{id}` (admin).
+- ✅ Reconciliation flow: select bank account → list all journal lines on that account through statement_date → toggle cleared → Save Draft (open) or Lock (writes idempotent `bank_clearings`, freezes clearings). Reopen unwinds clearings tied to that rec.
+- ✅ Frontend `/pages/BooksInterCoBank.jsx` — InterCompanyReport (pair table with green/rose balanced indicator) + BankReconciliationTool with full editor (account select, statement date+balance, line checklist, diff banner, lock/save/reopen/delete buttons).
+- ✅ Books page now has **8 tabs**: COA · Activity · P&L · BS · Late Fees · Period Close · Inter-Co · Bank Rec.
+- ✅ Tested: 20/20 new pytest + full regression pass (`/app/test_reports/iteration_8.json`)
+
+## Books Module — Phase 7 (Locked-Period UI Warning) (2026-02) ✅
+- ✅ New `gl.check_period_lock(entity_id, posting_date)` helper
+- ✅ Backend `_invoice_gl_warnings` and `_bill_gl_warnings` populate a `gl_warnings: [{type, side, kind, entity_id, posting_date, lock_through, message}]` list on Invoice + VendorBill responses when the GL post is deferred (issuer-side, payment-side, AND inter-co mirror-side coverage). CRM persistence is unaffected.
+- ✅ Frontend `showGlWarnings(toast, data)` util in `/lib/api.js` emits one Sonner `toast.warning(...)` per entry (9s, with `Locked through YYYY-MM-DD` as description). Wired into InvoiceEditor + BillEditor save handlers.
+- ✅ Cosmetic: fixed `<span>`-in-`<option>` hydration warning on Bank Rec account dropdown
+- ✅ Tested: 15/15 new pytest + 20/20 Phase-6 regression + live Sonner toast capture (`/app/test_reports/iteration_9.json`, `/app/backend/tests/test_books_phase7_gl_warnings.py`)
+
 ## Backlog (P0 — next Books phases)
-- Books Phase 4: Inter-company auto-mirroring (Parent ↔ Sub-co via 1900 Inter-Co Receivable / 2900 Inter-Co Payable) + Bank Reconciliation
-- Manual journal-entry composer on Activity tab (DR/CR pair + memo + date) for owner draws, depreciation, year-end adjustments
-- Per-entity configurable late-fee rate (today hardcoded at 1.5%)
-- Cash Flow + A/R Aging + A/P Aging report tabs
+- Books — Manual journal-entry composer on the Activity tab (DR/CR pair + memo + date) for owner draws, depreciation overrides, year-end adjustments
+- Books — A/R Aging, A/P Aging, Cash Flow report tabs (next 3 reports CPAs always ask for)
+- Books — Per-entity configurable late-fee rate (today hardcoded 1.5%)
 - Books Phase 4: Inter-company auto-mirroring (Parent ↔ Sub-co) and Bank Reconciliation
 
 ## Backlog (P1)
