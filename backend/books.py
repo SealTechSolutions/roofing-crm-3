@@ -130,6 +130,7 @@ class EntityIn(BaseModel):
     remit_to_address: str = ""
     monthly_depreciation: float = 0.0  # Posted during month-end close: DR 6600 / CR 1510
     lock_through: str = ""  # ISO date — last day of most recent closed period; managed by period-close logic
+    late_fee_rate_pct: float = 1.5  # Monthly late-fee % charged on balances > 30 days past due (entity default)
     is_active: bool = True
 
 
@@ -201,6 +202,12 @@ async def seed_default_entities(db) -> None:
     await db.chart_of_accounts.create_index("id", unique=True)
     await db.chart_of_accounts.create_index([("entity_id", 1), ("number", 1)], unique=True)
 
+    # Backfill: ensure every existing entity has a late_fee_rate_pct (default 1.5%)
+    await db.entities.update_many(
+        {"late_fee_rate_pct": {"$exists": False}},
+        {"$set": {"late_fee_rate_pct": 1.5}},
+    )
+
     for tpl in DEFAULT_ENTITIES:
         existing = await db.entities.find_one({"name": tpl["name"]})
         if existing:
@@ -223,6 +230,7 @@ async def seed_default_entities(db) -> None:
             "email": "",
             "phone": "",
             "remit_to_address": "",
+            "late_fee_rate_pct": 1.5,
             "is_active": True,
             "created_at": _now_iso(),
         })
@@ -556,6 +564,18 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
         """A/P Aging — open vendor bills bucketed by days past due, grouped by vendor."""
         from gl import report_ap_aging
         return await report_ap_aging(db, entity_id, as_of)
+
+    @router.get("/reports/cash-flow")
+    async def report_cash_flow_endpoint(
+        entity_id: str,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        current=Depends(get_current_user),
+    ):
+        """Cash Flow Statement (indirect method) — Operating / Investing / Financing
+        with reconciliation to the actual change in Bank account balances over the period."""
+        from gl import report_cash_flow
+        return await report_cash_flow(db, entity_id, date_from, date_to)
 
     # ---------- Late-Fee Accrual Batch ----------
     @router.post("/late-fees/accrue")

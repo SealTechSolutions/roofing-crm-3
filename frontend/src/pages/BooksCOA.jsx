@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2, FileCheck, Network, Banknote, PencilLine, RotateCcw, Clock } from "lucide-react";
+import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2, FileCheck, Network, Banknote, PencilLine, RotateCcw, Clock, Waves } from "lucide-react";
 import { maskPhoneInput, maskTaxIdInput } from "@/lib/format";
-import { ProfitLossReport, BalanceSheetReport, LateFeeAccrualTool, AgingReport } from "@/pages/BooksReports";
+import { ProfitLossReport, BalanceSheetReport, LateFeeAccrualTool, AgingReport, CashFlowReport } from "@/pages/BooksReports";
 import { PeriodCloseTool } from "@/pages/BooksPeriodClose";
 import { InterCompanyReport, BankReconciliationTool } from "@/pages/BooksInterCoBank";
 
@@ -53,7 +53,7 @@ export default function BooksCOA() {
   const [showEntityNew, setShowEntityNew] = useState(false);
 
   // Tabs: coa | activity | pl | bs | ar-aging | ap-aging | latefees | close | interco | bankrec
-  const VALID_VIEWS = ["coa", "activity", "pl", "bs", "ar-aging", "ap-aging", "latefees", "close", "interco", "bankrec"];
+  const VALID_VIEWS = ["coa", "activity", "pl", "bs", "cf", "ar-aging", "ap-aging", "latefees", "close", "interco", "bankrec"];
   const [view, setView] = useState(() => {
     const fromHash = (typeof window !== "undefined" && window.location.hash || "").replace("#", "");
     return VALID_VIEWS.includes(fromHash) ? fromHash : "coa";
@@ -269,6 +269,7 @@ export default function BooksCOA() {
           <TabButton active={view === "activity"} onClick={() => setView("activity")} icon={Activity} label="Journal Activity" testId="tab-activity" />
           <TabButton active={view === "pl"} onClick={() => setView("pl")} icon={TrendingUp} label="P&L" testId="tab-pl" />
           <TabButton active={view === "bs"} onClick={() => setView("bs")} icon={Scale} label="Balance Sheet" testId="tab-bs" />
+          <TabButton active={view === "cf"} onClick={() => setView("cf")} icon={Waves} label="Cash Flow" testId="tab-cf" />
           <TabButton active={view === "ar-aging"} onClick={() => setView("ar-aging")} icon={Clock} label="A/R Aging" testId="tab-ar-aging" />
           <TabButton active={view === "ap-aging"} onClick={() => setView("ap-aging")} icon={Clock} label="A/P Aging" testId="tab-ap-aging" />
           <TabButton active={view === "latefees"} onClick={() => setView("latefees")} icon={Wand2} label="Late Fees" testId="tab-latefees" />
@@ -479,6 +480,11 @@ export default function BooksCOA() {
         <BalanceSheetReport entityId={entityId} entityName={currentEntity?.name} />
       )}
 
+      {/* Body — Cash Flow */}
+      {view === "cf" && (
+        <CashFlowReport entityId={entityId} entityName={currentEntity?.name} />
+      )}
+
       {/* Body — A/R Aging */}
       {view === "ar-aging" && (
         <AgingReport entityId={entityId} entityName={currentEntity?.name} kind="ar" />
@@ -553,6 +559,7 @@ function EntityModal({ mode, initial, onClose, onSaved }) {
     phone: initial?.phone || "",
     remit_to_address: initial?.remit_to_address || "",
     monthly_depreciation: Number(initial?.monthly_depreciation) || 0,
+    late_fee_rate_pct: initial?.late_fee_rate_pct ?? 1.5,
     is_active: initial?.is_active !== false,
   }));
   const [saving, setSaving] = useState(false);
@@ -682,6 +689,24 @@ function EntityModal({ mode, initial, onClose, onSaved }) {
                 data-testid="entity-monthly-depr"
               />
               <span className="text-[10px] text-zinc-500 uppercase tracking-wider">DR 6600 / CR 1510 monthly</span>
+            </div>
+          </Field>
+          <Field label="Late Fee Rate (per month, applied to balances > 30 days past due)" full>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="25"
+                value={draft.late_fee_rate_pct}
+                onChange={(e) => setDraft({ ...draft, late_fee_rate_pct: parseFloat(e.target.value) || 0 })}
+                className="w-28 border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-blue-700 font-mono text-right"
+                data-testid="entity-late-fee-rate"
+              />
+              <span className="font-mono text-zinc-500">% / month</span>
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider ml-auto">
+                Equivalent to ~{(Number(draft.late_fee_rate_pct) * 12).toFixed(1)}% APR · Individual customers can override
+              </span>
             </div>
           </Field>
           <div className="col-span-2 flex items-center gap-4 text-xs">

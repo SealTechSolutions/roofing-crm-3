@@ -204,10 +204,12 @@ LATE_FEE_POLICY_TEXT = (
 )
 
 
-def compute_late_fee(invoice: dict, as_of) -> float:
-    """Late fee for a single invoice: 1.5%/month on balance_due once it crosses 30 days past due.
-    `as_of` is a date. Returns dollars (rounded to 2dp). Returns 0 if not yet past the grace window
-    or no due_date/balance is present."""
+def compute_late_fee(invoice: dict, as_of, rate: float = LATE_FEE_MONTHLY_RATE) -> float:
+    """Late fee for a single invoice: `rate`/month on balance_due once it crosses 30 days past due.
+    `as_of` is a date. `rate` is a DECIMAL (e.g. 0.015 for 1.5%) — defaults to the global policy
+    rate but callers should pass the resolved per-customer/per-entity rate when known.
+    Returns dollars (rounded to 2dp). Returns 0 if not yet past the grace window or no
+    due_date/balance is present."""
     try:
         bal = float(invoice.get("balance_due") or 0)
     except (TypeError, ValueError):
@@ -226,7 +228,37 @@ def compute_late_fee(invoice: dict, as_of) -> float:
         return 0.0
     # 30-59 days = 1 month, 60-89 = 2 months, ...
     months_past = days_past // 30
-    return round(bal * LATE_FEE_MONTHLY_RATE * months_past, 2)
+    return round(bal * rate * months_past, 2)
+
+
+async def _resolve_invoice_late_fee_rate(invoice: dict) -> tuple[float, float]:
+    """Look up the (decimal_rate, percent_rate) applicable to a specific invoice.
+    Pulls customer override + entity default; falls back to global 1.5%."""
+    from gl import resolve_late_fee_rate, resolve_late_fee_rate_pct
+    ent_doc = None
+    cust_doc = None
+    ent_id = invoice.get("entity_id")
+    if ent_id:
+        ent_doc = await db.entities.find_one({"id": ent_id}, {"_id": 0, "late_fee_rate_pct": 1})
+    cust_id = invoice.get("bill_to_contact_id") or invoice.get("contact_id")
+    if cust_id:
+        cust_doc = await db.contacts.find_one({"id": cust_id}, {"_id": 0, "late_fee_rate_pct": 1})
+    return (resolve_late_fee_rate(ent_doc, cust_doc), resolve_late_fee_rate_pct(ent_doc, cust_doc))
+
+
+async def _customer_statement_late_fee_rate(contact: dict, invoices: list) -> tuple[float, float]:
+    """For a customer-level statement covering multiple invoices, pick a single rate:
+       customer override → entity from first invoice → global 1.5%.
+    Returns (decimal_rate, percent_rate)."""
+    from gl import resolve_late_fee_rate, resolve_late_fee_rate_pct
+    ent_doc = None
+    for inv in invoices or []:
+        eid = inv.get("entity_id")
+        if eid:
+            ent_doc = await db.entities.find_one({"id": eid}, {"_id": 0, "late_fee_rate_pct": 1})
+            if ent_doc:
+                break
+    return (resolve_late_fee_rate(ent_doc, contact), resolve_late_fee_rate_pct(ent_doc, contact))
 
 
 def proposal_mid_amount(d: dict) -> float:
@@ -338,6 +370,7 @@ class ContactIn(BaseModel):
     billing_state: str = ""
     billing_zip: str = ""
     website: str = ""
+    late_fee_rate_pct: Optional[float] = None  # Per-customer override (None = inherit entity default)
 
 
 class Contact(ContactIn):
@@ -2250,7 +2283,8 @@ async def invoice_pdf(invoice_id: str, token: Optional[str] = Query(None), autho
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
     from invoice_pdf import build_invoice_pdf
-    pdf_bytes = build_invoice_pdf(inv)
+    _, inv_rate_pct = await _resolve_invoice_late_fee_rate(inv)
+    pdf_bytes = build_invoice_pdf(inv, late_fee_rate_pct=inv_rate_pct)
     # Mark PDF generated
     await db.invoices.update_one({"id": invoice_id}, {"$set": {"pdf_generated_at": now_iso()}})
     fname = f"{inv['invoice_number']}.pdf"
@@ -2271,7 +2305,10 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
 
     # Generate the PDF in-memory
     from invoice_pdf import build_invoice_pdf
-    pdf_bytes = build_invoice_pdf(inv)
+    # Resolve per-invoice late-fee rate (customer override → entity default → 1.5%)
+    inv_rate, inv_rate_pct = await _resolve_invoice_late_fee_rate(inv)
+    inv_rate_pct_str = (f"{inv_rate_pct:.2f}").rstrip("0").rstrip(".")
+    pdf_bytes = build_invoice_pdf(inv, late_fee_rate_pct=inv_rate_pct)
 
     # Compose email
     inv_num = inv.get("invoice_number", "")
@@ -2295,7 +2332,7 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
         f"Remit payment to:\n"
         f"  SealTech Building Solutions\n"
         f"  2278 Mannatt Ct, Castle Rock, CO 80104\n\n"
-        f"LATE FEE POLICY: A late fee of 1.5% per month (18% APR) is applied to any\n"
+        f"LATE FEE POLICY: A late fee of {inv_rate_pct_str}% per month is applied to any\n"
         f"balance more than 30 days past due. Fees compound monthly.\n\n"
         f"If you have any questions, please reply to this email.\n\n"
         f"Thank you for your business,\n"
@@ -2319,7 +2356,7 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
         2278 Mannatt Ct, Castle Rock, CO 80104
       </p>
       <p style="margin: 16px 0; padding: 10px 14px; background: #FFFBEB; border-left: 3px solid #B45309; color: #52525B; font-size: 12px;">
-        <b style="color: #B45309;">Late Fee Policy:</b> A late fee of <b>1.5% per month (18% APR)</b> is applied to any balance more than <b>30 days past due</b>. Fees compound monthly and are reflected on each Statement of Account.
+        <b style="color: #B45309;">Late Fee Policy:</b> A late fee of <b>{inv_rate_pct_str}% per month</b> is applied to any balance more than <b>30 days past due</b>. Fees compound monthly and are reflected on each Statement of Account.
       </p>
       <p style="margin: 16px 0;">If you have any questions, please reply to this email.</p>
       <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
@@ -2396,7 +2433,8 @@ async def statement_summary(contact_id: str, current=Depends(get_current_user)):
     invs = await _open_invoices_for_contact(contact_id)
     from statement_pdf import compute_aging
     as_of = datetime.now(timezone.utc).date()
-    aging = compute_aging(invs, as_of)
+    rate, rate_pct = await _customer_statement_late_fee_rate(contact, invs)
+    aging = compute_aging(invs, as_of, rate=rate)
     return {
         "customer": {
             "id": contact["id"],
@@ -2406,6 +2444,7 @@ async def statement_summary(contact_id: str, current=Depends(get_current_user)):
         },
         "invoice_count": len(invs),
         "as_of": as_of.isoformat(),
+        "late_fee_rate_pct": rate_pct,
         "aging": aging,
     }
 
@@ -2477,7 +2516,8 @@ async def statement_pdf(
     invs = await _open_invoices_for_contact(contact_id)
     from statement_pdf import build_statement_pdf
     as_of = datetime.now(timezone.utc).date().isoformat()
-    pdf_bytes = build_statement_pdf(contact, invs, as_of)
+    rate, _ = await _customer_statement_late_fee_rate(contact, invs)
+    pdf_bytes = build_statement_pdf(contact, invs, as_of, rate=rate)
     label = (contact.get("company_name") or contact.get("contact_name") or "customer").replace(" ", "_")
     fname = f"statement-{label}-{as_of}.pdf"
     return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
@@ -2499,8 +2539,10 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
     from statement_pdf import build_statement_pdf, compute_aging
     as_of_date = datetime.now(timezone.utc).date()
     as_of = as_of_date.isoformat()
-    pdf_bytes = build_statement_pdf(contact, invs, as_of)
-    aging = compute_aging(invs, as_of_date)
+    rate, rate_pct = await _customer_statement_late_fee_rate(contact, invs)
+    pdf_bytes = build_statement_pdf(contact, invs, as_of, rate=rate)
+    aging = compute_aging(invs, as_of_date, rate=rate)
+    rate_pct_str = (f"{rate_pct:.2f}").rstrip("0").rstrip(".")
 
     cust_label = contact.get("company_name") or contact.get("contact_name") or "your account"
     grand = float(aging.get("total") or 0)
@@ -2513,7 +2555,7 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
 
     subject = f"Statement of Account — {cust_label} — {as_of_date.strftime('%B %d, %Y')}"
 
-    fees_line_text = f"  Late Fees (1.5%/mo): {fees_str}\n  TOTAL DUE:           {grand_with_fees_str}\n" if has_fees else ""
+    fees_line_text = f"  Late Fees ({rate_pct_str}%/mo): {fees_str}\n  TOTAL DUE:           {grand_with_fees_str}\n" if has_fees else ""
     body_text = (
         f"Hello,\n\n"
         f"Please find attached your current Statement of Account from SealTech Building Solutions, "
@@ -2525,7 +2567,7 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
         f"Remit payment to:\n"
         f"  SealTech Building Solutions\n"
         f"  2278 Mannatt Ct, Castle Rock, CO 80104\n\n"
-        f"LATE FEE POLICY: A late fee of 1.5% per month (18% APR) is applied to any\n"
+        f"LATE FEE POLICY: A late fee of {rate_pct_str}% per month is applied to any\n"
         f"balance more than 30 days past due. Fees compound monthly and are shown\n"
         f"on each Statement of Account.\n\n"
         f"If any of the invoices listed have already been paid, or if you have questions about any of them, "
@@ -2538,7 +2580,7 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
     fees_html = ""
     if has_fees:
         fees_html = (
-            f'<tr><td style="padding: 4px 16px 4px 0; color: #B45309; font-size: 13px;">Late Fees (1.5%/mo)</td>'
+            f'<tr><td style="padding: 4px 16px 4px 0; color: #B45309; font-size: 13px;">Late Fees ({rate_pct_str}%/mo)</td>'
             f'<td style="padding: 4px 0; font-weight: bold; font-family: monospace; color: #B45309;">{fees_str}</td></tr>'
             f'<tr><td style="padding: 8px 16px 4px 0; color: #0A0A0A; font-size: 13px; font-weight: bold; border-top: 1px solid #0A0A0A;">TOTAL DUE</td>'
             f'<td style="padding: 8px 0 4px; font-weight: bold; font-family: monospace; color: #1D4ED8; font-size: 15px; border-top: 1px solid #0A0A0A;">{grand_with_fees_str}</td></tr>'
@@ -2559,7 +2601,7 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
         2278 Mannatt Ct, Castle Rock, CO 80104
       </p>
       <p style="margin: 16px 0; padding: 10px 14px; background: #FFFBEB; border-left: 3px solid #B45309; color: #52525B; font-size: 12px;">
-        <b style="color: #B45309;">Late Fee Policy:</b> A late fee of <b>1.5% per month (18% APR)</b> is applied to any balance more than <b>30 days past due</b>. Fees compound monthly and are reflected on each Statement of Account.
+        <b style="color: #B45309;">Late Fee Policy:</b> A late fee of <b>{rate_pct_str}% per month</b> is applied to any balance more than <b>30 days past due</b>. Fees compound monthly and are reflected on each Statement of Account.
       </p>
       <p style="margin: 16px 0;">If any of the invoices listed have already been paid, or if you have questions about any of them, please reply to this email or call us at 720-715-9955 so we can reconcile your account.</p>
       <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">

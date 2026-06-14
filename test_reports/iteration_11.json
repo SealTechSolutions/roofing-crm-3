@@ -1,0 +1,28 @@
+{
+  "summary": "Tested two P0 features end-to-end: (1) Cash Flow Statement report (indirect method) and (2) Per-entity / per-customer late-fee rate override. Backend: 16/16 pytest passed (8 new integration tests in test_cash_flow_late_fee.py + 8 existing unit tests in test_late_fee_rate_resolver.py). Frontend: Cash Flow tab renders, reconcile-ok badge shows '✓ Reconciles with Bank ledger movement' for seeded entity 2026-01-01→2026-06-14, Operating/Investing/Financing sections + Net Change in Cash + Begin/End/Actual cash reconciliation all visible. Entity edit modal `entity-late-fee-rate` pre-fills with 1.5, saves to 2.5, reload confirms 2.5, reset to 1.5. Contacts modal `contact-late-fee-rate` accepts 1.0, persists across save/reload (value=1), `contact-late-fee-clear` resets to blank/null. All acceptance criteria met.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_cash_flow_late_fee.py",
+    "/app/backend/tests/test_late_fee_rate_resolver.py",
+    "/app/test_reports/pytest/pytest_iter11.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "GET /api/books/reports/cash-flow returns the exact specified shape: entity_id, date_from, date_to, operating{net_income,depreciation,working_capital_items[],working_capital_total,total}, investing{items[],total}, financing{items[],total}, totals{net_change_in_cash,beginning_cash,ending_cash,actual_cash_change,reconciliation_diff,reconciled}. Math invariants hold (op_total = NI + depr + wc_total; net_change = op + inv + fin; ending - beginning = actual_cash_change).",
+    "Backfill migration in books.py at line 207 correctly $sets late_fee_rate_pct=1.5 on existing entities missing the field — all seeded entities now expose default 1.5.",
+    "PUT /api/books/entities/{id} accepts and persists late_fee_rate_pct; verified roundtrip (1.5 → 2.5 → 1.5) via API & UI.",
+    "POST /api/contacts accepts late_fee_rate_pct override; field is None when omitted and persists to numeric value (e.g. 1.0) when provided; verified via /contacts/{id}/statement-summary endpoint returning the resolved rate (1.0 with override, 1.5 fallback to entity default).",
+    "Frontend `contact-late-fee-clear` correctly conditionally rendered only when form.late_fee_rate_pct != null — confirmed hidden on blank field, shown after entering 1.0, resets to null on click.",
+    "Cash Flow page reconciliation badge correctly switches between cf-reconcile-ok (green) and cf-reconcile-warn (rose) based on totals.reconciled boolean returned by API.",
+    "Minor (not blocking): The Cash Flow UI defaults the entity dropdown to the first entity (e.g. 'Darren Oliver, LLC') rather than the user-specified SealTech Holdings; this is purely a UX choice and reconciliation works for any seeded entity. The default YTD range (2026-01-01 → today) was used rather than 2025-01-01 → 2026-12-31 — backend pytest covers the full requested range."
+  ],
+  "updated_files": ["/app/backend/tests/test_cash_flow_late_fee.py (new)"],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (all spec checks passed)"},
+  "test_credentials": "admin@roofingcrm.com / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created and cleaned up: TEST_LateFeeOverrideCo and TEST_LateFeeNoOverrideCo contacts (deleted via DELETE /api/contacts/{id} in pytest teardown); TEST_UI_LateFee_Co created in UI and deleted via UI trash button. Entity rate temporarily set to 2.5 then reset to 1.5 (both API & UI paths).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/test_cash_flow_late_fee.py. Run with: cd /app/backend && REACT_APP_BACKEND_URL=https://roofing-crm-3.preview.emergentagent.com python -m pytest tests/test_cash_flow_late_fee.py -v. Auth uses 'access_token' field in /api/auth/login response (NOT 'token'). PUT /api/books/entities/{id} requires the full entity payload (name, legal_name, ein, etc.) — sending only late_fee_rate_pct will 422. Cash Flow UI default range is current YTD; widen with the date pickers or use 'ALL' chip. Frontend SignIn does NOT redirect to '/dashboard' URL path — it stays on '/' and renders Dashboard content; wait for selector 'text=Command Center' instead of wait_for_url.",
+  "rca_of_the_issue": "N/A — both features implemented correctly per spec."
+}

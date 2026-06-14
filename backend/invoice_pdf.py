@@ -55,7 +55,7 @@ def _footer(canvas, doc):
     canvas.restoreState()
 
 
-def build_invoice_pdf(inv: dict) -> bytes:
+def build_invoice_pdf(inv: dict, late_fee_rate_pct: float = 1.5) -> bytes:
     buf = BytesIO()
     pdf = SimpleDocTemplate(
         buf, pagesize=letter,
@@ -65,6 +65,7 @@ def build_invoice_pdf(inv: dict) -> bytes:
     )
     s = _styles()
     story = []
+    rate_pct_str = (f"{late_fee_rate_pct:.2f}").rstrip("0").rstrip(".")
 
     # Header: logo on left, INVOICE + number on right
     header_left = []
@@ -266,7 +267,7 @@ def build_invoice_pdf(inv: dict) -> bytes:
         Spacer(1, 0.08 * inch),
         Paragraph(
             '<font color="#B45309"><b>LATE FEE POLICY:</b></font> '
-            '<font color="#52525B">A late fee of <b>1.5% per month (18% APR)</b> is applied to any balance more than '
+            f'<font color="#52525B">A late fee of <b>{rate_pct_str}% per month</b> is applied to any balance more than '
             "30 days past due. Fees compound monthly and are reflected on each Statement of Account.</font>",
             s["body_sm"],
         ),

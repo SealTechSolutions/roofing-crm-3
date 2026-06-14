@@ -30,6 +30,7 @@ const empty = {
   billing_state: DEFAULT_STATE,
   billing_zip: "",
   website: "",
+  late_fee_rate_pct: null,
 };
 
 export default function Contacts() {
@@ -252,6 +253,41 @@ export default function Contacts() {
                 </div>
               </div>
             )}
+
+            {/* Per-customer Late-Fee Rate Override */}
+            <Field
+              label="Late Fee Rate Override"
+              hint="Leave blank to inherit the entity default rate. Enter a percent (e.g. 1.0) to charge this customer at a custom monthly rate on balances > 30 days past due."
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  data-testid="contact-late-fee-rate"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="25"
+                  value={form.late_fee_rate_pct ?? ""}
+                  placeholder="—  (use entity default)"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setForm({ ...form, late_fee_rate_pct: v === "" ? null : parseFloat(v) });
+                  }}
+                  className="w-40 border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-blue-700 font-mono text-right rounded-sm"
+                />
+                <span className="font-mono text-zinc-500 text-sm">% / month</span>
+                {form.late_fee_rate_pct != null && (
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, late_fee_rate_pct: null })}
+                    className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 hover:text-rose-700 underline ml-auto"
+                    data-testid="contact-late-fee-clear"
+                  >
+                    Clear override
+                  </button>
+                )}
+              </div>
+            </Field>
+
             <div className="flex justify-end gap-2 pt-4 border-t border-zinc-200">
               <button type="button" onClick={() => setOpen(false)} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50">Cancel</button>
               <button type="submit" disabled={loading} data-testid="contact-save" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm disabled:opacity-50">{loading ? "Saving..." : "Save"}</button>

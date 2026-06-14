@@ -76,9 +76,10 @@ def _footer(canvas, doc):
     canvas.restoreState()
 
 
-def compute_aging(invoices: list, as_of: date) -> dict:
+def compute_aging(invoices: list, as_of: date, rate: float = 0.015) -> dict:
     """Bucket each open invoice's balance_due into aging windows, plus per-bucket late fees.
-    Late fee policy: 1.5% per month (compounding) on balances 30+ days past due.
+    Late fee policy: `rate` per month (compounding) on balances 30+ days past due. `rate` is a
+    DECIMAL (e.g. 0.015 for 1.5%) — callers should pass the resolved per-customer/per-entity rate.
     Returns a dict with buckets, total balance, total late fees, and grand total.
     `as_of` is the statement date.
     """
@@ -105,20 +106,22 @@ def compute_aging(invoices: list, as_of: date) -> dict:
             buckets["d_61_90"] += bal
         else:
             buckets["d_90_plus"] += bal
-        # Late fee accrues once past 30 days; 1.5% per (whole) month overdue
+        # Late fee accrues once past 30 days; `rate` per (whole) month overdue
         if days_past >= 30:
             months = days_past // 30
-            late_fees += round(bal * 0.015 * months, 2)
+            late_fees += round(bal * rate * months, 2)
     return {
         **buckets,
         "total": round(total, 2),
         "late_fees": round(late_fees, 2),
         "total_due_with_fees": round(total + late_fees, 2),
+        "rate_pct": round(rate * 100.0, 4),
     }
 
 
-def compute_invoice_late_fee(inv: dict, as_of: date) -> float:
-    """Per-invoice late fee — same rule as compute_aging applies on this single row."""
+def compute_invoice_late_fee(inv: dict, as_of: date, rate: float = 0.015) -> float:
+    """Per-invoice late fee — same rule as compute_aging applies on this single row.
+    `rate` is a DECIMAL (e.g. 0.015 for 1.5%)."""
     bal = float(inv.get("balance_due") or 0)
     if bal <= 0.01:
         return 0.0
@@ -129,13 +132,15 @@ def compute_invoice_late_fee(inv: dict, as_of: date) -> float:
     if days_past < 30:
         return 0.0
     months = days_past // 30
-    return round(bal * 0.015 * months, 2)
+    return round(bal * rate * months, 2)
 
 
-def build_statement_pdf(customer: dict, invoices: list, statement_date_iso: str) -> bytes:
+def build_statement_pdf(customer: dict, invoices: list, statement_date_iso: str, rate: float = 0.015) -> bytes:
     """customer: contact dict (uses billing_* or address_* fields).
     invoices: list of invoice dicts (already filtered to open balances for this customer).
     statement_date_iso: yyyy-mm-dd string for 'as of' date.
+    rate: monthly late-fee rate as a DECIMAL (e.g. 0.015 == 1.5%). Caller resolves per
+          customer/entity using gl.resolve_late_fee_rate.
     """
     buf = BytesIO()
     pdf = SimpleDocTemplate(
@@ -228,7 +233,8 @@ def build_statement_pdf(customer: dict, invoices: list, statement_date_iso: str)
     story.append(Spacer(1, 0.2 * inch))
 
     # ---- Aging summary cards ----
-    aging = compute_aging(invoices, as_of)
+    aging = compute_aging(invoices, as_of, rate=rate)
+    rate_pct_str = (f"{rate * 100:.2f}").rstrip("0").rstrip(".")
     bucket_defs = [
         ("Current", aging["current"], s["bucket_value"]),
         ("1-30 Days", aging["d_1_30"], s["bucket_value_warn"] if aging["d_1_30"] > 0.01 else s["bucket_value"]),
@@ -293,7 +299,7 @@ def build_statement_pdf(customer: dict, invoices: list, statement_date_iso: str)
         if len(proj) > 24:
             proj = proj[:22] + "…"
 
-        late_fee = compute_invoice_late_fee(inv, as_of)
+        late_fee = compute_invoice_late_fee(inv, as_of, rate=rate)
         grand_late_fee += late_fee
         late_fee_str = _currency(late_fee) if late_fee > 0 else "—"
         if late_fee > 0:
@@ -333,7 +339,7 @@ def build_statement_pdf(customer: dict, invoices: list, statement_date_iso: str)
             ])
             # Late fee row
             table_data.append([
-                "", "", "", Paragraph('<b>Late Fees (1.5% / month on 30+ days past due)</b>', s["body_sm"]),
+                "", "", "", Paragraph(f'<b>Late Fees ({rate_pct_str}% / month on 30+ days past due)</b>', s["body_sm"]),
                 "", "", "", "",
                 Paragraph(f'<b><font color="#B91C1C">{_currency(grand_late_fee)}</font></b>', s["body_sm"]),
             ])
@@ -392,7 +398,7 @@ def build_statement_pdf(customer: dict, invoices: list, statement_date_iso: str)
         story.append(Paragraph(msg, s["body_sm"]))
         story.append(Spacer(1, 0.08 * inch))
     story.append(Paragraph(
-        '<font color="#52525B"><b>Late Fee Policy:</b> A late fee of 1.5% per month (18% APR) is applied to any balance more than 30 days past due. '
+        f'<font color="#52525B"><b>Late Fee Policy:</b> A late fee of {rate_pct_str}% per month is applied to any balance more than 30 days past due. '
         "Fees compound monthly and are reflected on each Statement of Account.</font>",
         s["muted"],
     ))

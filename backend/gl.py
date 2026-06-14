@@ -14,7 +14,7 @@ deletion marks the entry `is_reversed=true` which excludes it from KPI calcs.
 from typing import Optional, List, Dict
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 logger = logging.getLogger(__name__)
@@ -648,12 +648,216 @@ async def report_balance_sheet(db, entity_id: str, as_of: Optional[str]) -> dict
     }
 
 
+# ---------- Cash Flow Statement (Indirect Method) ----------
+
+def _cf_classify(account: dict) -> str:
+    """Bucket an account into one of the cash-flow sections.
+
+    Returns: 'cash', 'operating', 'investing', 'financing', or 'pl'.
+    - cash: Bank accounts (1000-series category='Bank') — the thing being reconciled
+    - pl: P&L accounts (Revenue/COGS/Expense/Other) — captured via Net Income
+    - investing: Fixed-asset purchases/sales (category='Fixed Asset')
+    - financing: Long-term debt + Equity contributions/distributions (excludes RE & IC)
+    - operating: Everything else (AR, AP, current liabilities, inventory…)
+    """
+    t = account.get("account_type")
+    cat = (account.get("category") or "")
+    num = (account.get("account_number") or "")
+    if cat == "Bank":
+        return "cash"
+    if t in ("Revenue", "COGS", "Expense", "Other"):
+        return "pl"
+    if cat in ("Fixed Asset", "Contra-Fixed"):
+        # Contra-Fixed (accumulated depreciation) handled implicitly via depreciation add-back
+        return "skip" if cat == "Contra-Fixed" else "investing"
+    if t == "Liability":
+        # 2500+ numbered liabilities = long-term debt → financing (excl. IC 2900)
+        if num and num >= "2500" and num != "2900":
+            return "financing"
+        return "operating"
+    if t == "Equity":
+        # 3100 Retained Earnings is rolled into Net Income — skip
+        if num == "3100":
+            return "skip"
+        return "financing"
+    # Default Asset (AR, Inventory, WIP, IC Receivable etc.)
+    return "operating"
+
+
+async def report_cash_flow(db, entity_id: str, date_from: Optional[str], date_to: Optional[str]) -> dict:
+    """Indirect-method Cash Flow Statement for an entity over a date range.
+
+    Sections:
+      • Operating  = Net Income + Depreciation add-back ± Δ non-cash working capital
+      • Investing  = − Δ Fixed Assets (purchases out, sales in)
+      • Financing  = + Δ Long-term liabilities + Δ Equity contributions − Δ Distributions
+
+    Reconciliation: (Operating + Investing + Financing) should equal Δ Cash
+    (sum of period activity on all category='Bank' accounts).
+    """
+    # 1) Get full COA so we can classify each account
+    accounts = []
+    async for a in db.chart_of_accounts.find({"entity_id": entity_id}, {"_id": 0}):
+        accounts.append(a)
+    acct_by_id = {a["id"]: a for a in accounts}
+
+    # 2) Period activity (debit/credit totals per account during [date_from, date_to])
+    activity_rows = await _account_balances(db, entity_id, date_from=date_from, date_to=date_to)
+
+    # 3) Compute Net Income from period activity on Revenue/COGS/Expense/Other
+    rev = cogs = opex = other = 0.0
+    depreciation = 0.0
+    for r in activity_rows:
+        t = r["account_type"]
+        nb = _natural_balance(t, r["debit"], r["credit"])
+        if t == "Revenue":
+            rev += nb
+        elif t == "COGS":
+            cogs += nb
+        elif t == "Expense":
+            opex += nb
+            # Depreciation expense (6600) is non-cash; track for add-back
+            if (r.get("account_number") or "") == "6600":
+                depreciation += nb
+        elif t == "Other":
+            other += nb
+    net_income = round(rev - cogs - opex + other, 2)
+
+    # 4) Walk each Asset/Liability/Equity account and bucket its period delta
+    operating_items = []  # working-capital deltas
+    investing_items = []
+    financing_items = []
+
+    for r in activity_rows:
+        acct_id = r["account_id"]
+        acct = acct_by_id.get(acct_id) or {}
+        acct_for_class = {**acct, "account_type": r.get("account_type"), "account_number": r.get("account_number")}
+        section = _cf_classify(acct_for_class)
+        if section in ("pl", "cash", "skip"):
+            continue
+        nb_change = _natural_balance(r["account_type"], r["debit"], r["credit"])
+        # Cash impact direction:
+        # - Asset increase (positive nb) consumes cash → negate
+        # - Liability/Equity increase (positive nb) provides cash → keep sign
+        if r["account_type"] == "Asset":
+            cash_impact = round(-nb_change, 2)
+        else:
+            cash_impact = round(nb_change, 2)
+        if abs(cash_impact) < 0.005:
+            continue
+        item = {
+            "account_id": acct_id,
+            "account_number": r["account_number"],
+            "account_name": r["account_name"],
+            "account_type": r["account_type"],
+            "delta": round(nb_change, 2),
+            "cash_impact": cash_impact,
+        }
+        if section == "operating":
+            operating_items.append(item)
+        elif section == "investing":
+            investing_items.append(item)
+        elif section == "financing":
+            financing_items.append(item)
+
+    for lst in (operating_items, investing_items, financing_items):
+        lst.sort(key=lambda x: x.get("account_number") or "")
+
+    # 5) Totals
+    operating_wc = round(sum(i["cash_impact"] for i in operating_items), 2)
+    operating_total = round(net_income + depreciation + operating_wc, 2)
+    investing_total = round(sum(i["cash_impact"] for i in investing_items), 2)
+    financing_total = round(sum(i["cash_impact"] for i in financing_items), 2)
+    net_change_in_cash = round(operating_total + investing_total + financing_total, 2)
+
+    # 6) Reconciliation: actual cash balance at date_from-1 vs date_to
+    # Sum all Bank-category accounts' natural balance
+    async def _cash_balance(as_of: Optional[str]) -> float:
+        rows = await _account_balances(db, entity_id, date_to=as_of)
+        total = 0.0
+        for rr in rows:
+            acct = acct_by_id.get(rr["account_id"]) or {}
+            if (acct.get("category") or "") == "Bank":
+                total += _natural_balance(rr["account_type"], rr["debit"], rr["credit"])
+        return round(total, 2)
+
+    # Beginning cash = balance as of day before date_from (or 0 if no date_from)
+    beginning_cash = 0.0
+    if date_from:
+        try:
+            d = datetime.fromisoformat(date_from[:10]).date()
+            prev = (d - timedelta(days=1)).isoformat()
+            beginning_cash = await _cash_balance(prev)
+        except Exception:
+            beginning_cash = 0.0
+    ending_cash = await _cash_balance(date_to) if date_to else beginning_cash
+    actual_cash_change = round(ending_cash - beginning_cash, 2)
+    reconciliation_diff = round(actual_cash_change - net_change_in_cash, 2)
+
+    return {
+        "entity_id": entity_id,
+        "date_from": date_from,
+        "date_to": date_to,
+        "operating": {
+            "net_income": net_income,
+            "depreciation": round(depreciation, 2),
+            "working_capital_items": operating_items,
+            "working_capital_total": operating_wc,
+            "total": operating_total,
+        },
+        "investing": {
+            "items": investing_items,
+            "total": investing_total,
+        },
+        "financing": {
+            "items": financing_items,
+            "total": financing_total,
+        },
+        "totals": {
+            "net_change_in_cash": net_change_in_cash,
+            "beginning_cash": beginning_cash,
+            "ending_cash": ending_cash,
+            "actual_cash_change": actual_cash_change,
+            "reconciliation_diff": reconciliation_diff,
+            "reconciled": abs(reconciliation_diff) < 0.01,
+        },
+    }
+
+
 # ---------- Late-Fee Accrual Batch ----------
 
-LATE_FEE_MONTHLY_RATE = 0.015  # 1.5% per month (18% APR)
+LATE_FEE_MONTHLY_RATE = 0.015  # 1.5% per month (18% APR) — DEFAULT FALLBACK ONLY. See resolve_late_fee_rate().
 LATE_FEE_GRACE_DAYS = 30
 LATE_FEE_REVENUE_ACCT = "4200"
 LATE_FEE_AR_ACCT = "1100"
+
+
+def resolve_late_fee_rate(entity: Optional[dict], customer: Optional[dict]) -> float:
+    """Resolve the monthly late-fee rate (as a decimal, e.g. 0.015 for 1.5%) for a given
+    customer-on-entity pairing. Precedence:
+      1. customer.late_fee_rate_pct (per-customer override)
+      2. entity.late_fee_rate_pct (entity default)
+      3. Global fallback (1.5%)
+    Values are stored as PERCENT (1.5 == 1.5%); this helper returns DECIMAL."""
+    for src in (customer, entity):
+        if not src:
+            continue
+        v = src.get("late_fee_rate_pct")
+        if v is None:
+            continue
+        try:
+            pct = float(v)
+        except (TypeError, ValueError):
+            continue
+        if pct < 0:
+            continue
+        return round(pct / 100.0, 6)
+    return LATE_FEE_MONTHLY_RATE
+
+
+def resolve_late_fee_rate_pct(entity: Optional[dict], customer: Optional[dict]) -> float:
+    """Same as resolve_late_fee_rate but returns PERCENT (e.g. 1.5) — for display strings."""
+    return round(resolve_late_fee_rate(entity, customer) * 100.0, 4)
 
 
 def _days_between(d1: str, d2: str) -> int:
@@ -692,6 +896,8 @@ async def accrue_late_fees(
     accrued_total = 0.0
     skipped = 0
     entities_touched = set()
+    entity_cache: dict = {}
+    customer_cache: dict = {}
 
     async for inv in db.invoices.find(q):
         status = (inv.get("status") or "").lower()
@@ -710,17 +916,28 @@ async def accrue_late_fees(
         if days_overdue <= LATE_FEE_GRACE_DAYS:
             skipped += 1
             continue
-        fee = round(balance * LATE_FEE_MONTHLY_RATE, 2)
+        ent = inv["entity_id"]
+        # Resolve per-invoice rate: customer override → entity default → global 1.5%
+        if ent not in entity_cache:
+            entity_cache[ent] = await db.entities.find_one({"id": ent}, {"_id": 0, "late_fee_rate_pct": 1}) or {}
+        cust_id = inv.get("bill_to_contact_id") or inv.get("contact_id")
+        cust_doc = None
+        if cust_id:
+            if cust_id not in customer_cache:
+                customer_cache[cust_id] = await db.contacts.find_one({"id": cust_id}, {"_id": 0, "late_fee_rate_pct": 1}) or {}
+            cust_doc = customer_cache[cust_id]
+        rate = resolve_late_fee_rate(entity_cache[ent], cust_doc)
+        rate_pct_str = f"{rate * 100:.2f}".rstrip("0").rstrip(".")
+        fee = round(balance * rate, 2)
         if fee <= 0:
             skipped += 1
             continue
-        ent = inv["entity_id"]
         entities_touched.add(ent)
         lines = [
             await _build_line(db, ent, LATE_FEE_AR_ACCT, debit=fee, credit=0, memo=f"Late fee — Invoice {inv.get('invoice_number','')}"),
-            await _build_line(db, ent, LATE_FEE_REVENUE_ACCT, debit=0, credit=fee, memo=f"1.5% late fee accrual ({period})"),
+            await _build_line(db, ent, LATE_FEE_REVENUE_ACCT, debit=0, credit=fee, memo=f"{rate_pct_str}% late fee accrual ({period})"),
         ]
-        memo = f"Late-fee accrual {period} · Invoice {inv.get('invoice_number','')} · {days_overdue}d overdue · balance ${balance:,.2f}"
+        memo = f"Late-fee accrual {period} · Invoice {inv.get('invoice_number','')} · {days_overdue}d overdue · balance ${balance:,.2f} · rate {rate_pct_str}%"
         # idempotent: source_type='invoice', source_id=inv['id'], kind=f"late_fee:{period}"
         posted = await post_journal(
             db,

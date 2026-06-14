@@ -156,6 +156,178 @@ export function BalanceSheetReport({ entityId, entityName }) {
 }
 
 // =========================================================
+// Cash Flow Statement (Indirect Method)
+// =========================================================
+export function CashFlowReport({ entityId, entityName }) {
+  const [dateFrom, setDateFrom] = useState(yearStartISO());
+  const [dateTo, setDateTo] = useState(todayISO());
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [drill, setDrill] = useState(null);
+
+  const load = async () => {
+    if (!entityId) return;
+    setLoading(true);
+    try {
+      const r = await api.get(
+        `/books/reports/cash-flow?entity_id=${entityId}&date_from=${dateFrom}&date_to=${dateTo}`
+      );
+      setData(r.data);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [entityId, dateFrom, dateTo]);
+
+  if (!entityId) return <div className="p-8 text-zinc-500 text-sm">Select an entity.</div>;
+
+  return (
+    <div className="px-8 py-6" data-testid="cf-report">
+      <ReportToolbar title="Cash Flow Statement" subtitle={`${entityName || ""} · ${dateFrom} → ${dateTo} · Indirect method`}>
+        <DateRangeQuick dateFrom={dateFrom} dateTo={dateTo} onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
+        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="border border-zinc-300 px-2 py-1.5 text-xs" data-testid="cf-date-from" />
+        <span className="text-zinc-400 text-xs">→</span>
+        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="border border-zinc-300 px-2 py-1.5 text-xs" data-testid="cf-date-to" />
+        <button onClick={() => window.print()} className="ml-auto px-3 py-1.5 text-xs font-bold uppercase tracking-wider border border-zinc-300 hover:border-blue-700 hover:text-blue-700 transition-colors flex items-center gap-2">
+          <Printer className="w-3.5 h-3.5" /> Print
+        </button>
+      </ReportToolbar>
+
+      {loading && <div className="text-sm text-zinc-500">Loading...</div>}
+      {!loading && data && (
+        <div className="bg-white border border-zinc-200">
+          {/* ---------- OPERATING ---------- */}
+          <div className="px-5 py-2 bg-zinc-50 text-[10px] font-bold uppercase tracking-widest text-zinc-700">Cash from Operating Activities</div>
+          <CashFlowLine label="Net Income (from P&L)" value={data.operating.net_income} testId="cf-net-income" />
+          {data.operating.depreciation > 0.005 && (
+            <CashFlowLine label="+ Depreciation Expense (non-cash)" value={data.operating.depreciation} hint="Added back — no cash leaves the business" testId="cf-depreciation" />
+          )}
+          {data.operating.working_capital_items.length > 0 && (
+            <div className="px-5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-500 border-t border-zinc-100">Working Capital Changes</div>
+          )}
+          {data.operating.working_capital_items.map((it) => (
+            <CashFlowWCLine
+              key={it.account_id}
+              item={it}
+              entityId={entityId}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onDrill={setDrill}
+            />
+          ))}
+          <SubtotalRow label="Net Cash from Operating" value={data.operating.total} tone="emerald" testId="cf-operating-total" />
+
+          {/* ---------- INVESTING ---------- */}
+          <div className="px-5 py-2 bg-zinc-50 text-[10px] font-bold uppercase tracking-widest text-zinc-700 border-t border-zinc-200">Cash from Investing Activities</div>
+          {data.investing.items.length === 0 ? (
+            <div className="px-5 py-2.5 text-sm text-zinc-400 italic">No fixed-asset purchases or sales in this period</div>
+          ) : (
+            data.investing.items.map((it) => (
+              <CashFlowWCLine
+                key={it.account_id}
+                item={it}
+                entityId={entityId}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                onDrill={setDrill}
+              />
+            ))
+          )}
+          <SubtotalRow label="Net Cash from Investing" value={data.investing.total} tone="zinc" testId="cf-investing-total" />
+
+          {/* ---------- FINANCING ---------- */}
+          <div className="px-5 py-2 bg-zinc-50 text-[10px] font-bold uppercase tracking-widest text-zinc-700 border-t border-zinc-200">Cash from Financing Activities</div>
+          {data.financing.items.length === 0 ? (
+            <div className="px-5 py-2.5 text-sm text-zinc-400 italic">No long-term debt or equity movements in this period</div>
+          ) : (
+            data.financing.items.map((it) => (
+              <CashFlowWCLine
+                key={it.account_id}
+                item={it}
+                entityId={entityId}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                onDrill={setDrill}
+              />
+            ))
+          )}
+          <SubtotalRow label="Net Cash from Financing" value={data.financing.total} tone="zinc" testId="cf-financing-total" />
+
+          {/* ---------- RECONCILIATION ---------- */}
+          <SubtotalRow label="Net Change in Cash" value={data.totals.net_change_in_cash} tone="blue" big testId="cf-net-change" />
+          <div className="px-5 py-2 flex items-center justify-between text-sm border-t border-zinc-200 bg-zinc-50/60">
+            <span className="text-zinc-600">Beginning Cash ({dateFrom})</span>
+            <span className="font-mono font-bold">{fmtMoneyExact(data.totals.beginning_cash)}</span>
+          </div>
+          <div className="px-5 py-2 flex items-center justify-between text-sm border-t border-zinc-100">
+            <span className="text-zinc-600">Ending Cash ({dateTo})</span>
+            <span className="font-mono font-bold">{fmtMoneyExact(data.totals.ending_cash)}</span>
+          </div>
+          <div className="px-5 py-2 flex items-center justify-between text-sm border-t border-zinc-100">
+            <span className="text-zinc-600 italic">Actual Cash Change (from Bank ledgers)</span>
+            <span className="font-mono font-bold">{fmtMoneyExact(data.totals.actual_cash_change)}</span>
+          </div>
+          {!data.totals.reconciled ? (
+            <div className="px-5 py-3 bg-rose-50 border-t border-rose-200 text-xs flex items-center gap-2 text-rose-800 font-bold" data-testid="cf-reconcile-warn">
+              <AlertTriangle className="w-4 h-4" />
+              Reconciliation off by {fmtMoneyExact(data.totals.reconciliation_diff)} — check journals or unclassified accounts.
+            </div>
+          ) : (
+            <div className="px-5 py-2 bg-emerald-50 border-t border-emerald-200 text-[11px] font-bold uppercase tracking-widest text-emerald-800" data-testid="cf-reconcile-ok">
+              ✓ Reconciles with Bank ledger movement
+            </div>
+          )}
+        </div>
+      )}
+
+      {drill && (
+        <DrilldownModal entityId={entityId} account={drill} dateFrom={dateFrom} dateTo={dateTo} onClose={() => setDrill(null)} />
+      )}
+    </div>
+  );
+}
+
+function CashFlowLine({ label, value, hint, testId }) {
+  return (
+    <div className="px-5 py-1.5 flex items-center justify-between text-sm border-t border-zinc-100" data-testid={testId}>
+      <div className="text-zinc-800">
+        {label}
+        {hint && <div className="text-[10px] text-zinc-400 mt-0.5">{hint}</div>}
+      </div>
+      <span className="font-mono font-bold text-zinc-900">{fmtMoney(value)}</span>
+    </div>
+  );
+}
+
+function CashFlowWCLine({ item, entityId, dateFrom, dateTo, onDrill }) {
+  // For Asset accounts: increase (delta>0) consumes cash → red; decrease → green
+  // For Liability/Equity: increase (delta>0) provides cash → green; decrease → red
+  const cash = item.cash_impact;
+  const isAsset = item.account_type === "Asset";
+  const verb = isAsset
+    ? (item.delta > 0 ? "Increase in" : "Decrease in")
+    : (item.delta > 0 ? "Increase in" : "Decrease in");
+  return (
+    <button
+      onClick={() => onDrill({ account_id: item.account_id, account_number: item.account_number, account_name: item.account_name })}
+      className="w-full px-5 py-1.5 flex items-center justify-between hover:bg-blue-50 transition-colors text-sm border-t border-zinc-100"
+      data-testid={`cf-wc-${item.account_number}`}
+    >
+      <span className="text-zinc-700 text-left">
+        <span className="font-mono text-xs text-zinc-400 mr-2">{item.account_number}</span>
+        {verb} {item.account_name}
+      </span>
+      <span className={`font-mono font-bold ${cash >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+        {cash >= 0 ? "+" : ""}{fmtMoney(cash)}
+      </span>
+    </button>
+  );
+}
+
+// =========================================================
 // Late-Fee Accrual Tool
 // =========================================================
 export function LateFeeAccrualTool({ entities }) {
@@ -225,7 +397,7 @@ export function LateFeeAccrualTool({ entities }) {
         </div>
         <div className="px-5 py-3 border-t border-zinc-200 flex items-center justify-between">
           <div className="text-[11px] text-zinc-500">
-            Rule: balance × 1.5% per month, >30 days overdue. Posting key includes the month so re-runs are safe.
+            Rule: balance × 1.5% per month, more than 30 days overdue. Posting key includes the month so re-runs are safe.
           </div>
           <button
             data-testid="late-fee-run-btn"
