@@ -339,14 +339,32 @@
 - ✅ "Manual Adjustment" added to the kind filter dropdown.
 - ✅ Tested: 7/7 new pytest (`/app/backend/tests/test_books_manual_journal.py`) + frontend smoke (composer modal renders, account dropdown grouped, live balance indicator works).
 
-### Admin Trash — Empty-keyword validation hardened (Feb 2026)
+### Admin Trash — Empty-keyword validation hardened + UI hint banner (Feb 2026)
 - Bug: bulk `Empty Trash` rejected `EMPTY` when typed with quotes / different case / surrounding whitespace.
-- Fix: `/app/frontend/src/pages/Trash.jsx` normalises input via `replace(/["'`]/g,"").trim().toUpperCase()` before comparison; single-item purge prompt now case-insensitive + quote-tolerant against item label.
-- Verified via logic test for variants `EMPTY`, ` empty `, `"EMPTY"`, `'Empty'`, `EMPTY ` — all PASS; `wrong` correctly BLOCKED.
+- Fix: `/app/frontend/src/pages/Trash.jsx` normalises input via `replace(/["'`]/g,"").trim().toUpperCase()` before comparison.
+- Single-item purge prompt simplified to require `DELETE` keyword (also case-insensitive + quote-tolerant) instead of typing the long item label.
+- Amber reminder banner at top of Trash page: "Single row → DELETE · Empty Trash → EMPTY".
 
-## Backlog (P0 — next Books phases)
-- Books — Cash Flow report (Operating / Investing / Financing) — A/R + A/P Aging already DONE
-- Books — Per-entity configurable late-fee rate (today hardcoded 1.5%)
+### Books — Cash Flow Statement (Indirect Method) (Feb 2026)
+- New `GET /api/books/reports/cash-flow?entity_id=&date_from=&date_to=` endpoint returning Operating / Investing / Financing sections with full reconciliation to Bank ledger movement.
+- Indirect method: Net Income + Depreciation add-back ± Δ non-cash working capital = Operating; − Δ Fixed Assets = Investing; + Δ Long-term debt + Δ Equity (excl. RE) = Financing.
+- Reconciliation invariant: Operating + Investing + Financing == Bank-ledger change (verified ±$0.01, shown as ✓ Reconciles badge or red ⚠ warning if drift).
+- New "Cash Flow" tab in Books, drill-down to journal lines per account row.
+- Files: `/app/backend/gl.py` (`_cf_classify`, `report_cash_flow`), `/app/backend/books.py` endpoint, `/app/frontend/src/pages/BooksReports.jsx` (`CashFlowReport`), `/app/frontend/src/pages/BooksCOA.jsx` (tab wiring).
+- ✅ Tested: 8/8 new pytest + frontend e2e (100% pass).
+
+### Per-Entity / Per-Customer Configurable Late-Fee Rate (Feb 2026)
+- Moved hardcoded 1.5% to a resolver chain: **Customer override → Entity default → 1.5% fallback**.
+- `Entity.late_fee_rate_pct` (default 1.5%) editable in Entity modal; auto-migration backfills 1.5 for existing entities on boot.
+- `Contact.late_fee_rate_pct` (optional override; null = inherit entity). "Clear override" button on contact form.
+- Resolver `gl.resolve_late_fee_rate(entity, customer)` returns decimal; `resolve_late_fee_rate_pct(...)` returns percent for display.
+- Wired through: GL accrual batch, invoice PDF footer text, invoice email body+HTML, statement PDF, statement email body+HTML, `/contacts/{id}/statement-summary` payload (`late_fee_rate_pct` field), and the aging late-fee math.
+- Handles edge cases: zero is a valid override (charges 0%), null falls back, malformed/negative values ignored.
+- Files: `gl.py`, `books.py`, `server.py`, `statement_pdf.py`, `invoice_pdf.py`, `BooksCOA.jsx`, `Contacts.jsx`.
+- ✅ Tested: 8/8 resolver unit tests + 8/8 integration tests + frontend e2e (100% pass).
+
+## Backlog (P0)
+- Books — _(both P0 above are now complete)_
 
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics) — DONE
