@@ -96,7 +96,11 @@ async def _load_photo(db, photo_id: str) -> bytes | None:
     if not p or not p.get("storage_path"):
         return None
     try:
-        return get_object(p["storage_path"])
+        result = get_object(p["storage_path"])
+        # storage.get_object() returns (bytes, content_type) tuple
+        if isinstance(result, tuple):
+            return result[0]
+        return result
     except Exception:
         return None
 
