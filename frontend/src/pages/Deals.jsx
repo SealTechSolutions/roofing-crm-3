@@ -66,6 +66,10 @@ const empty = {
   current_roof_type: "None (new construction)",
   proposed_roof_type: "TPO Over-Lay",
   custom_scope: "",
+  construction_project_requirements: "",
+  construction_other_requirements: "",
+  construction_exclusions: "",
+  project_type_override: "",
   property_sqft: 0,
   perimeter_lnft: 0,
   avg_parapet_height: 0,
@@ -334,23 +338,71 @@ export default function Deals() {
               </Field>
             </Grid2>
 
-            {/* Free-form Scope — only when the proposed item is non-roofing (Construction Project / Other) */}
+            {/* Construction-scope 3-bucket inputs — only when the proposed item is non-roofing (Construction Project / Other) */}
             {(/^(construction project|other)$/i.test(form.proposed_roof_type || "") || /other construction work/i.test(form.current_roof_type || "")) && (
-              <div className="pt-4 border-t border-zinc-200" data-testid="custom-scope-block">
-                <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-2">
-                  Custom Scope (concrete / landscape / construction)
+              <div className="pt-4 border-t border-zinc-200 space-y-4" data-testid="custom-scope-block">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+                    Construction Scope · 2-Page PDF
+                  </div>
+                  <div className="text-[10px] text-zinc-500">
+                    One bullet per line — printed on Page 1 of the proposal.
+                  </div>
                 </div>
-                <textarea
-                  data-testid="deal-custom-scope"
-                  value={form.custom_scope || ""}
-                  onChange={(e) => setForm({ ...form, custom_scope: e.target.value })}
-                  rows={8}
-                  placeholder={"Describe the scope of work in plain English.\n\nLeave a blank line between sections to split the PDF into 'Scope of Work' + 'Project Requirements'.\n\nExamples:\n• Demo existing 8&apos; concrete walkway at south entry.\n• Form, pour and finish 1,400 SF of new colored concrete to match adjacent.\n• Install 12 LF of trench drain.\n\nMaterials per attached cut sheets. Standard SealTech workmanship guarantee."}
-                  className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono"
-                />
-                <div className="text-[10px] text-zinc-500 mt-1">
-                  This text replaces the standard roof-scope content on the proposal PDF. Use bullet points or short paragraphs.
-                </div>
+
+                <Field label={`Project Type (overrides PDF label · auto from "${form.proposed_roof_type || "—"}")`}>
+                  <Input
+                    data-testid="deal-project-type-override"
+                    value={form.project_type_override || ""}
+                    onChange={(v) => setForm({ ...form, project_type_override: v })}
+                    placeholder="e.g., Drainage & Grading, Concrete Walkway, Demolition"
+                  />
+                </Field>
+
+                <Field label="Project Requirements">
+                  <textarea
+                    data-testid="deal-construction-project-requirements"
+                    value={form.construction_project_requirements || ""}
+                    onChange={(e) => setForm({ ...form, construction_project_requirements: e.target.value })}
+                    rows={5}
+                    placeholder={"Site preparation — clear debris, excavate, layout entire section\nStructural fill placement and grading — supply Clean Class 1 Structural Fill, place 5-8\" lifts, taper for runoff\nRiver rock surface layer — install 2-3\" of 1-3\" river rock for drainage\nDownspout extensions — install 110' +/- of downspout extensions and 45's"}
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono"
+                  />
+                </Field>
+
+                <Field label="Other Requirements (Materials / Equipment / Metal)">
+                  <textarea
+                    data-testid="deal-construction-other-requirements"
+                    value={form.construction_other_requirements || ""}
+                    onChange={(e) => setForm({ ...form, construction_other_requirements: e.target.value })}
+                    rows={4}
+                    placeholder={"MATERIALS — 155 ton class 1 clean structural fill, 70 ton 1-3\" river rock\nEQUIPMENT — Skip Loader, 150 lb Plate Tamper\nMETAL — 110' of drain extensions and 45 degree elbows"}
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono"
+                  />
+                </Field>
+
+                <Field label="Exclusions">
+                  <textarea
+                    data-testid="deal-construction-exclusions"
+                    value={form.construction_exclusions || ""}
+                    onChange={(e) => setForm({ ...form, construction_exclusions: e.target.value })}
+                    rows={3}
+                    placeholder={"Permit fees (if required by jurisdiction).\nRemoval/disposal of pre-existing hazardous materials.\nWork outside the defined scope."}
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono"
+                  />
+                </Field>
+
+                <details className="text-[10px] text-zinc-500">
+                  <summary className="cursor-pointer hover:text-zinc-800">Legacy single-textarea scope (advanced / back-compat)</summary>
+                  <textarea
+                    data-testid="deal-custom-scope"
+                    value={form.custom_scope || ""}
+                    onChange={(e) => setForm({ ...form, custom_scope: e.target.value })}
+                    rows={5}
+                    placeholder={"Falls back to this when the 3 bucket fields above are empty. Separate sections with a blank line — they map to Project Requirements / Other / Exclusions."}
+                    className="w-full mt-1 px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono"
+                  />
+                </details>
               </div>
             )}
 

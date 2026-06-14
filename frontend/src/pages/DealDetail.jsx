@@ -559,9 +559,34 @@ export default function DealDetail() {
           <div className="pl-1 pb-2">
             <ScopePreview currentRoof={deal.current_roof_type} proposedRoof={deal.proposed_roof_type} />
           </div>
-          {deal.custom_scope && (
+          {(deal.construction_project_requirements || deal.construction_other_requirements || deal.construction_exclusions) && (
+            <div className="border-t border-zinc-100 mt-2 pt-2 space-y-2" data-testid="deal-detail-construction-scope">
+              {deal.project_type_override && (
+                <Row label="Project Type (PDF)" value={deal.project_type_override} bold />
+              )}
+              {deal.construction_project_requirements && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 mb-1">Project Requirements</div>
+                  <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm">{deal.construction_project_requirements}</pre>
+                </div>
+              )}
+              {deal.construction_other_requirements && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 mb-1">Other Requirements</div>
+                  <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm">{deal.construction_other_requirements}</pre>
+                </div>
+              )}
+              {deal.construction_exclusions && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 mb-1">Exclusions</div>
+                  <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm">{deal.construction_exclusions}</pre>
+                </div>
+              )}
+            </div>
+          )}
+          {deal.custom_scope && !(deal.construction_project_requirements || deal.construction_other_requirements || deal.construction_exclusions) && (
             <div className="border-t border-zinc-100 mt-2 pt-2">
-              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-1">Custom Scope (on proposal PDF)</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-1">Custom Scope (legacy free-form)</div>
               <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm" data-testid="deal-detail-custom-scope">{deal.custom_scope}</pre>
             </div>
           )}

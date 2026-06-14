@@ -305,7 +305,17 @@
 - ✅ Cosmetic: fixed `<span>`-in-`<option>` hydration warning on Bank Rec account dropdown
 - ✅ Tested: 15/15 new pytest + 20/20 Phase-6 regression + live Sonner toast capture (`/app/test_reports/iteration_9.json`, `/app/backend/tests/test_books_phase7_gl_warnings.py`)
 
-## Phone & Tax-ID Auto-Formatting (2026-02) ✅
+## Construction Project — 2-Page PDF Rebuild (2026-02) ✅
+- ✅ New dedicated 2-page rendering function `_build_construction_2page` in `spec_sheet.py`. Bypasses the standard 3-page roofing flow when `dynamic_scope=True` (Construction Project / Other / Other Construction Work).
+- ✅ Page 1: SealTech logo + centered **PROJECT SCOPE** title + Contact / Project Address / Project Type / Date header table → outlined scope block with 3 buckets (**Project Requirements / Other Requirements / Exclusions**) → blue full-width **PROJECT TOTAL** bar → appreciation line → "**Darren Oliver, CSI, IIBEC**" signer (hardcoded — always Darren per business policy) → Acceptance Of Scope block with By/Title/Signature/Date.
+- ✅ Page 2: TERMS AND CONDITIONS — all 9 sections (PAYMENT TERMS, ACCOUNTS, FINAL INSPECTION, PERFORMANCE OF WORK, FORCE MAJEURE, ADDITIONAL WORK, ACCESS, PAID IN FULL, CANCELLATION) using the same boilerplate as the roofing template.
+- ✅ Backend Deal model (`server.py`) extended with 4 new fields: `construction_project_requirements`, `construction_other_requirements`, `construction_exclusions`, `project_type_override`. All optional and back-compat: if the 3 new buckets are empty, legacy `custom_scope` is auto-split on blank lines into the same 3 buckets.
+- ✅ Frontend Deal form (`Deals.jsx`) — when Proposed Roof Type = "Construction Project"/"Other": renders the "Construction Scope · 2-Page PDF" panel with 4 dedicated inputs (project type override + 3 textareas). The legacy single-textarea is collapsed inside a `<details>` advanced disclosure for back-compat editing.
+- ✅ DealDetail view (`DealDetail.jsx`) surfaces the 3 buckets and project_type_override when present; falls back to displaying legacy `custom_scope` if those are empty.
+- ✅ Project Type label on PDF: auto-pulled from `proposed_roof_type`, overridable per-deal via `project_type_override`.
+- ✅ Tested: 8/8 new pytest (`/app/backend/tests/test_construction_2page.py`) — exactly 2 pages, all section headers present on each page, signer always Darren, project_type_override honored, legacy custom_scope back-compat verified.
+
+
 - ✅ New `/app/frontend/src/lib/format.js` with `maskPhoneInput`, `formatPhoneDisplay`, `maskTaxIdInput`. Phone helper normalizes any input (`5551234567`, `555.123.4567`, `(555) 123-4567`, `1-555-123-4567`) to `555-123-4567`; strips leading country-code "1"; preserves trailing extensions (`x100`, `ext 4`).
 - ✅ Shared `Input` component (Contacts.jsx, used by Contacts/Properties/Vendors/Users/Deals) extended with `format="phone" | "ein" | "ssn"` prop — live-masks as the user types AND re-formats on blur (catches paste-then-tab edge case).
 - ✅ Phone fields wired across the app: Contacts (work/mobile/primary/fax), Properties (on-site contact phone), Vendors & Subcontractors (work/mobile/primary/fax), Users, Profile, Books → Entity Modal.

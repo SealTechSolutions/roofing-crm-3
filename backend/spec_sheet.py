@@ -912,6 +912,239 @@ def _scope_block(s, title, items):
     return elems
 
 
+def _split_bullets(text: str) -> list[str]:
+    """Split a multi-line block into a clean bullet list.
+    Strips leading dashes/bullets and ignores empty lines.
+    """
+    if not text:
+        return []
+    return [ln.strip().lstrip("-•* ") for ln in text.splitlines() if ln.strip()]
+
+
+def _build_construction_2page(
+    data: dict,
+    template: dict,
+    signer_name: str | None = None,
+    signer_credentials: str | None = None,
+) -> bytes:
+    """Tight 2-page Construction / Other project scope.
+
+    Page 1: header + 3-bucket scope (Project Requirements / Other Requirements /
+            Exclusions) + Project Total + appreciation + signoff + acceptance.
+    Page 2: Terms & Conditions.
+
+    Reads from these data keys (all optional — falls back to legacy `custom_scope`):
+      - construction_project_requirements (one bullet per line)
+      - construction_other_requirements   (one bullet per line)
+      - construction_exclusions           (one bullet per line)
+      - project_type_override             (overrides PROJECT TYPE display label)
+    """
+    project_reqs = _split_bullets(data.get("construction_project_requirements") or "")
+    other_reqs = _split_bullets(data.get("construction_other_requirements") or "")
+    exclusions = _split_bullets(data.get("construction_exclusions") or "")
+
+    # Back-compat: if none of the three new fields were filled, split legacy `custom_scope`
+    # by blank lines into up to 3 paragraphs → reqs / other / exclusions.
+    if not (project_reqs or other_reqs or exclusions):
+        raw = (data.get("custom_scope") or "").strip()
+        paragraphs = [p.strip() for p in raw.split("\n\n") if p.strip()] if raw else []
+        if len(paragraphs) >= 1:
+            project_reqs = _split_bullets(paragraphs[0])
+        if len(paragraphs) >= 2:
+            other_reqs = _split_bullets(paragraphs[1])
+        if len(paragraphs) >= 3:
+            exclusions = _split_bullets(paragraphs[2])
+        if not exclusions:
+            exclusions = [
+                "Permit fees (if required by jurisdiction).",
+                "Removal/disposal of pre-existing hazardous materials.",
+                "Work outside the defined scope.",
+            ]
+
+    buf = BytesIO()
+    pdf = SimpleDocTemplate(
+        buf, pagesize=letter,
+        leftMargin=0.5 * inch, rightMargin=0.5 * inch,
+        topMargin=0.55 * inch, bottomMargin=0.75 * inch,
+        title="Project Scope",
+    )
+    s = _styles()
+
+    # Compact styles tuned to keep Page 1 on a single sheet.
+    h2_compact = ParagraphStyle("h2c", parent=s["h2"], fontSize=11, leading=13, spaceBefore=2, spaceAfter=2)
+    h3_compact = ParagraphStyle("h3c", parent=s["bold"], fontSize=10, leading=12, textColor=BRONZE, spaceBefore=2, spaceAfter=2)
+    body_compact = ParagraphStyle("bc", parent=s["body"], fontSize=9.5, leading=12)
+
+    story = []
+
+    # ---- Header (logo + title + contact/project/type/date) ----
+    # Mirrors `_header_block` but uses the override-aware PROJECT TYPE label and
+    # tighter spacing to give the scope room to breathe.
+    if os.path.exists(LOGO_PATH):
+        try:
+            logo = Image(LOGO_PATH, width=3.0 * inch, height=1.15 * inch, kind="proportional")
+            logo.hAlign = "LEFT"
+            story.append(logo)
+        except Exception:
+            story.append(Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"]))
+    else:
+        story.append(Paragraph("SEALTECH  ·  BUILDING SOLUTIONS", s["eyebrow"]))
+
+    story.append(Spacer(1, 0.04 * inch))
+    title_centered = ParagraphStyle("title_c", parent=s["title"], alignment=1, fontSize=20, leading=24, spaceAfter=4)
+    story.append(Paragraph("PROJECT SCOPE", title_centered))
+    story.append(Spacer(1, 0.10 * inch))
+
+    project_type_label = (
+        (data.get("project_type_override") or "").strip()
+        or (data.get("product_type") or "").strip()
+        or "Construction Project"
+    )
+
+    cname = (data.get("contact_name") or "").strip()
+    cphone = (data.get("contact_phone") or "").strip()
+    contact_display = "  ·  ".join([p for p in [cname, cphone] if p]) or "—"
+
+    info_rows = [
+        ["CONTACT", Paragraph(contact_display, body_compact)],
+        ["PROJECT ADDRESS", Paragraph(data.get("project_address", "—"), body_compact)],
+        ["PROJECT TYPE", Paragraph(project_type_label, body_compact)],
+        ["DATE", Paragraph(data.get("date", "—"), body_compact)],
+    ]
+    info_tbl = Table(info_rows, colWidths=[1.4 * inch, 6.1 * inch])
+    info_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("TEXTCOLOR", (0, 0), (0, -1), BLUE),
+        ("TEXTCOLOR", (1, 0), (1, -1), DARK),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.25, BORDER),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(info_tbl)
+    story.append(Spacer(1, 0.12 * inch))
+
+    # ---- Scope table — 3 buckets in one outlined block ----
+    scope_cells = []
+    scope_cells.append([Paragraph("<b>Construction Project Custom Scope</b>", h2_compact)])
+    scope_cells.append([Paragraph("<b>Scope of Work</b>", h3_compact)])
+
+    def _bullets_para(items: list[str]) -> Paragraph:
+        if not items:
+            return Paragraph("<i>—</i>", body_compact)
+        return Paragraph("<br/>".join([f"•&nbsp;&nbsp;{i}" for i in items]), body_compact)
+
+    if project_reqs:
+        scope_cells.append([Paragraph("<b>Project Requirements</b>", h3_compact)])
+        scope_cells.append([_bullets_para(project_reqs)])
+    if other_reqs:
+        scope_cells.append([Paragraph("<b>Other Requirements</b>", h3_compact)])
+        scope_cells.append([_bullets_para(other_reqs)])
+    if exclusions:
+        scope_cells.append([Paragraph("<b>Exclusions</b>", h3_compact)])
+        scope_cells.append([_bullets_para(exclusions)])
+
+    scope_tbl = Table(scope_cells, colWidths=[7.5 * inch])
+    scope_tbl.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("BACKGROUND", (0, 0), (0, 0), LIGHT),
+    ]))
+    story.append(scope_tbl)
+    story.append(Spacer(1, 0.08 * inch))
+
+    # ---- Project Total — single price row ----
+    price = float(
+        data.get("opt_20")
+        or data.get("opt_15")
+        or data.get("opt_10")
+        or data.get("chosen_amount")
+        or 0
+    )
+    total_tbl = Table(
+        [["PROJECT TOTAL", _currency(price)]],
+        colWidths=[5.0 * inch, 2.5 * inch],
+    )
+    total_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), BLUE),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 12),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+    ]))
+    story.append(total_tbl)
+    story.append(Spacer(1, 0.10 * inch))
+
+    # ---- Appreciation line ----
+    appreciation_style = ParagraphStyle(
+        "appreciation_c", parent=body_compact, alignment=1, fontName="Helvetica-Oblique",
+    )
+    story.append(Paragraph(
+        "We appreciate your consideration of SealTech Building Solutions for your project investment. "
+        "We are committed to delivering exceptional craftsmanship, transparency, and lasting value on every project we undertake.",
+        appreciation_style,
+    ))
+    story.append(Spacer(1, 0.08 * inch))
+
+    # ---- Signer block ----
+    # Construction Scope is always signed by Darren Oliver, CSI, IIBEC
+    # (founder/PE) per business policy — independent of the logged-in user.
+    sn = "Darren Oliver"
+    sc = "CSI, IIBEC"
+    signer_line = f"<b>{sn}, {sc}</b><br/>SealTech Building Solutions"
+    story.append(Paragraph(signer_line, body_compact))
+    story.append(Spacer(1, 0.06 * inch))
+
+    # ---- Acceptance block ----
+    story.append(Paragraph("Acceptance Of Scope", h2_compact))
+    story.append(Paragraph(
+        "The investment, specifications, and conditions stated above are satisfactory and are hereby accepted. "
+        "SealTech Building Solutions is authorized to perform the work as specified. Payment will be made as outlined in the milestone schedule and Terms &amp; Conditions. "
+        "&quot;Owner&quot; refers to the legal owner of the property or their duly authorized representative.",
+        body_compact,
+    ))
+    story.append(Spacer(1, 0.08 * inch))
+
+    accept_rows = [
+        ["By:", "________________________________", "Title:", "________________________________"],
+        ["Signature:", "________________________________", "Date:", "________________________________"],
+    ]
+    at = Table(accept_rows, colWidths=[0.7 * inch, 2.95 * inch, 0.6 * inch, 2.95 * inch])
+    at.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("TEXTCOLOR", (0, 0), (-1, -1), DARK),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story.append(at)
+    story.append(PageBreak())
+
+    # ---- Page 2: Terms & Conditions ----
+    story.append(Paragraph("TERMS AND CONDITIONS", s["title"]))
+    story.append(Paragraph(
+        "The following terms and conditions are an integral part of this proposal and form a binding agreement upon acceptance. "
+        "No representations or reliance on any statements not contained herein shall be binding upon SealTech Building Solutions.",
+        s["tc_intro"],
+    ))
+    story.append(Spacer(1, 0.1 * inch))
+    for head, body in TERMS:
+        story.append(KeepTogether([
+            Paragraph(head, s["tc_h"]),
+            Paragraph(body, s["tc"]),
+        ]))
+
+    pdf.build(story, onFirstPage=_footer, onLaterPages=_footer)
+    return buf.getvalue()
+
+
 def build_spec_sheet(
     data: dict,
     cover_photo_bytes: bytes = None,
@@ -936,24 +1169,15 @@ def build_spec_sheet(
         current_roof_type or data.get("current_roof_type"),
     )
 
-    # Dynamic scope: when template is the custom-scope (Construction / Other), the bullets
-    # come from the deal's free-form `custom_scope` text. Split into two sections at the first
-    # blank line. If no blank line, everything lives under "Scope of Work" and section 2 stays brief.
+    # Construction Project / Other — render a dedicated 2-page document
+    # (Page 1 = scope + total + signoff, Page 2 = T&C). Bypasses the standard
+    # 3-page flow used by roofing templates.
     if template.get("dynamic_scope"):
-        raw = (data.get("custom_scope") or "").strip()
-        if raw:
-            paragraphs = [p.strip() for p in raw.split("\n\n") if p.strip()]
-            def _to_bullets(text: str) -> list:
-                lines = [ln.strip().lstrip("-•* ") for ln in text.splitlines() if ln.strip()]
-                return lines or [text]
-            if len(paragraphs) >= 2:
-                scope1 = _to_bullets(paragraphs[0])
-                scope2 = _to_bullets("\n".join(paragraphs[1:]))
-            else:
-                scope1 = _to_bullets(raw)
-                scope2 = ["Materials, labor, and workmanship per industry standard."]
-            # Build a fresh template dict so we don't mutate the module constant
-            template = {**template, "scope_1": scope1, "scope_2": scope2}
+        return _build_construction_2page(
+            data, template,
+            signer_name=signer_name,
+            signer_credentials=signer_credentials,
+        )
 
     buf = BytesIO()
     pdf = SimpleDocTemplate(buf, pagesize=letter,

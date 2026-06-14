@@ -417,6 +417,11 @@ class DealIn(BaseModel):
     current_roof_type: str = "TPO"
     proposed_roof_type: str = "TPO"
     custom_scope: str = ""  # Free-form scope body — used on the PDF when proposed_roof_type is "Construction Project" or "Other"
+    # Construction Project — 3-bucket scope used by the 2-page Construction PDF template
+    construction_project_requirements: str = ""  # one bullet per line
+    construction_other_requirements: str = ""    # materials / equipment / metal — one bullet per line
+    construction_exclusions: str = ""            # one bullet per line
+    project_type_override: str = ""              # overrides PROJECT TYPE label on the construction PDF
     property_sqft: float = 0.0
     perimeter_lnft: float = 0.0
     avg_parapet_height: float = 0.0
@@ -3631,6 +3636,10 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
         "color": color,
         "roof_type_label": (deal.get("proposed_roof_type") or "silicone").lower(),
         "custom_scope": (deal.get("custom_scope") or "").strip(),
+        "construction_project_requirements": (deal.get("construction_project_requirements") or "").strip(),
+        "construction_other_requirements": (deal.get("construction_other_requirements") or "").strip(),
+        "construction_exclusions": (deal.get("construction_exclusions") or "").strip(),
+        "project_type_override": (deal.get("project_type_override") or "").strip(),
     }
 
     # Fetch cover photo if set
