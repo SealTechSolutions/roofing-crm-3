@@ -385,6 +385,7 @@ function BillEditor({ bill, vendors, deals, onClose, onSaved }) {
     paid_method: bill.paid_method || "",
     paid_reference: bill.paid_reference || "",
     entity_id: bill.entity_id || "",
+    counter_entity_id: bill.counter_entity_id || "",
   }));
   const [saving, setSaving] = useState(false);
   const [entities, setEntities] = useState([]);
@@ -469,22 +470,40 @@ function BillEditor({ bill, vendors, deals, onClose, onSaved }) {
 
         <div className="p-5 space-y-5">
           {/* Books entity picker */}
-          <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Books Entity (GL posting)</label>
-            <select
-              value={form.entity_id}
-              onChange={(e) => setForm({ ...form, entity_id: e.target.value })}
-              className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
-              data-testid="bill-entity-select"
-            >
-              <option value="">— No GL Posting —</option>
-              {entities.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}{e.is_parent ? "  (Parent)" : ""}{e.role ? `  — ${e.role}` : ""}
-                </option>
-              ))}
-            </select>
-            <div className="text-[10px] text-zinc-500 mt-1">COGS & A/P post to this entity's books (sub-vendors → 5010 Subcontractor Labor, suppliers → 5000 Materials Direct).</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Books Entity (GL posting)</label>
+              <select
+                value={form.entity_id}
+                onChange={(e) => setForm({ ...form, entity_id: e.target.value })}
+                className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+                data-testid="bill-entity-select"
+              >
+                <option value="">— No GL Posting —</option>
+                {entities.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}{e.is_parent ? "  (Parent)" : ""}{e.role ? `  — ${e.role}` : ""}
+                  </option>
+                ))}
+              </select>
+              <div className="text-[10px] text-zinc-500 mt-1">COGS &amp; A/P post to this entity's books.</div>
+            </div>
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Counter Entity (Inter-Co)</label>
+              <select
+                value={form.counter_entity_id}
+                onChange={(e) => setForm({ ...form, counter_entity_id: e.target.value })}
+                className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+                disabled={!form.entity_id}
+                data-testid="bill-counter-entity-select"
+              >
+                <option value="">— Not Inter-Company —</option>
+                {entities.filter((e) => e.id !== form.entity_id).map((e) => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
+              </select>
+              <div className="text-[10px] text-zinc-500 mt-1">If buying from another SealTech entity → posts via 6700/2900 and auto-mirrors 1900/4900.</div>
+            </div>
           </div>
 
           {/* Vendor + Bill Info */}

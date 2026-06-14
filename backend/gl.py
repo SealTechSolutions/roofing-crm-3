@@ -77,6 +77,11 @@ async def _build_line(db, entity_id: str, number: str, debit: float, credit: flo
     }
 
 
+async def _entity_name(db, entity_id: str) -> str:
+    e = await db.entities.find_one({"id": entity_id}, {"_id": 0, "name": 1})
+    return (e or {}).get("name", "Entity")
+
+
 async def post_journal(
     db,
     *,
@@ -158,7 +163,11 @@ async def reverse_journals(db, *, source_type: str, source_id: str, kind: Option
 # ---------- High-level hooks ----------
 
 async def post_invoice_issue(db, invoice: dict, posted_by_user_id: Optional[str] = None):
-    """DR 1100 AR / CR 4xxx Sales (account chosen by roof type)."""
+    """DR 1100 AR / CR 4xxx Sales (account chosen by roof type).
+    If `counter_entity_id` is set on the invoice, post as inter-company:
+      Issuer:  DR 1900 Inter-Co A/R / CR 4900 Inter-Co Revenue
+      Mirror:  DR 6700 Inter-Co Expense / CR 2900 Inter-Co A/P  (on counter_entity)
+    """
     ent = invoice.get("entity_id")
     if not ent:
         return None
@@ -170,10 +179,63 @@ async def post_invoice_issue(db, invoice: dict, posted_by_user_id: Optional[str]
         # If invoice is voided after being issued — reverse BOTH the issue and any payment journal
         await reverse_journals(db, source_type="invoice", source_id=invoice["id"], kind="issue")
         await reverse_journals(db, source_type="invoice", source_id=invoice["id"], kind="payment")
+        # Also reverse any inter-co mirrors
+        await reverse_journals(db, source_type="invoice_ic_mirror", source_id=invoice["id"])
         return None
+
+    counter = invoice.get("counter_entity_id") or None
     deal = None
     if invoice.get("deal_id"):
         deal = await db.deals.find_one({"id": invoice["deal_id"]}, {"_id": 0})
+
+    if counter:
+        # Inter-company posting on issuer
+        lines = [
+            await _build_line(db, ent, "1900", debit=total, credit=0, memo=f"Inter-Co A/R · Invoice {invoice.get('invoice_number','')}"),
+            await _build_line(db, ent, "4900", debit=0, credit=total, memo=f"Inter-Co revenue from {await _entity_name(db, counter)}"),
+        ]
+        memo = f"Inter-Co Invoice {invoice.get('invoice_number','')} — {invoice.get('bill_to_company') or invoice.get('bill_to_name','')}"
+        issuer_post = await post_journal(
+            db,
+            entity_id=ent,
+            source_type="invoice",
+            source_id=invoice["id"],
+            kind="issue",
+            lines=lines,
+            memo=memo,
+            posting_date=invoice.get("invoice_date"),
+            posted_by_user_id=posted_by_user_id,
+        )
+        # Mirror on counter entity
+        mirror_lines = [
+            await _build_line(db, counter, "6700", debit=total, credit=0, memo=f"Inter-Co Expense · Invoice {invoice.get('invoice_number','')} from {await _entity_name(db, ent)}"),
+            await _build_line(db, counter, "2900", debit=0, credit=total, memo=f"Inter-Co A/P to {await _entity_name(db, ent)}"),
+        ]
+        mirror_post = await post_journal(
+            db,
+            entity_id=counter,
+            source_type="invoice_ic_mirror",
+            source_id=invoice["id"],
+            kind="issue_mirror",
+            lines=mirror_lines,
+            memo=f"Mirror · Inter-Co Invoice {invoice.get('invoice_number','')} from {await _entity_name(db, ent)}",
+            posting_date=invoice.get("invoice_date"),
+            posted_by_user_id=posted_by_user_id,
+        )
+        # Tag counter_entity_id on the issuer-side journal so the IC report can pivot
+        if issuer_post:
+            await db.journal_entries.update_one(
+                {"id": issuer_post["id"]},
+                {"$set": {"counter_entity_id": counter, "is_inter_company": True}},
+            )
+        if mirror_post:
+            await db.journal_entries.update_one(
+                {"id": mirror_post["id"]},
+                {"$set": {"counter_entity_id": ent, "is_inter_company": True, "is_ic_mirror": True}},
+            )
+        return issuer_post
+
+    # Normal (non-IC) posting
     rev_no = revenue_account_for(invoice, deal)
     lines = [
         await _build_line(db, ent, "1100", debit=total, credit=0, memo=f"Invoice {invoice.get('invoice_number','')}"),
@@ -194,21 +256,23 @@ async def post_invoice_issue(db, invoice: dict, posted_by_user_id: Optional[str]
 
 
 async def post_invoice_payment(db, invoice: dict, posted_by_user_id: Optional[str] = None):
-    """DR 1000 Bank / CR 1100 AR — total amount_paid (idempotent overwrite)."""
+    """DR 1000 Bank / CR 1100 AR (or CR 1900 if inter-co) — total amount_paid (idempotent overwrite)."""
     ent = invoice.get("entity_id")
     if not ent:
         return None
     paid = round(float(invoice.get("amount_paid") or 0), 2)
     if paid <= 0:
-        # No payment — make sure any previous payment journal is wiped
         await reverse_journals(db, source_type="invoice", source_id=invoice["id"], kind="payment")
+        await reverse_journals(db, source_type="invoice_ic_mirror", source_id=invoice["id"], kind="payment_mirror")
         return None
+    counter = invoice.get("counter_entity_id") or None
+    ar_no = "1900" if counter else "1100"
     lines = [
         await _build_line(db, ent, "1000", debit=paid, credit=0, memo=f"Payment received — Invoice {invoice.get('invoice_number','')}"),
-        await _build_line(db, ent, "1100", debit=0, credit=paid, memo=f"Apply to A/R — Invoice {invoice.get('invoice_number','')}"),
+        await _build_line(db, ent, ar_no, debit=0, credit=paid, memo=f"Apply to {'Inter-Co ' if counter else ''}A/R — Invoice {invoice.get('invoice_number','')}"),
     ]
     memo = f"Payment — Invoice {invoice.get('invoice_number','')} ({invoice.get('payment_method') or 'cash/ck'})"
-    return await post_journal(
+    res = await post_journal(
         db,
         entity_id=ent,
         source_type="invoice",
@@ -219,10 +283,35 @@ async def post_invoice_payment(db, invoice: dict, posted_by_user_id: Optional[st
         posting_date=invoice.get("payment_date") or invoice.get("invoice_date"),
         posted_by_user_id=posted_by_user_id,
     )
+    if counter:
+        mirror_lines = [
+            await _build_line(db, counter, "2900", debit=paid, credit=0, memo=f"Paid Inter-Co A/P — Invoice {invoice.get('invoice_number','')}"),
+            await _build_line(db, counter, "1000", debit=0, credit=paid, memo=f"Bank disbursement — {await _entity_name(db, ent)}"),
+        ]
+        m = await post_journal(
+            db,
+            entity_id=counter,
+            source_type="invoice_ic_mirror",
+            source_id=invoice["id"],
+            kind="payment_mirror",
+            lines=mirror_lines,
+            memo=f"Mirror · Inter-Co Invoice payment {invoice.get('invoice_number','')}",
+            posting_date=invoice.get("payment_date") or invoice.get("invoice_date"),
+            posted_by_user_id=posted_by_user_id,
+        )
+        if res:
+            await db.journal_entries.update_one({"id": res["id"]}, {"$set": {"counter_entity_id": counter, "is_inter_company": True}})
+        if m:
+            await db.journal_entries.update_one({"id": m["id"]}, {"$set": {"counter_entity_id": ent, "is_inter_company": True, "is_ic_mirror": True}})
+    return res
 
 
 async def post_bill_received(db, bill: dict, posted_by_user_id: Optional[str] = None):
-    """DR 5000 Materials (or 5010 Sub Labor) / CR 2000 AP."""
+    """DR 5000 Materials (or 5010 Sub Labor) / CR 2000 AP.
+    If counter_entity_id set, post as inter-company on buyer:
+      Buyer:   DR 6700 IC Expense / CR 2900 IC A/P
+      Mirror:  DR 1900 IC A/R / CR 4900 IC Revenue  (on counter_entity = seller)
+    """
     ent = bill.get("entity_id")
     if not ent:
         return None
@@ -233,7 +322,48 @@ async def post_bill_received(db, bill: dict, posted_by_user_id: Optional[str] = 
     if status in ("void", "draft", ""):
         await reverse_journals(db, source_type="vendor_bill", source_id=bill["id"], kind="bill_received")
         await reverse_journals(db, source_type="vendor_bill", source_id=bill["id"], kind="bill_payment")
+        await reverse_journals(db, source_type="vendor_bill_ic_mirror", source_id=bill["id"])
         return None
+    counter = bill.get("counter_entity_id") or None
+
+    if counter:
+        lines = [
+            await _build_line(db, ent, "6700", debit=total, credit=0, memo=f"Inter-Co Expense · Bill {bill.get('bill_number','')} from {await _entity_name(db, counter)}"),
+            await _build_line(db, ent, "2900", debit=0, credit=total, memo=f"Inter-Co A/P to {await _entity_name(db, counter)}"),
+        ]
+        memo = f"Inter-Co Bill {bill.get('bill_number','')} — {bill.get('vendor_name','')}"
+        buyer = await post_journal(
+            db,
+            entity_id=ent,
+            source_type="vendor_bill",
+            source_id=bill["id"],
+            kind="bill_received",
+            lines=lines,
+            memo=memo,
+            posting_date=bill.get("bill_date") or bill.get("received_date"),
+            posted_by_user_id=posted_by_user_id,
+        )
+        mirror_lines = [
+            await _build_line(db, counter, "1900", debit=total, credit=0, memo=f"Inter-Co A/R · Bill {bill.get('bill_number','')} to {await _entity_name(db, ent)}"),
+            await _build_line(db, counter, "4900", debit=0, credit=total, memo=f"Inter-Co revenue from {await _entity_name(db, ent)}"),
+        ]
+        seller = await post_journal(
+            db,
+            entity_id=counter,
+            source_type="vendor_bill_ic_mirror",
+            source_id=bill["id"],
+            kind="bill_received_mirror",
+            lines=mirror_lines,
+            memo=f"Mirror · Inter-Co Bill {bill.get('bill_number','')} to {await _entity_name(db, ent)}",
+            posting_date=bill.get("bill_date") or bill.get("received_date"),
+            posted_by_user_id=posted_by_user_id,
+        )
+        if buyer:
+            await db.journal_entries.update_one({"id": buyer["id"]}, {"$set": {"counter_entity_id": counter, "is_inter_company": True}})
+        if seller:
+            await db.journal_entries.update_one({"id": seller["id"]}, {"$set": {"counter_entity_id": ent, "is_inter_company": True, "is_ic_mirror": True}})
+        return buyer
+
     vendor = None
     if bill.get("vendor_id"):
         vendor = await db.vendors.find_one({"id": bill["vendor_id"]}, {"_id": 0})
@@ -257,20 +387,23 @@ async def post_bill_received(db, bill: dict, posted_by_user_id: Optional[str] = 
 
 
 async def post_bill_payment(db, bill: dict, posted_by_user_id: Optional[str] = None):
-    """DR 2000 AP / CR 1000 Bank — total paid amount (idempotent)."""
+    """DR 2000 AP (or 2900 if IC) / CR 1000 Bank."""
     ent = bill.get("entity_id")
     if not ent:
         return None
     paid = round(float(bill.get("paid_amount") or 0), 2)
     if paid <= 0:
         await reverse_journals(db, source_type="vendor_bill", source_id=bill["id"], kind="bill_payment")
+        await reverse_journals(db, source_type="vendor_bill_ic_mirror", source_id=bill["id"], kind="bill_payment_mirror")
         return None
+    counter = bill.get("counter_entity_id") or None
+    ap_no = "2900" if counter else "2000"
     lines = [
-        await _build_line(db, ent, "2000", debit=paid, credit=0, memo=f"Paid — Bill {bill.get('bill_number','')}"),
+        await _build_line(db, ent, ap_no, debit=paid, credit=0, memo=f"Paid — Bill {bill.get('bill_number','')}"),
         await _build_line(db, ent, "1000", debit=0, credit=paid, memo=f"Bank disbursement — {bill.get('vendor_name','')}"),
     ]
     memo = f"Bill payment — {bill.get('vendor_name','')} ({bill.get('paid_method') or 'cash/ck'})"
-    return await post_journal(
+    res = await post_journal(
         db,
         entity_id=ent,
         source_type="vendor_bill",
@@ -281,6 +414,27 @@ async def post_bill_payment(db, bill: dict, posted_by_user_id: Optional[str] = N
         posting_date=bill.get("paid_date") or bill.get("bill_date"),
         posted_by_user_id=posted_by_user_id,
     )
+    if counter:
+        mirror_lines = [
+            await _build_line(db, counter, "1000", debit=paid, credit=0, memo=f"Received from {await _entity_name(db, ent)}"),
+            await _build_line(db, counter, "1900", debit=0, credit=paid, memo=f"Applied to Inter-Co A/R · Bill {bill.get('bill_number','')}"),
+        ]
+        m = await post_journal(
+            db,
+            entity_id=counter,
+            source_type="vendor_bill_ic_mirror",
+            source_id=bill["id"],
+            kind="bill_payment_mirror",
+            lines=mirror_lines,
+            memo=f"Mirror · Inter-Co Bill payment {bill.get('bill_number','')}",
+            posting_date=bill.get("paid_date") or bill.get("bill_date"),
+            posted_by_user_id=posted_by_user_id,
+        )
+        if res:
+            await db.journal_entries.update_one({"id": res["id"]}, {"$set": {"counter_entity_id": counter, "is_inter_company": True}})
+        if m:
+            await db.journal_entries.update_one({"id": m["id"]}, {"$set": {"counter_entity_id": ent, "is_inter_company": True, "is_ic_mirror": True}})
+    return res
 
 
 # ---------- Reports / KPIs ----------
@@ -564,4 +718,73 @@ async def accrue_late_fees(
         "invoices_accrued": accrued_invoices,
         "invoices_skipped": skipped,
         "total_late_fees": round(accrued_total, 2),
+    }
+
+
+# ---------- Inter-Company Reconciliation ----------
+
+async def inter_company_report(db) -> dict:
+    """Pivot journal_entries by (entity_id, counter_entity_id) for IC accounts 1900 & 2900.
+    For each A↔B pair: A's 1900-receivable should match B's 2900-payable (and vice versa)."""
+    name_by_id = {}
+    async for e in db.entities.find({"is_active": True}, {"_id": 0, "id": 1, "name": 1}):
+        name_by_id[e["id"]] = e["name"]
+
+    pipeline = [
+        {"$match": {"is_reversed": {"$ne": True}, "is_inter_company": True}},
+        {"$unwind": "$lines"},
+        {"$match": {"lines.account_number": {"$in": ["1900", "2900"]}}},
+        {"$group": {
+            "_id": {
+                "entity_id": "$entity_id",
+                "counter_entity_id": "$counter_entity_id",
+                "account_number": "$lines.account_number",
+            },
+            "debit": {"$sum": "$lines.debit"},
+            "credit": {"$sum": "$lines.credit"},
+        }},
+    ]
+    raw = {}
+    async for r in db.journal_entries.aggregate(pipeline):
+        k = (r["_id"]["entity_id"], r["_id"]["counter_entity_id"], r["_id"]["account_number"])
+        raw[k] = (round(float(r["debit"]), 2), round(float(r["credit"]), 2))
+
+    seen_pairs = set()
+    rows = []
+    total_out = 0.0
+    for (eid, cid, _acct), (_d, _c) in raw.items():
+        if not cid:
+            continue
+        pair = tuple(sorted([eid, cid]))
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+        a, b = pair
+        a_1900 = raw.get((a, b, "1900"), (0, 0))
+        a_2900 = raw.get((a, b, "2900"), (0, 0))
+        b_1900 = raw.get((b, a, "1900"), (0, 0))
+        b_2900 = raw.get((b, a, "2900"), (0, 0))
+        a_receivable = round(a_1900[0] - a_1900[1], 2)
+        a_payable = round(a_2900[1] - a_2900[0], 2)
+        b_receivable = round(b_1900[0] - b_1900[1], 2)
+        b_payable = round(b_2900[1] - b_2900[0], 2)
+        diff_recv = round(a_receivable - b_payable, 2)
+        diff_payable = round(a_payable - b_receivable, 2)
+        rows.append({
+            "entity_a_id": a, "entity_a_name": name_by_id.get(a, a),
+            "entity_b_id": b, "entity_b_name": name_by_id.get(b, b),
+            "a_receivable_from_b": a_receivable, "b_payable_to_a": b_payable,
+            "diff_recv_vs_payable": diff_recv,
+            "a_payable_to_b": a_payable, "b_receivable_from_a": b_receivable,
+            "diff_payable_vs_recv": diff_payable,
+            "balanced": abs(diff_recv) < 0.01 and abs(diff_payable) < 0.01,
+        })
+        total_out += abs(diff_recv) + abs(diff_payable)
+
+    rows.sort(key=lambda r: (r["entity_a_name"], r["entity_b_name"]))
+    return {
+        "as_of": datetime.now(timezone.utc).date().isoformat(),
+        "rows": rows,
+        "total_out_of_balance": round(total_out, 2),
+        "all_balanced": total_out < 0.01,
     }

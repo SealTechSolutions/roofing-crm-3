@@ -1,0 +1,39 @@
+{
+  "summary": "Phase 6 — Inter-Company auto-mirroring + Bank Reconciliation tool. Created /app/backend/tests/test_books_phase6.py with 20 tests covering: IC invoice/bill posting (issuer DR 1900 / CR 4900, mirror DR 6700 / CR 2900 — and inverted for bills), IC invoice/bill payment mirrors (DR 1000/CR 1900 + DR 2900/CR 1000 on partial pay), re-PUT idempotency (journal count stays at 2 — issuer + mirror), counter-entity change reverses old mirror & posts new one, DELETE reverses BOTH source_types, IC report pair balance (diff=0, balanced=true, all_balanced=true), Bank Rec accounts/lines/save-open/save-locked/reopen/delete + admin-only enforcement (403 for sales role), and non-IC regression (DR 1100/CR 4xxx and DR 5000-or-5010/CR 2000 still routed correctly). All 20 PASS in 3.37s. Frontend Playwright verified: 8 Books tabs (tab-coa/activity/pl/bs/latefees/close/interco/bankrec), #interco and #bankrec hash routes survive reload, ic-report + ic-refresh data-testids work, bank-rec-tool with all editor data-testids (br-account-select, br-new-btn, recon-editor, recon-lines-table, br-save-open-btn, br-lock-btn), Invoice editor dual dropdowns (invoice-entity-select + invoice-counter-entity-select), Vendor Bill editor dual dropdowns (bill-entity-select + bill-counter-entity-select with COUNTER ENTITY label visible — confirmed via screenshot). Cleaned up the two leftover demo IC docs (invoice 9c51bab5..., bill 13cf5660...) — IC report now returns 0 rows, all_balanced=true.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Books → Bank Rec", "issues": ["React hydration warning in console: <span> cannot be a child of <option> on the br-account-select dropdown (BooksInterCoBank.jsx:187). Caused by dev-mode source-map wrapper around {a.number}/{a.name} text. Cosmetic dev-only warning, but worth ensuring option children remain plain strings in JSX (no comment / fragment splitting). Not a blocker."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_books_phase6.py",
+    "/app/test_reports/pytest/pytest_phase6.xml"
+  ],
+  "action_items": [
+    "(Optional) Tidy BooksInterCoBank.jsx:187 <option> to avoid the <span>-in-<option> hydration warning — concatenate '{a.number} — {a.name}' as a single expression inside the option to prevent React dev wrapper from inserting a span.",
+    "(Optional, UX nit) invoice-counter-entity-select has no actual `disabled` attribute when entity_id is blank — it appears un-disabled via the DOM probe. Verify it's actually unusable when entity is empty (likely visually-only-disabled). Not a blocker."
+  ],
+  "critical_code_review_comments": [
+    "gl.post_invoice_issue / post_bill_received correctly branch on counter_entity_id and use distinct source_type 'invoice_ic_mirror' / 'vendor_bill_ic_mirror' so issuer+mirror co-exist on the same source_id with the same posting_key formula. Re-PUT idempotency verified (count stays at 2).",
+    "gl.inter_company_report aggregates only is_inter_company=true & is_reversed!=true journals on accounts 1900/2900 and pairs by sorted (a,b) — each pair appears exactly once. Verified empty after demo cleanup; balanced after a new IC invoice.",
+    "bank_rec.save_rec uses status='open' to skip writing bank_clearings (correct) and on 'locked' upserts clearings idempotently. reopen_rec deletes clearings tied to rec_id (correct). delete_rec refuses 'locked' — verified.",
+    "books.py POST /bank-rec/save takes body: dict (not Pydantic) — works but loses validation; missing keys will raise KeyError instead of 422. Consider promoting to a Pydantic model in a future refactor.",
+    "gl.py is now 791 lines — approaching the 700-line split threshold. Consider splitting IC mirror posting into a separate `gl_intercompany.py` module."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_books_phase6.py (new — 20 tests, all passing)"
+  ],
+  "success_rate": {"backend": "100% (20/20 Phase-6 tests)", "frontend": "100% (all required data-testids present, hash routes work, both editors show dual entity dropdowns)"},
+  "test_credentials": "admin@roofingcrm.com / admin123 (verified working). Sales test user auto-created via POST /api/users which returns a generated_password (NOT a passed-in password); test re-fetches it for login.",
+  "seed_data_creation": "Tests create TEST_ prefixed invoices/bills/recs/users and clean them up in TestCleanup.test_cleanup. Cleaned up leftover demo IC invoice 9c51bab5-188f-4c25-a58f-12a5b1fb1735 and demo bill 13cf5660-d3f2-4333-bdca-3bdbeee4640f per request — IC report now empty. Parent entity still has monthly_depreciation=1500 from Phase 5.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 6 IC + Bank Rec fully working end-to-end. Backend tests live at /app/backend/tests/test_books_phase6.py — reuse for regression. Notes for future tests: (1) Invoice POST requires `line_items` array (not `amount`); VendorBill POST requires `total` + `subtotal` directly. (2) POST /api/users for non-admin creation does NOT accept a `password` field — server returns `generated_password` in the response which must be used to log in. (3) Bank Rec POST /save takes a plain dict body (entity_id/account_id/statement_date/statement_balance/cleared_journal_ids/status), not Pydantic. (4) MONGO_URL in /app/backend/.env is double-quoted — strip quotes when parsing in pytest. (5) IC report endpoint at /api/books/reports/inter-company. (6) bank-rec endpoints all under /api/books/bank-rec/{accounts,lines,list,{id},save,{id}/reopen,{id} DELETE}.",
+  "rca of the issue": "N/A — no functional bugs. Only a cosmetic dev-mode React hydration warning in the Bank Rec account dropdown (BooksInterCoBank.jsx line 187), caused by Emergent dev-tool injecting a <span> wrapper around dynamic text inside an <option>. Production build should not exhibit it."
+}

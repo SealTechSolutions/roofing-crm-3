@@ -268,6 +268,7 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
     source_type: invoice.source_type || "",
     source_id: invoice.source_id || "",
     entity_id: invoice.entity_id || "",
+    counter_entity_id: invoice.counter_entity_id || "",
   }));
   const [saving, setSaving] = useState(false);
   const [entities, setEntities] = useState([]);
@@ -471,22 +472,40 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
         </div>
         <div className="p-5 space-y-5">
           {/* Books — Entity routing */}
-          <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Books Entity (GL posting)</label>
-            <select
-              value={form.entity_id}
-              onChange={(e) => setForm({ ...form, entity_id: e.target.value })}
-              className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
-              data-testid="invoice-entity-select"
-            >
-              <option value="">— No GL Posting —</option>
-              {entities.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}{e.is_parent ? "  (Parent)" : ""}{e.role ? `  — ${e.role}` : ""}
-                </option>
-              ))}
-            </select>
-            <div className="text-[10px] text-zinc-500 mt-1">Sales & A/R post to this entity's Chart of Accounts. Leave blank to skip journaling.</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Books Entity (GL posting)</label>
+              <select
+                value={form.entity_id}
+                onChange={(e) => setForm({ ...form, entity_id: e.target.value })}
+                className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+                data-testid="invoice-entity-select"
+              >
+                <option value="">— No GL Posting —</option>
+                {entities.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}{e.is_parent ? "  (Parent)" : ""}{e.role ? `  — ${e.role}` : ""}
+                  </option>
+                ))}
+              </select>
+              <div className="text-[10px] text-zinc-500 mt-1">Sales & A/R post to this entity's COA.</div>
+            </div>
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Counter Entity (Inter-Co)</label>
+              <select
+                value={form.counter_entity_id}
+                onChange={(e) => setForm({ ...form, counter_entity_id: e.target.value })}
+                className="mt-1 w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+                disabled={!form.entity_id}
+                data-testid="invoice-counter-entity-select"
+              >
+                <option value="">— Not Inter-Company —</option>
+                {entities.filter((e) => e.id !== form.entity_id).map((e) => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
+              </select>
+              <div className="text-[10px] text-zinc-500 mt-1">If billing another SealTech entity → posts via 1900/4900 and auto-mirrors 6700/2900.</div>
+            </div>
           </div>
 
           {/* Link to project */}

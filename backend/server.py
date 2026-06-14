@@ -475,6 +475,7 @@ class InvoiceIn(BaseModel):
     customer_contact_id: Optional[str] = None
     invoice_type: str = ""  # Project Amount | Deposit | Mid-Project | Final | Maintenance | Repair | (blank)
     entity_id: Optional[str] = None  # Books — which legal entity this invoice belongs to (GL routes here)
+    counter_entity_id: Optional[str] = None  # If billing another SealTech entity, auto-mirror via 1900/2900
     # Bill-to snapshot (frozen at creation time)
     bill_to_company: str = ""
     bill_to_name: str = ""
@@ -538,6 +539,7 @@ class VendorBillIn(BaseModel):
     vendor_id: Optional[str] = None
     vendor_name: str = ""  # snapshot for display
     entity_id: Optional[str] = None  # Books — which legal entity this bill belongs to (GL routes here)
+    counter_entity_id: Optional[str] = None  # If buying from another SealTech entity, auto-mirror via 1900/2900
     bill_number: str = ""
     bill_date: str = ""
     received_date: str = ""
@@ -2022,6 +2024,10 @@ async def update_invoice(invoice_id: str, body: InvoiceIn, current=Depends(get_c
     try:
         if existing.get("entity_id") and existing.get("entity_id") != data.get("entity_id"):
             await gl.reverse_journals(db, source_type="invoice", source_id=invoice_id)
+            await gl.reverse_journals(db, source_type="invoice_ic_mirror", source_id=invoice_id)
+        # If counter-entity changed, also reverse the mirror so it doesn't dangle on the old entity
+        if existing.get("counter_entity_id") != data.get("counter_entity_id"):
+            await gl.reverse_journals(db, source_type="invoice_ic_mirror", source_id=invoice_id)
         await gl.post_invoice_issue(db, data, posted_by_user_id=current["id"])
         await gl.post_invoice_payment(db, data, posted_by_user_id=current["id"])
     except Exception as e:
@@ -2038,6 +2044,7 @@ async def delete_invoice(invoice_id: str, current=Depends(get_current_user)):
     # Reverse any GL postings tied to this invoice
     try:
         await gl.reverse_journals(db, source_type="invoice", source_id=invoice_id)
+        await gl.reverse_journals(db, source_type="invoice_ic_mirror", source_id=invoice_id)
     except Exception as e:
         logger.warning(f"GL reverse (invoice delete) failed: {type(e).__name__}: {e}")
     return {"ok": True}
@@ -2592,6 +2599,9 @@ async def update_vendor_bill(bill_id: str, body: VendorBillIn, current=Depends(g
     try:
         if existing.get("entity_id") and existing.get("entity_id") != data.get("entity_id"):
             await gl.reverse_journals(db, source_type="vendor_bill", source_id=bill_id)
+            await gl.reverse_journals(db, source_type="vendor_bill_ic_mirror", source_id=bill_id)
+        if existing.get("counter_entity_id") != data.get("counter_entity_id"):
+            await gl.reverse_journals(db, source_type="vendor_bill_ic_mirror", source_id=bill_id)
         await gl.post_bill_received(db, data, posted_by_user_id=current["id"])
         await gl.post_bill_payment(db, data, posted_by_user_id=current["id"])
     except Exception as e:
@@ -2607,6 +2617,7 @@ async def delete_vendor_bill(bill_id: str, current=Depends(get_current_user)):
         await db.vendor_bills.update_one({"id": bill_id}, {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}})
     try:
         await gl.reverse_journals(db, source_type="vendor_bill", source_id=bill_id)
+        await gl.reverse_journals(db, source_type="vendor_bill_ic_mirror", source_id=bill_id)
     except Exception as e:
         logger.warning(f"GL reverse (vendor bill delete) failed: {type(e).__name__}: {e}")
     return {"ok": True}
@@ -4408,7 +4419,9 @@ async def on_startup():
         await gl.ensure_indexes(db)
         import period_close as pc
         await pc.ensure_indexes(db)
-        logger.info("Books entities + COA seeded; GL + period_close indexes ensured")
+        import bank_rec as br
+        await br.ensure_indexes(db)
+        logger.info("Books entities + COA seeded; GL + period_close + bank_rec indexes ensured")
     except Exception as e:
         logger.warning(f"Books seeding failed: {e}")
 

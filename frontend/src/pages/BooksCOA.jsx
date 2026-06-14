@@ -3,9 +3,10 @@ import { Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2, FileCheck } from "lucide-react";
+import { BookOpen, Plus, Edit2, Save, X, Lock, Building2, Trash2, Activity, Receipt, FileSpreadsheet, ChevronRight, TrendingUp, Scale, Wand2, FileCheck, Network, Banknote } from "lucide-react";
 import { ProfitLossReport, BalanceSheetReport, LateFeeAccrualTool } from "@/pages/BooksReports";
 import { PeriodCloseTool } from "@/pages/BooksPeriodClose";
+import { InterCompanyReport, BankReconciliationTool } from "@/pages/BooksInterCoBank";
 
 const ACCOUNT_TYPES = ["Asset", "Liability", "Equity", "Revenue", "COGS", "Expense", "Other"];
 
@@ -50,8 +51,8 @@ export default function BooksCOA() {
   const [showEntityEdit, setShowEntityEdit] = useState(false);
   const [showEntityNew, setShowEntityNew] = useState(false);
 
-  // Tabs: coa | activity | pl | bs | latefees | close
-  const VALID_VIEWS = ["coa", "activity", "pl", "bs", "latefees", "close"];
+  // Tabs: coa | activity | pl | bs | latefees | close | interco | bankrec
+  const VALID_VIEWS = ["coa", "activity", "pl", "bs", "latefees", "close", "interco", "bankrec"];
   const [view, setView] = useState(() => {
     const fromHash = (typeof window !== "undefined" && window.location.hash || "").replace("#", "");
     return VALID_VIEWS.includes(fromHash) ? fromHash : "coa";
@@ -269,6 +270,8 @@ export default function BooksCOA() {
           <TabButton active={view === "bs"} onClick={() => setView("bs")} icon={Scale} label="Balance Sheet" testId="tab-bs" />
           <TabButton active={view === "latefees"} onClick={() => setView("latefees")} icon={Wand2} label="Late Fees" testId="tab-latefees" />
           <TabButton active={view === "close"} onClick={() => setView("close")} icon={FileCheck} label="Period Close" testId="tab-close" />
+          <TabButton active={view === "interco"} onClick={() => setView("interco")} icon={Network} label="Inter-Co" testId="tab-interco" />
+          <TabButton active={view === "bankrec"} onClick={() => setView("bankrec")} icon={Banknote} label="Bank Rec" testId="tab-bankrec" />
         </div>
 
         {/* Filters — only when on COA tab */}
@@ -481,6 +484,16 @@ export default function BooksCOA() {
       {/* Body — Period Close */}
       {view === "close" && (
         <PeriodCloseTool entityId={entityId} entities={entities} onEntityRefresh={loadEntities} />
+      )}
+
+      {/* Body — Inter-Company Reconciliation */}
+      {view === "interco" && (
+        <InterCompanyReport />
+      )}
+
+      {/* Body — Bank Reconciliation */}
+      {view === "bankrec" && (
+        <BankReconciliationTool entityId={entityId} entityName={currentEntity?.name} />
       )}
 
       {showEntityEdit && currentEntity && (

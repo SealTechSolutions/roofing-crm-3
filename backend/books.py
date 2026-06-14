@@ -67,6 +67,7 @@ DEFAULT_COA = [
     {"number": "6400", "name": "Sales Commissions", "type": "Expense", "category": "Sales"},
     {"number": "6500", "name": "Marketing & Advertising", "type": "Expense", "category": "Marketing"},
     {"number": "6600", "name": "Depreciation Expense", "type": "Expense", "category": "Depreciation", "system": True},
+    {"number": "6700", "name": "Inter-Company Expense", "type": "Expense", "category": "Inter-Co", "system": True},
     {"number": "6900", "name": "Bank / Credit Card Fees", "type": "Expense", "category": "Bank Fees"},
     # 9000s — Other
     {"number": "9000", "name": "Interest Income / Expense", "type": "Other", "category": "Other"},
@@ -439,5 +440,60 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
     async def period_close_reopen(entity_id: str, period: str, current=Depends(require_admin)):
         import period_close as pc
         return await pc.reopen_period(db, entity_id=entity_id, period=period, reopened_by=current.get("id"))
+
+    # ---------- Inter-Company Reconciliation ----------
+    @router.get("/reports/inter-company")
+    async def inter_company_endpoint(current=Depends(get_current_user)):
+        from gl import inter_company_report
+        return await inter_company_report(db)
+
+    # ---------- Bank Reconciliation ----------
+    @router.get("/bank-rec/accounts")
+    async def bank_rec_accounts(entity_id: str, current=Depends(get_current_user)):
+        import bank_rec as br
+        return await br.list_bank_accounts(db, entity_id)
+
+    @router.get("/bank-rec/lines")
+    async def bank_rec_lines(entity_id: str, account_id: str, date_to: Optional[str] = None, current=Depends(get_current_user)):
+        import bank_rec as br
+        return await br.list_lines_for_recon(db, entity_id=entity_id, account_id=account_id, date_to=date_to)
+
+    @router.get("/bank-rec/list")
+    async def bank_rec_list(entity_id: Optional[str] = None, current=Depends(get_current_user)):
+        import bank_rec as br
+        return await br.list_recs(db, entity_id=entity_id)
+
+    @router.get("/bank-rec/{rec_id}")
+    async def bank_rec_get(rec_id: str, current=Depends(get_current_user)):
+        import bank_rec as br
+        r = await br.get_rec(db, rec_id)
+        if not r:
+            raise HTTPException(status_code=404, detail="Not found")
+        return r
+
+    @router.post("/bank-rec/save")
+    async def bank_rec_save(body: dict, current=Depends(require_admin)):
+        import bank_rec as br
+        return await br.save_rec(
+            db,
+            rec_id=body.get("id"),
+            entity_id=body["entity_id"],
+            account_id=body["account_id"],
+            statement_date=body["statement_date"],
+            statement_balance=float(body.get("statement_balance") or 0),
+            cleared_journal_ids=body.get("cleared_journal_ids", []),
+            status=body.get("status", "open"),
+            user_id=current.get("id"),
+        )
+
+    @router.post("/bank-rec/{rec_id}/reopen")
+    async def bank_rec_reopen_endpoint(rec_id: str, current=Depends(require_admin)):
+        import bank_rec as br
+        return await br.reopen_rec(db, rec_id=rec_id)
+
+    @router.delete("/bank-rec/{rec_id}")
+    async def bank_rec_delete(rec_id: str, current=Depends(require_admin)):
+        import bank_rec as br
+        return await br.delete_rec(db, rec_id=rec_id)
 
     return router
