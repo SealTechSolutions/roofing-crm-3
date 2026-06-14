@@ -115,6 +115,16 @@ export default function Trash() {
         </div>
       </div>
 
+      {/* Confirmation keyword reminder */}
+      <div
+        data-testid="trash-keyword-hint"
+        className="mb-5 flex flex-wrap items-center gap-x-6 gap-y-1 bg-amber-50 border border-amber-200 px-4 py-2 rounded-sm text-[12px] text-amber-900"
+      >
+        <span className="font-bold uppercase tracking-wider text-[10px] text-amber-800">Confirmation keywords</span>
+        <span>Single row <span className="mx-1 opacity-50">→</span> type <code className="px-1.5 py-0.5 bg-amber-100 border border-amber-300 rounded-sm font-mono font-bold">DELETE</code></span>
+        <span>“Empty Trash” button <span className="mx-1 opacity-50">→</span> type <code className="px-1.5 py-0.5 bg-amber-100 border border-amber-300 rounded-sm font-mono font-bold">EMPTY</code></span>
+      </div>
+
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 border-b border-zinc-200 mb-5">
         {TABS.map((t) => {
