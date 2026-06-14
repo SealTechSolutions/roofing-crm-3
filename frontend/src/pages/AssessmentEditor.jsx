@@ -47,12 +47,18 @@ const BLANK_ASSESSMENT = {
   capital_planning_impact: "",
   immediate_action_items: [],
   methodology_notes: "",
-  // Property
+  // Property (14 fields matching original report)
   building_type: "",
-  square_footage: null,
   year_built: null,
+  occupancy_type: "",
   roof_type: "",
+  manufacturer: "",
+  installation_date: "",
   roof_age_years: null,
+  warranty_status_text: "",
+  square_footage: null,
+  repair_history: "",
+  weather_conditions: "",
   last_inspection_date: "",
   // Scope checkboxes
   scope_visual_assessment: true,
@@ -461,20 +467,38 @@ function StepCover({ doc, update, contacts, deals, linkedDeal }) {
         <Field label="Building Type">
           <input value={doc.building_type} onChange={(e) => update({ building_type: e.target.value })} className={inputCls} placeholder="Warehouse, Office, Retail..." data-testid="building-type" />
         </Field>
-        <Field label="Square Footage">
-          <input type="number" value={doc.square_footage ?? ""} onChange={(e) => update({ square_footage: e.target.value === "" ? null : parseFloat(e.target.value) })} className={inputCls} data-testid="sqft" />
-        </Field>
-        <Field label="Year Built">
+        <Field label="Year Constructed">
           <input type="number" value={doc.year_built ?? ""} onChange={(e) => update({ year_built: e.target.value === "" ? null : parseInt(e.target.value) })} className={inputCls} data-testid="year-built" />
+        </Field>
+        <Field label="Occupancy Type">
+          <input value={doc.occupancy_type} onChange={(e) => update({ occupancy_type: e.target.value })} className={inputCls} placeholder="Owner-occupied, Tenant, Mixed..." data-testid="occupancy-type" />
         </Field>
         <Field label="Roof Type">
           <input value={doc.roof_type} onChange={(e) => update({ roof_type: e.target.value })} className={inputCls} placeholder="TPO, EPDM, BUR, Mod Bit..." data-testid="roof-type" />
         </Field>
-        <Field label="Roof Age (years)">
+        <Field label="Manufacturer">
+          <input value={doc.manufacturer} onChange={(e) => update({ manufacturer: e.target.value })} className={inputCls} placeholder="Carlisle, GAF, Firestone..." data-testid="manufacturer" />
+        </Field>
+        <Field label="Installation Date">
+          <input type="date" value={doc.installation_date || ""} onChange={(e) => update({ installation_date: e.target.value })} className={inputCls} data-testid="installation-date" />
+        </Field>
+        <Field label="Estimated Roof Age (years)">
           <input type="number" step="0.5" value={doc.roof_age_years ?? ""} onChange={(e) => update({ roof_age_years: e.target.value === "" ? null : parseFloat(e.target.value) })} className={inputCls} data-testid="roof-age" />
+        </Field>
+        <Field label="Warranty Status">
+          <input value={doc.warranty_status_text} onChange={(e) => update({ warranty_status_text: e.target.value })} className={inputCls} placeholder="Expired, 5 years remaining, NDL 15-year..." data-testid="warranty-status" />
+        </Field>
+        <Field label="Approximate Roof Area (sq ft)">
+          <input type="number" value={doc.square_footage ?? ""} onChange={(e) => update({ square_footage: e.target.value === "" ? null : parseFloat(e.target.value) })} className={inputCls} data-testid="sqft" />
         </Field>
         <Field label="Last Inspection Date">
           <input type="date" value={doc.last_inspection_date || ""} onChange={(e) => update({ last_inspection_date: e.target.value })} className={inputCls} data-testid="last-inspection" />
+        </Field>
+        <Field label="Repair History" full>
+          <textarea rows={2} value={doc.repair_history} onChange={(e) => update({ repair_history: e.target.value })} className={inputCls} placeholder="Notes on prior repairs, leak history, prior contractors..." data-testid="repair-history" />
+        </Field>
+        <Field label="Weather Conditions (at time of assessment)" full>
+          <input value={doc.weather_conditions} onChange={(e) => update({ weather_conditions: e.target.value })} className={inputCls} placeholder="Sunny, 65°F, dry roof. Light wind." data-testid="weather-conditions" />
         </Field>
       </div>
 

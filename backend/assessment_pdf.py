@@ -74,12 +74,14 @@ def _make_footer(page_total: int):
         canvas.setStrokeColor(BORDER)
         canvas.setLineWidth(0.5)
         canvas.line(0.5 * inch, 0.55 * inch, 8.0 * inch, 0.55 * inch)
-        canvas.setFont("Helvetica-Oblique", 8)
+        # Tagline — centered, larger
+        canvas.setFont("Helvetica-Oblique", 10)
         canvas.setFillColor(BRONZE)
-        canvas.drawString(0.5 * inch, 0.38 * inch, PAGE_TAGLINE)
+        canvas.drawCentredString(letter[0] / 2.0, 0.36 * inch, PAGE_TAGLINE)
+        # Page number — right side, unchanged
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(GRAY)
-        canvas.drawRightString(8.0 * inch, 0.38 * inch, f"Page {doc.page} of {page_total}")
+        canvas.drawRightString(8.0 * inch, 0.36 * inch, f"Page {doc.page} of {page_total}")
         canvas.restoreState()
     return _footer
 
@@ -400,45 +402,64 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     story.append(PageBreak())
 
     # ============================================================
-    # PAGE 4 — Strategy + Property Info + Scope
+    # PAGE 4 — Recommended Strategy + Capital Planning Impact + Immediate Action Items
     # ============================================================
     _section_header("Recommended Strategy", story, s)
-    story.append(_text_box(a.get("recommended_strategy") or "", num_rows=6))
-    story.append(Spacer(1, 10))
+    story.append(_text_box(a.get("recommended_strategy") or "", num_rows=7))
+    story.append(Spacer(1, 12))
     story.append(Paragraph("<b>Capital Planning Impact</b>", s["h3"]))
-    story.append(_text_box(a.get("capital_planning_impact") or "", num_rows=6))
-    story.append(Spacer(1, 10))
+    story.append(_text_box(a.get("capital_planning_impact") or "", num_rows=7))
+    story.append(Spacer(1, 12))
     story.append(Paragraph("<b>Immediate Action Items</b>", s["h3"]))
     story.append(_finding_box(a.get("immediate_action_items", []), num_slots=3))
+    story.append(PageBreak())
 
-    story.append(Spacer(1, 12))
+    # ============================================================
+    # PAGE 5 — Assessment Methodology + Property Information + Assessment Scope
+    # ============================================================
+    _section_header("Assessment Methodology", story, s)
+    methodology_default = (
+        "This assessment was performed by a SealTech-certified roof consultant using a combination of visual inspection, "
+        "measurement, and documentation review. Findings reflect conditions observed at the time of assessment and are "
+        "intended to support informed capital-planning decisions."
+    )
+    story.append(Paragraph(a.get("methodology_notes") or methodology_default, s["body_sm"]))
+    story.append(Spacer(1, 10))
+
     _section_header("Property Information", story, s)
     prop_rows = [
-        ("Property Name", a.get("property_name", "")),
-        ("Address", a.get("property_address", "")),
-        ("Building Type", a.get("building_type", "")),
-        ("Square Footage", f"{a.get('square_footage') or '—':,.0f} sq ft" if a.get("square_footage") else "—"),
-        ("Year Built", str(a.get("year_built") or "—")),
-        ("Roof Type", a.get("roof_type", "")),
-        ("Roof Age", f"{a.get('roof_age_years')} years" if a.get("roof_age_years") else "—"),
-        ("Last Inspection", _fmt_date(a.get("last_inspection_date", ""))),
+        ("Property Name",       a.get("property_name", "")),
+        ("Address",             a.get("property_address", "")),
+        ("Building Type",       a.get("building_type", "")),
+        ("Year Constructed",    str(a.get("year_built") or "—")),
+        ("Occupancy Type",      a.get("occupancy_type", "")),
+        ("Assessment Date",     _fmt_date(a.get("assessment_date", ""))),
+        ("Roof Type",           a.get("roof_type", "")),
+        ("Manufacturer",        a.get("manufacturer", "")),
+        ("Installation Date",   _fmt_date(a.get("installation_date", ""))),
+        ("Estimated Roof Age",  f"{a.get('roof_age_years')} years" if a.get("roof_age_years") else "—"),
+        ("Warranty Status",     a.get("warranty_status_text", "")),
+        ("Approximate Roof Area", f"{a.get('square_footage') or 0:,.0f} sq ft" if a.get("square_footage") else "—"),
+        ("Repair History",      a.get("repair_history", "")),
+        ("Weather Conditions",  a.get("weather_conditions", "")),
     ]
     prop_data = [[
         Paragraph(f'<b><font color="#A0703A">{k.upper()}</font></b>', s["label"]),
         Paragraph(v or "—", s["body_sm"]),
     ] for k, v in prop_rows]
-    prop_t = Table(prop_data, colWidths=[1.5 * inch, 5.5 * inch])
+    prop_t = Table(prop_data, colWidths=[1.6 * inch, 5.4 * inch])
     prop_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.75, GRAY),
         ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("BACKGROUND", (0, 0), (0, -1), SOFT_BRONZE),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
     ]))
     story.append(prop_t)
 
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 10))
     _section_header("Assessment Scope Included", story, s)
     scope_items = [
         ("Visual Assessment", a.get("scope_visual_assessment")),
@@ -464,23 +485,30 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     story.append(PageBreak())
 
     # ============================================================
-    # PAGE 5 — Aerial Image of Roof
+    # PAGE 5 — Aerial Image (top half) + R-1 finding (bottom half)
     # ============================================================
     _section_header("Aerial Image of Roof", story, s)
     aerial_bytes = await _load_photo(db, a.get("aerial_photo_id"))
-    story.append(Spacer(1, 6))
-    story.append(_photo_flowable(aerial_bytes, w=7.0 * inch, h=5.2 * inch, placeholder="Aerial roof image — upload in editor"))
+    story.append(_photo_flowable(aerial_bytes, w=7.0 * inch, h=3.2 * inch, placeholder="Aerial roof image — upload in editor"))
+    story.append(Spacer(1, 12))
+    _section_header("Asset Condition Findings", story, s)
+    await _render_finding(db, story, s, idx=1, finding=a.get("finding_r1") or {})
     story.append(PageBreak())
 
     # ============================================================
-    # PAGES 6-8 — Asset Condition Findings (R-1..R-5)
+    # PAGE 6 — R-2 + R-3
     # ============================================================
-    _section_header("Asset Condition Findings", story, s)
-    for idx, key in enumerate(["finding_r1", "finding_r2", "finding_r3", "finding_r4", "finding_r5"], start=1):
-        f = a.get(key) or {}
-        await _render_finding(db, story, s, idx=idx, finding=f)
-        if idx < 5:
-            story.append(Spacer(1, 10))
+    await _render_finding(db, story, s, idx=2, finding=a.get("finding_r2") or {})
+    story.append(Spacer(1, 14))
+    await _render_finding(db, story, s, idx=3, finding=a.get("finding_r3") or {})
+    story.append(PageBreak())
+
+    # ============================================================
+    # PAGE 7 — R-4 + R-5
+    # ============================================================
+    await _render_finding(db, story, s, idx=4, finding=a.get("finding_r4") or {})
+    story.append(Spacer(1, 14))
+    await _render_finding(db, story, s, idx=5, finding=a.get("finding_r5") or {})
     story.append(PageBreak())
 
     # ============================================================
@@ -753,7 +781,12 @@ def _score_pill(sc: dict) -> Paragraph:
 
 
 async def _render_finding(db, story: list, s: dict, idx: int, finding: dict):
-    """Render one R-N finding block with header, table of metadata, and photo strip."""
+    """Render one R-N finding block matching the original layout:
+       - Header with code + component name + severity badge
+       - 4-row info table (Observations / Severity / Risk / Recommendation)
+       - 2 photo slots side-by-side below
+    Designed to fit 1× on page 5 (with aerial) and 2× per page on pages 6-7.
+    """
     component = finding.get("component", f"Component {idx}")
     severity = finding.get("severity", "")
     severity_color = {"Critical": RED, "High": RED, "Moderate": AMBER, "Low": GREEN}.get(severity, GRAY).hexval()
@@ -766,6 +799,7 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict):
 
     body_rows = [
         ["OBSERVATIONS",   finding.get("observations") or "—"],
+        ["SEVERITY",       finding.get("severity") or "—"],
         ["RISK",           finding.get("risk") or "—"],
         ["RECOMMENDATION", finding.get("recommendation") or "—"],
     ]
@@ -773,37 +807,33 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict):
         Paragraph(f'<font color="#A0703A"><b>{k}</b></font>', s["label"]),
         Paragraph(v, s["body_sm"]),
     ] for k, v in body_rows]
-    body_t = Table(body_data, colWidths=[1.4 * inch, 5.6 * inch])
+    body_t = Table(body_data, colWidths=[1.3 * inch, 5.7 * inch])
     body_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (0, -1), SOFT_BRONZE),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.75, GRAY),
         ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
     ]))
     story.append(body_t)
+    story.append(Spacer(1, 4))
 
-    # Photo strip (up to 4 photos per finding, 2x2 grid if multiple)
-    photo_ids = finding.get("photo_ids") or []
-    if photo_ids:
-        photos = []
-        for pid in photo_ids[:4]:
-            img_bytes = await _load_photo(db, pid)
-            photos.append(_photo_flowable(img_bytes, w=3.2 * inch, h=2.0 * inch, placeholder="Photo unavailable"))
-        # Pair into rows of 2
-        rows = []
-        for i in range(0, len(photos), 2):
-            row = [photos[i], photos[i + 1] if i + 1 < len(photos) else ""]
-            rows.append(row)
-        ph_t = Table(rows, colWidths=[3.3 * inch, 3.3 * inch])
-        ph_t.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ]))
-        story.append(Spacer(1, 6))
-        story.append(ph_t)
+    # 2 photo slots side-by-side (matches original layout)
+    photo_ids = (finding.get("photo_ids") or [])[:2]
+    photos = []
+    for pid in photo_ids:
+        img_bytes = await _load_photo(db, pid)
+        photos.append(_photo_flowable(img_bytes, w=3.4 * inch, h=1.9 * inch, placeholder="Photo placeholder"))
+    while len(photos) < 2:
+        photos.append(_photo_flowable(None, w=3.4 * inch, h=1.9 * inch, placeholder="Photo placeholder"))
+    ph_t = Table([photos], colWidths=[3.5 * inch, 3.5 * inch], rowHeights=[1.95 * inch])
+    ph_t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    story.append(ph_t)

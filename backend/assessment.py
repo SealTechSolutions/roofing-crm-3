@@ -109,12 +109,18 @@ class AssessmentIn(BaseModel):
     # ---- Methodology ----
     methodology_notes: str = ""
 
-    # ---- Property Information ----
+    # ---- Property Information (14 fields matching original report) ----
     building_type: str = ""
-    square_footage: Optional[float] = None
-    year_built: Optional[int] = None
+    year_built: Optional[int] = None  # "Year Constructed"
+    occupancy_type: str = ""
     roof_type: str = ""
-    roof_age_years: Optional[float] = None
+    manufacturer: str = ""
+    installation_date: str = ""  # ISO yyyy-mm-dd
+    roof_age_years: Optional[float] = None  # "Estimated Roof Age"
+    warranty_status_text: str = ""  # Free-form text (distinct from the warranty_status score)
+    square_footage: Optional[float] = None  # "Approximate Roof Area" in sq ft
+    repair_history: str = ""  # Free-form narrative
+    weather_conditions: str = ""  # At time of assessment
     last_inspection_date: str = ""
 
     # ---- Assessment Scope Checkboxes ----
