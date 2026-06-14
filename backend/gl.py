@@ -82,6 +82,17 @@ async def _entity_name(db, entity_id: str) -> str:
     return (e or {}).get("name", "Entity")
 
 
+async def check_period_lock(db, entity_id: Optional[str], posting_date: Optional[str]) -> Optional[str]:
+    """Returns the entity's lock_through date if it covers `posting_date`, else None.
+    Used by CRM endpoints to surface a "posting deferred — period locked" warning to the user.
+    """
+    if not entity_id or not posting_date:
+        return None
+    ent = await db.entities.find_one({"id": entity_id}, {"_id": 0, "lock_through": 1})
+    lock = (ent or {}).get("lock_through") or ""
+    return lock if (lock and posting_date <= lock) else None
+
+
 async def post_journal(
     db,
     *,

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { api, formatCurrency, formatApiError, API } from "@/lib/api";
+import { api, formatCurrency, formatApiError, API, showGlWarnings } from "@/lib/api";
 import { Wallet, Plus, Search, Upload, Trash2, Eye, FileSpreadsheet, Send, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -436,11 +436,13 @@ function BillEditor({ bill, vendors, deals, onClose, onSaved }) {
         line_items: form.line_items.map((li) => ({ ...li, quantity: Number(li.quantity || 0), unit_price: Number(li.unit_price || 0), amount: Number(li.amount || 0) })),
       };
       if (isNew) {
-        await api.post("/vendor-bills", payload);
+        const r = await api.post("/vendor-bills", payload);
         toast.success(`Bill saved`);
+        showGlWarnings(toast, r.data);
       } else {
-        await api.put(`/vendor-bills/${bill.id}`, payload);
+        const r = await api.put(`/vendor-bills/${bill.id}`, payload);
         toast.success("Bill updated");
+        showGlWarnings(toast, r.data);
       }
       onSaved();
     } catch (e) {

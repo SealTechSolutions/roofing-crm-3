@@ -1,0 +1,35 @@
+{
+  "summary": "Phase 7 — gl_warnings surfaced on invoice/bill POST+PUT when period is locked. Created /app/backend/tests/test_books_phase7_gl_warnings.py with 15 tests, ALL PASS in 2.89s. Coverage: invoice POST in locked period returns {type=period_locked, side=issuer, kind=issue, entity_id, posting_date, lock_through, message}; invoice POST in open period returns NO gl_warnings (None); invoice POST with amount_paid>0 returns TWO warnings (issue + payment); PUT updating only amount_paid returns same set; Inter-Co invoice where issuer is open and counter is locked returns 1 warning side=counter kind=issue_mirror; vendor bill mirrors same coverage with kinds {bill_received, bill_payment, bill_received_mirror} and side in {buyer, counter}; status=Draft/Void NEVER warns; reopen clears the warnings on the same date. Phase 6 regression also re-ran 20/20 PASS (3.36s). Frontend Playwright verified live: (a) locking parent 2026-05 via API, (b) opening InvoiceEditor on a locked invoice (INV-2026-1201 / 2026-05-15), clicking Save → captured BOTH toasts via [data-sonner-toast]: type='warning' with text 'Invoice issuance posting deferred — entity is locked through 2026-05-31. Reopen the period (Books → Period Close) to record this in the ledger. Locked through 2026-05-31' AND type='success' 'Invoice updated'; (c) creating a Pending vendor bill via fetch then opening its editor and clicking Save → type='warning' with text 'Bill posting deferred — entity is locked through 2026-05-31. ...  Locked through 2026-05-31' AND type='success' 'Bill updated'; (d) reopening the period and re-POSTing locked-date invoice → gl_warnings=null (no toast); (e) Books → Bank Rec page loaded with NO React span-inside-option hydration warnings in console (only React DevTools info). All test data cleaned up (1 stray locked invoice, 2 vendor bills deleted; parent lock_through='' confirmed empty). Sonner toast uses native warning style (amber bg + warning icon visible in screenshots) with 9s duration and 'Locked through YYYY-MM-DD' description.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_books_phase7_gl_warnings.py",
+    "/app/test_reports/pytest/pytest_phase7.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_invoice_gl_warnings / _bill_gl_warnings cleanly skip Draft+Void status (case-insensitive .lower() check) before checking entity lock — matches gl.post_journal's existing suppression semantics so toast/persistence are aligned.",
+    "Backend attaches gl_warnings only if non-empty (no noisy empty array on open invoices) — frontend showGlWarnings short-circuits on Array.isArray + length==0. Both halves agree on absence semantics.",
+    "Inter-Co side='counter' kind='issue_mirror' / 'bill_received_mirror' correctly fires only when counter_entity_id is set AND that entity is locked; issuer side is checked independently — confirmed by test_invoice_ic_open_issuer_locked_counter (issuer journal still posts; only mirror is deferred).",
+    "Pydantic models Invoice/VendorBill carry gl_warnings: Optional[List[dict]]=None as a transient response field. It's filtered out by tests when re-PUTing (excluded from update payload) — clean design.",
+    "BooksInterCoBank.jsx option label fix (template-literal concat) — verified no <span>-in-<option> hydration warning in browser console on /books#bankrec.",
+    "Bill UI flow: showGlWarnings is invoked on both create and update branches in BillEditor.save (Payables.jsx:441,445) — symmetric with Invoices.jsx:451,455. Toast uses lock_through as `description` (italic secondary line), main message in primary line, 9000ms duration."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_books_phase7_gl_warnings.py (new — 15 tests, 15 pass)"
+  ],
+  "success_rate": {"backend": "100% (15/15 Phase-7 + 20/20 Phase-6 regression)", "frontend": "100% (invoice + bill warning toasts verified on live UI; reopen clears warnings; Bank Rec hydration warning gone)"},
+  "test_credentials": "admin@roofingcrm.com / admin123 (verified)",
+  "seed_data_creation": "Tests create TEST_-prefixed invoices/bills and reopen the period in teardown. Cleanup verified post-run: parent.lock_through='' (open), no orphaned TEST UI Vendor bills, no extra TEST-PL invoices.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 7 gl_warnings end-to-end working. Tests at /app/backend/tests/test_books_phase7_gl_warnings.py (15 tests, 2.89s). Notable findings while writing tests: (1) POST /api/invoices auto-numbers — passing an invoice_number is overridden by server (so don't search-by-passed-number on the UI). (2) Payables filter defaults to 'Active (Pending + Approved)' — Pending bills appear; Received bills do NOT — use status='Pending' for UI test bills. (3) Sonner toasts can be captured via document.querySelectorAll('[data-sonner-toast]') with data-type='warning'/'success'. (4) For PUT updates, the saved object includes a gl_warnings transient field that must be stripped before re-PUTing (the test does that). (5) period-close/run + period-close/reopen take ?entity_id=X&period=YYYY-MM as QUERY params (not body). (6) localStorage key for token in this app is 'crm_token' — accessible via page.evaluate.",
+  "rca of the issue": "N/A — feature works as specified. Warning collection runs BEFORE gl.post_* hooks (just reads entity.lock_through from the entities collection); does not affect or block CRM persistence; gl.post_journal's existing lock-block suppression remains the source of truth for GL side."
+}

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, formatCurrency, formatApiError, API } from "@/lib/api";
+import { api, formatCurrency, formatApiError, API, showGlWarnings } from "@/lib/api";
 import { Receipt, Plus, Search, Download, Send, Trash2, Eye, FileText } from "lucide-react";
 import { toast } from "sonner";
 
@@ -448,9 +448,11 @@ function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
       if (isNew) {
         const r = await api.post("/invoices", payload);
         toast.success(`Created ${r.data.invoice_number}`);
+        showGlWarnings(toast, r.data);
       } else {
-        await api.put(`/invoices/${invoice.id}`, payload);
+        const r = await api.put(`/invoices/${invoice.id}`, payload);
         toast.success("Invoice updated");
+        showGlWarnings(toast, r.data);
       }
       onSaved();
     } catch (e) {

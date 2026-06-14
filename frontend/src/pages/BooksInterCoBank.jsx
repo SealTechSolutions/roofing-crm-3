@@ -184,7 +184,7 @@ export function BankReconciliationTool({ entityId, entityName }) {
             className="mt-1 w-full md:w-96 h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
             data-testid="br-account-select"
           >
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.number} — {a.name}</option>)}
+            {accounts.map((a) => <option key={a.id} value={a.id}>{`${a.number} — ${a.name}`}</option>)}
           </select>
         </div>
       </div>

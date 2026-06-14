@@ -517,6 +517,7 @@ class Invoice(InvoiceIn):
     created_by_user_id: Optional[str] = None
     last_sent_at: str = ""
     pdf_generated_at: str = ""
+    gl_warnings: Optional[List[dict]] = None  # Set transiently on create/update when GL posting deferred
 
 
 # ----- Vendor Bill (Payables) Models -----
@@ -565,6 +566,7 @@ class VendorBill(VendorBillIn):
     id: str
     created_at: str
     created_by_user_id: Optional[str] = None
+    gl_warnings: Optional[List[dict]] = None  # Set transiently on create/update when GL posting deferred
 
 
 # ----- Materials Catalog -----
@@ -1930,6 +1932,99 @@ async def list_invoices(status: Optional[str] = None, deal_id: Optional[str] = N
     return items
 
 
+async def _invoice_gl_warnings(inv: dict) -> list:
+    """Build GL warnings for an invoice — currently surfaces period-lock blocks.
+    Checked BEFORE issuing the hook so the toast reflects what the user just attempted."""
+    warnings = []
+    # Use payment_date if a payment was applied, else invoice_date for the issue posting
+    inv_date = inv.get("invoice_date") or now_iso()[:10]
+    pay_date = inv.get("payment_date") or inv_date
+    paid = float(inv.get("amount_paid") or 0)
+    status = (inv.get("status") or "").lower()
+    if inv.get("entity_id") and status not in ("draft", "void"):
+        lock = await gl.check_period_lock(db, inv["entity_id"], inv_date)
+        if lock:
+            warnings.append({
+                "type": "period_locked",
+                "side": "issuer",
+                "entity_id": inv["entity_id"],
+                "posting_date": inv_date,
+                "lock_through": lock,
+                "kind": "issue",
+                "message": f"Invoice issuance posting deferred — entity is locked through {lock}. Reopen the period (Books → Period Close) to record this in the ledger.",
+            })
+        if paid > 0:
+            lock_p = await gl.check_period_lock(db, inv["entity_id"], pay_date)
+            if lock_p:
+                warnings.append({
+                    "type": "period_locked",
+                    "side": "issuer",
+                    "entity_id": inv["entity_id"],
+                    "posting_date": pay_date,
+                    "lock_through": lock_p,
+                    "kind": "payment",
+                    "message": f"Payment posting deferred — entity is locked through {lock_p}. Reopen the period to record this in the ledger.",
+                })
+    if inv.get("counter_entity_id") and status not in ("draft", "void"):
+        lock_c = await gl.check_period_lock(db, inv["counter_entity_id"], inv_date)
+        if lock_c:
+            warnings.append({
+                "type": "period_locked",
+                "side": "counter",
+                "entity_id": inv["counter_entity_id"],
+                "posting_date": inv_date,
+                "lock_through": lock_c,
+                "kind": "issue_mirror",
+                "message": f"Inter-Co mirror deferred — counter entity is locked through {lock_c}. Reopen the counter-entity's period to mirror this entry.",
+            })
+    return warnings
+
+
+async def _bill_gl_warnings(bill: dict) -> list:
+    warnings = []
+    bill_date = bill.get("bill_date") or bill.get("received_date") or now_iso()[:10]
+    pay_date = bill.get("paid_date") or bill_date
+    paid = float(bill.get("paid_amount") or 0)
+    status = (bill.get("status") or "").lower()
+    if bill.get("entity_id") and status not in ("draft", "void"):
+        lock = await gl.check_period_lock(db, bill["entity_id"], bill_date)
+        if lock:
+            warnings.append({
+                "type": "period_locked",
+                "side": "buyer",
+                "entity_id": bill["entity_id"],
+                "posting_date": bill_date,
+                "lock_through": lock,
+                "kind": "bill_received",
+                "message": f"Bill posting deferred — entity is locked through {lock}. Reopen the period (Books → Period Close) to record this in the ledger.",
+            })
+        if paid > 0:
+            lock_p = await gl.check_period_lock(db, bill["entity_id"], pay_date)
+            if lock_p:
+                warnings.append({
+                    "type": "period_locked",
+                    "side": "buyer",
+                    "entity_id": bill["entity_id"],
+                    "posting_date": pay_date,
+                    "lock_through": lock_p,
+                    "kind": "bill_payment",
+                    "message": f"Bill payment posting deferred — entity is locked through {lock_p}. Reopen the period to record this in the ledger.",
+                })
+    if bill.get("counter_entity_id") and status not in ("draft", "void"):
+        lock_c = await gl.check_period_lock(db, bill["counter_entity_id"], bill_date)
+        if lock_c:
+            warnings.append({
+                "type": "period_locked",
+                "side": "counter",
+                "entity_id": bill["counter_entity_id"],
+                "posting_date": bill_date,
+                "lock_through": lock_c,
+                "kind": "bill_received_mirror",
+                "message": f"Inter-Co mirror deferred — counter entity is locked through {lock_c}. Reopen the counter-entity's period to mirror this entry.",
+            })
+    return warnings
+
+
 @api_router.post("/invoices", response_model=Invoice)
 async def create_invoice(body: InvoiceIn, current=Depends(get_current_user)):
     data = body.model_dump()
@@ -1989,12 +2084,16 @@ async def create_invoice(body: InvoiceIn, current=Depends(get_current_user)):
     data["is_deleted"] = False
     await db.invoices.insert_one(data.copy())
     # Books — auto-journal (no-op if entity_id is not set)
+    gl_warnings = await _invoice_gl_warnings(data)
     try:
         await gl.post_invoice_issue(db, data, posted_by_user_id=current["id"])
         await gl.post_invoice_payment(db, data, posted_by_user_id=current["id"])
     except Exception as e:
         logger.warning(f"GL post (invoice create) failed: {type(e).__name__}: {e}")
-    return strip_id(data)
+    out = strip_id(data)
+    if gl_warnings:
+        out["gl_warnings"] = gl_warnings
+    return out
 
 
 @api_router.get("/invoices/{invoice_id}", response_model=Invoice)
@@ -2021,6 +2120,7 @@ async def update_invoice(invoice_id: str, body: InvoiceIn, current=Depends(get_c
     data = _recalc_invoice(data)
     await db.invoices.update_one({"id": invoice_id}, {"$set": data})
     # If entity changed, reverse old journals first
+    gl_warnings = await _invoice_gl_warnings(data)
     try:
         if existing.get("entity_id") and existing.get("entity_id") != data.get("entity_id"):
             await gl.reverse_journals(db, source_type="invoice", source_id=invoice_id)
@@ -2032,7 +2132,10 @@ async def update_invoice(invoice_id: str, body: InvoiceIn, current=Depends(get_c
         await gl.post_invoice_payment(db, data, posted_by_user_id=current["id"])
     except Exception as e:
         logger.warning(f"GL post (invoice update) failed: {type(e).__name__}: {e}")
-    return strip_id(data)
+    out = strip_id(data)
+    if gl_warnings:
+        out["gl_warnings"] = gl_warnings
+    return out
 
 
 @api_router.delete("/invoices/{invoice_id}")
@@ -2563,12 +2666,16 @@ async def create_vendor_bill(body: VendorBillIn, current=Depends(get_current_use
     data["created_by_user_id"] = current["id"]
     data["is_deleted"] = False
     await db.vendor_bills.insert_one(data.copy())
+    gl_warnings = await _bill_gl_warnings(data)
     try:
         await gl.post_bill_received(db, data, posted_by_user_id=current["id"])
         await gl.post_bill_payment(db, data, posted_by_user_id=current["id"])
     except Exception as e:
         logger.warning(f"GL post (vendor bill create) failed: {type(e).__name__}: {e}")
-    return strip_id(data)
+    out = strip_id(data)
+    if gl_warnings:
+        out["gl_warnings"] = gl_warnings
+    return out
 
 
 @api_router.get("/vendor-bills/{bill_id}", response_model=VendorBill)
@@ -2596,6 +2703,7 @@ async def update_vendor_bill(bill_id: str, body: VendorBillIn, current=Depends(g
     data["created_by_user_id"] = existing.get("created_by_user_id")
     data = _recalc_bill(data)
     await db.vendor_bills.update_one({"id": bill_id}, {"$set": data})
+    gl_warnings = await _bill_gl_warnings(data)
     try:
         if existing.get("entity_id") and existing.get("entity_id") != data.get("entity_id"):
             await gl.reverse_journals(db, source_type="vendor_bill", source_id=bill_id)
@@ -2606,7 +2714,10 @@ async def update_vendor_bill(bill_id: str, body: VendorBillIn, current=Depends(g
         await gl.post_bill_payment(db, data, posted_by_user_id=current["id"])
     except Exception as e:
         logger.warning(f"GL post (vendor bill update) failed: {type(e).__name__}: {e}")
-    return strip_id(data)
+    out = strip_id(data)
+    if gl_warnings:
+        out["gl_warnings"] = gl_warnings
+    return out
 
 
 @api_router.delete("/vendor-bills/{bill_id}")

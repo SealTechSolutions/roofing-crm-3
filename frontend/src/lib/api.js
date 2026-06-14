@@ -41,3 +41,20 @@ export function formatCurrency(n) {
   const v = Number(n || 0);
   return v.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
+
+/**
+ * If a create/update response includes `gl_warnings` (period-locked GL postings),
+ * surface each as a sonner warning toast. Returns true if any were shown.
+ * Pass the `toast` instance from "sonner" so we don't bloat this module.
+ */
+export function showGlWarnings(toast, data) {
+  const warnings = data?.gl_warnings;
+  if (!Array.isArray(warnings) || warnings.length === 0) return false;
+  warnings.forEach((w) => {
+    toast.warning(w.message || "GL posting deferred — period locked.", {
+      description: w.lock_through ? `Locked through ${w.lock_through}` : undefined,
+      duration: 9000,
+    });
+  });
+  return true;
+}
