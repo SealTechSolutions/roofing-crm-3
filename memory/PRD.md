@@ -339,8 +339,13 @@
 - ✅ "Manual Adjustment" added to the kind filter dropdown.
 - ✅ Tested: 7/7 new pytest (`/app/backend/tests/test_books_manual_journal.py`) + frontend smoke (composer modal renders, account dropdown grouped, live balance indicator works).
 
+### Admin Trash — Empty-keyword validation hardened (Feb 2026)
+- Bug: bulk `Empty Trash` rejected `EMPTY` when typed with quotes / different case / surrounding whitespace.
+- Fix: `/app/frontend/src/pages/Trash.jsx` normalises input via `replace(/["'`]/g,"").trim().toUpperCase()` before comparison; single-item purge prompt now case-insensitive + quote-tolerant against item label.
+- Verified via logic test for variants `EMPTY`, ` empty `, `"EMPTY"`, `'Empty'`, `EMPTY ` — all PASS; `wrong` correctly BLOCKED.
+
 ## Backlog (P0 — next Books phases)
-- Books — A/R Aging, A/P Aging, Cash Flow report tabs (next 3 reports CPAs always ask for)
+- Books — Cash Flow report (Operating / Investing / Financing) — A/R + A/P Aging already DONE
 - Books — Per-entity configurable late-fee rate (today hardcoded 1.5%)
 
 ## Backlog (P1)

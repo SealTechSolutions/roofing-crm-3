@@ -61,7 +61,8 @@ export default function Trash() {
       `PERMANENTLY DELETE this item? This CANNOT be undone.\n\nType the item name to confirm:\n"${item.label}"`
     );
     if (!typed) return;
-    if (typed.trim() !== (item.label || "").trim()) {
+    const norm = (s) => (s || "").replace(/["'`]/g, "").trim().toLowerCase();
+    if (norm(typed) !== norm(item.label)) {
       toast.error("Name did not match — purge cancelled");
       return;
     }
@@ -76,8 +77,10 @@ export default function Trash() {
 
   const emptyBucket = async () => {
     const typed = window.prompt(`EMPTY THE ${active.toUpperCase()} TRASH?\n\nThis permanently deletes ALL ${rows.length} items below.\nType EMPTY to confirm:`);
-    if (typed?.trim() !== "EMPTY") {
-      if (typed !== null) toast.error("Confirmation did not match — empty cancelled");
+    if (typed === null) return;
+    const normalized = typed.replace(/["'`]/g, "").trim().toUpperCase();
+    if (normalized !== "EMPTY") {
+      toast.error("Confirmation did not match — empty cancelled");
       return;
     }
     try {
