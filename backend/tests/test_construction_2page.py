@@ -117,33 +117,57 @@ def test_project_type_override_wins():
     assert "Demolition" in txt or "Haul-Off" in txt or "Haul" in txt
 
 
-def test_legacy_custom_scope_still_renders():
-    # No new 3-bucket fields; only legacy `custom_scope` with blank-line paragraphs.
-    legacy_data = {
-        "contact_name": "John Owner",
-        "contact_phone": "720-555-9999",
-        "project_address": "100 Old Stack Pl, Aurora, CO 80012",
-        "product_type": "Other Construction Work",
+def test_legacy_custom_scope_dumps_all_to_project_requirements():
+    """Critical: legacy `custom_scope` with blank lines between paragraphs must NOT
+    be auto-distributed across Project Requirements / Other / Exclusions buckets.
+    All legacy text goes into Project Requirements; Exclusions falls back to defaults.
+    """
+    data = {
+        "contact_name": "Test Owner",
+        "contact_phone": "303-555-1111",
+        "project_address": "1 Test Way",
+        "product_type": "Drainage & Grading",
         "date": "2026-02-15",
-        "opt_20": 9500,
+        "opt_20": 1000,
         "custom_scope": (
-            "Demo existing concrete pad\n"
-            "Haul off debris to landfill\n"
+            "Site preparation - clear material and debris\n"
             "\n"
-            "MATERIALS - 4 yd dumpster\n"
-            "EQUIPMENT - Bobcat & jackhammer\n"
+            "Structural fill placement and grading - supply Class 1 fill\n"
             "\n"
-            "Permit fees not included\n"
-            "Work outside defined scope"
+            "River rock surface layer"
         ),
     }
-    pdf = _render(legacy_data, roof_type="Other")
-    pc = _page_count(pdf)
-    assert pc == 2, f"Legacy custom_scope should still be 2 pages, got {pc}"
-    txt = _extract_text(pdf)
-    assert "Demo existing concrete pad" in txt
-    assert "MATERIALS" in txt
-    assert "Permit fees not included" in txt
+    pdf = _render(data)
+    p1 = _extract_page(pdf, 0)
+    # All three bullets must land under Project Requirements — never under Other Requirements or Exclusions
+    # We can't easily probe column position, but we CAN assert:
+    #   - the bullets appear AFTER "Project Requirements" header
+    #   - Exclusions section has the *default* boilerplate (Permit fees / hazardous materials / Work outside scope)
+    pr_idx = p1.find("Project Requirements")
+    excl_idx = p1.find("Exclusions")
+    assert pr_idx != -1
+    assert excl_idx != -1
+    # Each legacy bullet appears between Project Requirements and Exclusions (i.e. NOT in Exclusions)
+    for bullet in ["Site preparation", "Structural fill placement", "River rock surface layer"]:
+        pos = p1.find(bullet)
+        assert pos != -1, f"Missing bullet: {bullet}"
+        assert pr_idx < pos < excl_idx, f"Bullet '{bullet}' leaked out of Project Requirements section"
+    # Defaults populated under Exclusions
+    assert "Permit fees" in p1
+    assert "hazardous materials" in p1
+
+
+def test_explicit_exclusions_override_defaults():
+    data = {
+        **SAMPLE_DATA,
+        "construction_exclusions": "Customer is responsible for site dewatering.\nNo concrete cutting included.",
+    }
+    pdf = _render(data)
+    p1 = _extract_page(pdf, 0)
+    assert "Customer is responsible for site dewatering" in p1
+    assert "concrete cutting" in p1
+    # Default boilerplate must NOT appear when caller provides their own
+    assert "Permit fees" not in p1
 
 
 def test_writes_sample_pdf():

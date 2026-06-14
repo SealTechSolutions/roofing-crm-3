@@ -52,6 +52,17 @@ export function ScopePreview({ currentRoof, proposedRoof }) {
 }
 
 
+/** Default exclusions for Construction Project / Other scopes. These are policy-level
+    boilerplate that rarely changes from project to project. New deals start with this
+    pre-filled; users can edit or wipe it but it's also re-applied on the PDF if the
+    field happens to be blank. */
+export const DEFAULT_CONSTRUCTION_EXCLUSIONS = [
+  "Permit fees (if required by jurisdiction).",
+  "Removal/disposal of pre-existing hazardous materials.",
+  "Work outside the defined scope.",
+].join("\n");
+
+
 const empty = {
   title: "",
   deal_type: "Scope",
@@ -68,7 +79,7 @@ const empty = {
   custom_scope: "",
   construction_project_requirements: "",
   construction_other_requirements: "",
-  construction_exclusions: "",
+  construction_exclusions: DEFAULT_CONSTRUCTION_EXCLUSIONS,
   project_type_override: "",
   property_sqft: 0,
   perimeter_lnft: 0,
@@ -122,7 +133,20 @@ export default function Deals() {
   }, []);
 
   const openCreate = () => { setEditing(null); setForm(empty); setOpen(true); };
-  const openEdit = (d) => { setEditing(d); setForm({ ...empty, ...d, contact_id: d.contact_id || "", customer_contact_id: d.customer_contact_id || "", owner_contact_id: d.owner_contact_id || "", property_id: d.property_id || "" }); setOpen(true); };
+  const openEdit = (d) => {
+    setEditing(d);
+    setForm({
+      ...empty,
+      ...d,
+      contact_id: d.contact_id || "",
+      customer_contact_id: d.customer_contact_id || "",
+      owner_contact_id: d.owner_contact_id || "",
+      property_id: d.property_id || "",
+      // Pre-fill exclusions defaults on legacy deals that never set their own
+      construction_exclusions: (d.construction_exclusions || "").trim() || DEFAULT_CONSTRUCTION_EXCLUSIONS,
+    });
+    setOpen(true);
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -338,9 +362,9 @@ export default function Deals() {
               </Field>
             </Grid2>
 
-            {/* Construction-scope 3-bucket inputs — only when the proposed item is non-roofing (Construction Project / Other) */}
+            {/* Construction-scope inputs — only when the proposed item is non-roofing (Construction Project / Other) */}
             {(/^(construction project|other)$/i.test(form.proposed_roof_type || "") || /other construction work/i.test(form.current_roof_type || "")) && (
-              <div className="pt-4 border-t border-zinc-200 space-y-4" data-testid="custom-scope-block">
+              <div className="pt-4 border-t border-zinc-200 space-y-5" data-testid="custom-scope-block">
                 <div className="flex items-center justify-between">
                   <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
                     Construction Scope · 2-Page PDF
@@ -359,38 +383,64 @@ export default function Deals() {
                   />
                 </Field>
 
-                <Field label="Project Requirements">
-                  <textarea
-                    data-testid="deal-construction-project-requirements"
-                    value={form.construction_project_requirements || ""}
-                    onChange={(e) => setForm({ ...form, construction_project_requirements: e.target.value })}
-                    rows={5}
-                    placeholder={"Site preparation — clear debris, excavate, layout entire section\nStructural fill placement and grading — supply Clean Class 1 Structural Fill, place 5-8\" lifts, taper for runoff\nRiver rock surface layer — install 2-3\" of 1-3\" river rock for drainage\nDownspout extensions — install 110' +/- of downspout extensions and 45's"}
-                    className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono"
-                  />
-                </Field>
+                {/* ===== Scope of Work — Project Requirements + Other Requirements together ===== */}
+                <div className="border-2 border-blue-200 rounded-sm p-4 bg-blue-50/30 space-y-4">
+                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-800 -mt-1">
+                    Scope of Work
+                  </div>
 
-                <Field label="Other Requirements (Materials / Equipment / Metal)">
-                  <textarea
-                    data-testid="deal-construction-other-requirements"
-                    value={form.construction_other_requirements || ""}
-                    onChange={(e) => setForm({ ...form, construction_other_requirements: e.target.value })}
-                    rows={4}
-                    placeholder={"MATERIALS — 155 ton class 1 clean structural fill, 70 ton 1-3\" river rock\nEQUIPMENT — Skip Loader, 150 lb Plate Tamper\nMETAL — 110' of drain extensions and 45 degree elbows"}
-                    className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono"
-                  />
-                </Field>
+                  <Field label="Project Requirements">
+                    <textarea
+                      data-testid="deal-construction-project-requirements"
+                      value={form.construction_project_requirements || ""}
+                      onChange={(e) => setForm({ ...form, construction_project_requirements: e.target.value })}
+                      rows={6}
+                      placeholder={"Site preparation — clear necessary material, debris, excavate, and layout entire 330' long project section\nStructural fill placement and grading — Supply Clean Class 1 Structural Fill for stable compaction. Place and fill 5-8\" lifts for proper compaction and stability, grade and fill to create positive drainage away from both building foundations, taper the fill for proper runoff directing to the center of the trench, ensure proper tamping to create a structured stable runoff\nRiver rock surface layer — install 2-3\" of 1-3\" river rock evenly throughout the entire excavated area\nDownspout extensions and metal work — Install 110' +/- of downspout extensions and 45's"}
+                      className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono bg-white"
+                    />
+                    <div className="text-[10px] text-zinc-500 mt-1">The work being performed — one detailed bullet per line. Be specific; this is what the customer reads first.</div>
+                  </Field>
 
-                <Field label="Exclusions">
+                  <Field label="Other Requirements (Materials / Equipment / Metal)">
+                    <textarea
+                      data-testid="deal-construction-other-requirements"
+                      value={form.construction_other_requirements || ""}
+                      onChange={(e) => setForm({ ...form, construction_other_requirements: e.target.value })}
+                      rows={4}
+                      placeholder={"MATERIALS — 155 ton of class 1 clean structural fill, 70 ton of 1-3\" river rock\nEQUIPMENT — Skip Loader, 150 lb Plate Tamper\nMETAL — 110' of drain extensions and 45 degree elbows"}
+                      className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono bg-white"
+                    />
+                    <div className="text-[10px] text-zinc-500 mt-1">Quantities and key spec items — materials, equipment, metal counts.</div>
+                  </Field>
+                </div>
+
+                {/* ===== Exclusions — separate, defaults pre-filled, rarely changes ===== */}
+                <div className="border-2 border-amber-200 rounded-sm p-4 bg-amber-50/40 space-y-2">
+                  <div className="flex items-center justify-between -mt-1">
+                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-800">
+                      Exclusions · Standard Boilerplate
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="deal-exclusions-reset"
+                      onClick={() => setForm({ ...form, construction_exclusions: DEFAULT_CONSTRUCTION_EXCLUSIONS })}
+                      className="text-[10px] font-bold uppercase tracking-wider text-amber-700 hover:text-amber-900 underline-offset-2 hover:underline"
+                    >
+                      Reset to defaults
+                    </button>
+                  </div>
+                  <div className="text-[10px] text-amber-800/80">
+                    These items are <strong>not</strong> covered by this project. Edit only when this specific job has unusual exclusions.
+                  </div>
                   <textarea
                     data-testid="deal-construction-exclusions"
                     value={form.construction_exclusions || ""}
                     onChange={(e) => setForm({ ...form, construction_exclusions: e.target.value })}
-                    rows={3}
-                    placeholder={"Permit fees (if required by jurisdiction).\nRemoval/disposal of pre-existing hazardous materials.\nWork outside the defined scope."}
-                    className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono"
+                    rows={4}
+                    placeholder={DEFAULT_CONSTRUCTION_EXCLUSIONS}
+                    className="w-full px-3 py-2 border border-amber-300 rounded-sm text-sm focus:outline-none focus:border-amber-700 font-mono bg-white"
                   />
-                </Field>
+                </div>
 
                 <details className="text-[10px] text-zinc-500">
                   <summary className="cursor-pointer hover:text-zinc-800">Legacy single-textarea scope (advanced / back-compat)</summary>
@@ -399,7 +449,7 @@ export default function Deals() {
                     value={form.custom_scope || ""}
                     onChange={(e) => setForm({ ...form, custom_scope: e.target.value })}
                     rows={5}
-                    placeholder={"Falls back to this when the 3 bucket fields above are empty. Separate sections with a blank line — they map to Project Requirements / Other / Exclusions."}
+                    placeholder={"Falls back to this when the buckets above are empty. All of this text will print under Project Requirements on the PDF."}
                     className="w-full mt-1 px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono"
                   />
                 </details>

@@ -305,6 +305,13 @@
 - ✅ Cosmetic: fixed `<span>`-in-`<option>` hydration warning on Bank Rec account dropdown
 - ✅ Tested: 15/15 new pytest + 20/20 Phase-6 regression + live Sonner toast capture (`/app/test_reports/iteration_9.json`, `/app/backend/tests/test_books_phase7_gl_warnings.py`)
 
+## Construction Project — Form Restructure + Exclusions Defaults (2026-02) ✅
+- ✅ **Bug fix**: Legacy `custom_scope` no longer auto-distributes across 3 buckets by blank lines (that was mis-labeling real data — e.g. "Site preparation" landing under "Exclusions" just because it was paragraph #3). All legacy text now dumps into Project Requirements only.
+- ✅ Exclusions defaults: New deals start with the standard 3-bullet boilerplate (`Permit fees · hazardous materials · work outside scope`) pre-filled. PDF also falls back to defaults if the field happens to be blank at render time.
+- ✅ Deal form restructured: PR + OR grouped together inside a **blue-bordered "Scope of Work"** panel; Exclusions moved into a visually-separate **amber-bordered "Standard Boilerplate"** panel below with a "Reset to defaults" button and a help hint clarifying these rarely change.
+- ✅ `openEdit` re-applies exclusion defaults to legacy deals that never set their own (non-destructive — only fires when the field is empty).
+- ✅ Tested: 9/9 pytest including 2 new — `test_legacy_custom_scope_dumps_all_to_project_requirements` proves no section bleed-over; `test_explicit_exclusions_override_defaults` proves user-provided exclusions win over the boilerplate.
+
 ## Construction Project — 2-Page PDF Rebuild (2026-02) ✅
 - ✅ New dedicated 2-page rendering function `_build_construction_2page` in `spec_sheet.py`. Bypasses the standard 3-page roofing flow when `dynamic_scope=True` (Construction Project / Other / Other Construction Work).
 - ✅ Page 1: SealTech logo + centered **PROJECT SCOPE** title + Contact / Project Address / Project Type / Date header table → outlined scope block with 3 buckets (**Project Requirements / Other Requirements / Exclusions**) → blue full-width **PROJECT TOTAL** bar → appreciation line → "**Darren Oliver, CSI, IIBEC**" signer (hardcoded — always Darren per business policy) → Acceptance Of Scope block with By/Title/Signature/Date.

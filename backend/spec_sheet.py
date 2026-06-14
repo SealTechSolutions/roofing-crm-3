@@ -943,23 +943,25 @@ def _build_construction_2page(
     other_reqs = _split_bullets(data.get("construction_other_requirements") or "")
     exclusions = _split_bullets(data.get("construction_exclusions") or "")
 
-    # Back-compat: if none of the three new fields were filled, split legacy `custom_scope`
-    # by blank lines into up to 3 paragraphs → reqs / other / exclusions.
+    # Back-compat: if none of the three new fields were filled but a legacy
+    # `custom_scope` exists, dump it entirely into Project Requirements (preserving
+    # line breaks → bullets). We do NOT auto-split into Other/Exclusions because
+    # that mis-labels real data (e.g., "Site preparation" landing under Exclusions
+    # just because it was paragraph #3). Default Exclusions get applied below.
     if not (project_reqs or other_reqs or exclusions):
         raw = (data.get("custom_scope") or "").strip()
-        paragraphs = [p.strip() for p in raw.split("\n\n") if p.strip()] if raw else []
-        if len(paragraphs) >= 1:
-            project_reqs = _split_bullets(paragraphs[0])
-        if len(paragraphs) >= 2:
-            other_reqs = _split_bullets(paragraphs[1])
-        if len(paragraphs) >= 3:
-            exclusions = _split_bullets(paragraphs[2])
-        if not exclusions:
-            exclusions = [
-                "Permit fees (if required by jurisdiction).",
-                "Removal/disposal of pre-existing hazardous materials.",
-                "Work outside the defined scope.",
-            ]
+        if raw:
+            project_reqs = _split_bullets(raw)
+
+    # Standard exclusions — these are policy-level and rarely change. If the deal
+    # didn't explicitly provide its own exclusions list, fall back to defaults so
+    # the section is never blank on the PDF.
+    if not exclusions:
+        exclusions = [
+            "Permit fees (if required by jurisdiction).",
+            "Removal/disposal of pre-existing hazardous materials.",
+            "Work outside the defined scope.",
+        ]
 
     buf = BytesIO()
     pdf = SimpleDocTemplate(
