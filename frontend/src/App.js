@@ -20,6 +20,7 @@ import Library from "@/pages/Library";
 import BooksCOA from "@/pages/BooksCOA";
 import CoiReminders from "@/pages/CoiReminders";
 import PublicGallery from "@/pages/PublicGallery";
+import TrashPage from "@/pages/Trash";
 import Profile from "@/pages/Profile";
 import "@/App.css";
 
@@ -70,6 +71,7 @@ function App() {
               <Route path="/vendors" element={<Vendors kind="Vendor" />} />
               <Route path="/subcontractors" element={<Vendors kind="Subcontractor" />} />
               <Route path="/coi-reminders" element={<CoiReminders />} />
+              <Route path="/trash" element={<TrashPage />} />
               <Route path="/maintenance" element={<Maintenance />} />
               <Route path="/invoices" element={<Invoices />} />
               <Route path="/payables" element={<Payables />} />

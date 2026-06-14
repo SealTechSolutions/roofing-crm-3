@@ -34,6 +34,7 @@ from books import make_router as make_books_router, seed_default_entities
 import gl
 import coi_reminders
 import project_photos
+import trash
 
 
 # ----- DB -----
@@ -4710,6 +4711,7 @@ api_router.include_router(make_books_router(db, get_current_user, require_admin)
 api_router.include_router(coi_reminders.create_router(db, require_admin))
 api_router.include_router(project_photos.create_router(db, get_current_user))
 api_router.include_router(project_photos.create_public_router(db))
+api_router.include_router(trash.create_router(db, require_admin))
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

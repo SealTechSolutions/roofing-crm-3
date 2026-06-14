@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const ALL_NAV = [
@@ -17,6 +17,7 @@ const ALL_NAV = [
   { to: "/vendors", label: "Vendors", icon: Truck, testId: "nav-vendors" },
   { to: "/subcontractors", label: "Subcontractors", icon: HardHat, testId: "nav-subcontractors" },
   { to: "/users", label: "Users", icon: UserCog, testId: "nav-users", adminOnly: true },
+  { to: "/trash", label: "Trash", icon: Trash2, testId: "nav-trash", adminOnly: true },
 ];
 
 export default function Layout() {

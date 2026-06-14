@@ -42,3 +42,20 @@ def get_object(path: str):
     )
     resp.raise_for_status()
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+
+def delete_object(path: str) -> bool:
+    """Permanently delete an object from Emergent storage. Returns True on success,
+    False if the object was already missing (idempotent). Raises on real errors."""
+    key = init_storage()
+    resp = requests.delete(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key},
+        timeout=30,
+    )
+    if resp.status_code in (200, 204):
+        return True
+    if resp.status_code == 404:
+        return False
+    resp.raise_for_status()
+    return True
