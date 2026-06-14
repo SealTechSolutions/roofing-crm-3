@@ -35,6 +35,7 @@ RESOURCE_MAP: dict[str, dict] = {
     "vendor_bills":    {"coll": "vendor_bills",    "label": "Vendor Bill",    "label_field": "bill_number",       "storage": None},
     "vendors":         {"coll": "vendors",         "label": "Vendor/Sub",     "label_field": "name",              "storage": None},
     "materials":       {"coll": "materials",       "label": "Material",       "label_field": "name",              "storage": None},
+    "journal_templates": {"coll": "journal_templates", "label": "Journal Template", "label_field": "name",          "storage": None},
 }
 
 

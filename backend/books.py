@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 ACCOUNT_TYPES = ["Asset", "Liability", "Equity", "Revenue", "COGS", "Expense", "Other"]
@@ -162,6 +162,27 @@ class ManualJournalIn(BaseModel):
     lines: List[ManualJournalLineIn]
 
 
+class JournalTemplateLineIn(BaseModel):
+    """A template line. No date — date is supplied when the template is applied."""
+    model_config = ConfigDict(extra="ignore")
+    account_id: str
+    debit: float = 0.0
+    credit: float = 0.0
+    memo: str = ""
+
+
+class JournalTemplateIn(BaseModel):
+    """Reusable scaffold for common recurring entries (monthly insurance accrual,
+    owner draws, period-end adjustments, etc.). Loaded into the Manual Journal
+    composer; lines are pre-filled but the date+memo can be edited before posting."""
+    model_config = ConfigDict(extra="ignore")
+    entity_id: str
+    name: str = Field(min_length=1, max_length=80)
+    description: str = ""
+    default_memo: str = ""  # Pre-fills the memo field on load
+    lines: List[JournalTemplateLineIn] = Field(default_factory=list)
+
+
 def _clean(doc: dict) -> dict:
     """Strip Mongo _id from outgoing docs."""
     if not doc:
@@ -201,6 +222,8 @@ async def seed_default_entities(db) -> None:
     await db.entities.create_index("id", unique=True)
     await db.chart_of_accounts.create_index("id", unique=True)
     await db.chart_of_accounts.create_index([("entity_id", 1), ("number", 1)], unique=True)
+    await db.journal_templates.create_index("id", unique=True)
+    await db.journal_templates.create_index([("entity_id", 1), ("name", 1)])
 
     # Backfill: ensure every existing entity has a late_fee_rate_pct (default 1.5%)
     await db.entities.update_many(
@@ -507,6 +530,138 @@ def make_router(db, get_current_user, require_admin) -> APIRouter:
             }},
         )
         return {"ok": True, "id": journal_id}
+
+    # ---------- Recurring Journal Templates ----------
+    @router.get("/journal-templates")
+    async def list_journal_templates(entity_id: str, current=Depends(get_current_user)):
+        """List reusable journal templates for an entity (most-recently-used first)."""
+        items = []
+        cursor = db.journal_templates.find(
+            {"entity_id": entity_id, "is_deleted": {"$ne": True}}, {"_id": 0}
+        ).sort([("last_used_at", -1), ("created_at", -1)])
+        async for t in cursor:
+            items.append(t)
+        return items
+
+    @router.post("/journal-templates")
+    async def create_journal_template(body: JournalTemplateIn, current=Depends(require_admin)):
+        """Create a new recurring template. Snapshots account number/name/type so
+        renaming an account later doesn't break the template's UX (re-validated at use-time)."""
+        ent = await db.entities.find_one({"id": body.entity_id})
+        if not ent:
+            raise HTTPException(status_code=404, detail="Entity not found")
+        if not body.lines:
+            raise HTTPException(status_code=400, detail="At least one line is required")
+        # Snapshot account metadata so the template renders nicely even if the account
+        # is later renamed/renumbered. Validation at use-time will block inactive accounts.
+        snapped_lines = []
+        for idx, ln in enumerate(body.lines):
+            d = round(float(ln.debit or 0), 2)
+            c = round(float(ln.credit or 0), 2)
+            if d <= 0 and c <= 0:
+                continue
+            if d > 0 and c > 0:
+                raise HTTPException(status_code=400, detail=f"Line {idx + 1}: cannot have both debit and credit")
+            acct = await db.chart_of_accounts.find_one(
+                {"id": ln.account_id, "entity_id": body.entity_id}, {"_id": 0}
+            )
+            if not acct:
+                raise HTTPException(status_code=400, detail=f"Line {idx + 1}: account not found for this entity")
+            snapped_lines.append({
+                "account_id": acct["id"],
+                "account_number": acct["number"],
+                "account_name": acct["name"],
+                "account_type": acct["type"],
+                "debit": d,
+                "credit": c,
+                "memo": ln.memo or "",
+            })
+        if not snapped_lines:
+            raise HTTPException(status_code=400, detail="At least one non-zero line is required")
+
+        # Enforce unique template names per-entity to avoid confusion in the dropdown
+        existing = await db.journal_templates.find_one({
+            "entity_id": body.entity_id, "name": body.name, "is_deleted": {"$ne": True}
+        })
+        if existing:
+            raise HTTPException(status_code=400, detail=f'A template named "{body.name}" already exists for this entity.')
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        doc = {
+            "id": str(uuid.uuid4()),
+            "entity_id": body.entity_id,
+            "name": body.name.strip(),
+            "description": (body.description or "").strip(),
+            "default_memo": (body.default_memo or "").strip(),
+            "lines": snapped_lines,
+            "created_at": now_iso,
+            "created_by_user_id": current.get("id"),
+            "created_by_name": current.get("name") or current.get("email", ""),
+            "use_count": 0,
+            "last_used_at": "",
+            "is_deleted": False,
+        }
+        await db.journal_templates.insert_one(doc.copy())
+        doc.pop("_id", None)
+        return doc
+
+    @router.put("/journal-templates/{template_id}")
+    async def update_journal_template(template_id: str, body: JournalTemplateIn, current=Depends(require_admin)):
+        """Edit a template's name/description/default_memo (lines are immutable here —
+        save a new template if you want different lines)."""
+        existing = await db.journal_templates.find_one({"id": template_id, "is_deleted": {"$ne": True}})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Template not found")
+        # Block duplicate-name renames
+        if body.name.strip() != existing.get("name"):
+            dup = await db.journal_templates.find_one({
+                "entity_id": existing["entity_id"],
+                "name": body.name.strip(),
+                "is_deleted": {"$ne": True},
+                "id": {"$ne": template_id},
+            })
+            if dup:
+                raise HTTPException(status_code=400, detail=f'A template named "{body.name}" already exists.')
+        await db.journal_templates.update_one(
+            {"id": template_id},
+            {"$set": {
+                "name": body.name.strip(),
+                "description": (body.description or "").strip(),
+                "default_memo": (body.default_memo or "").strip(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        doc = await db.journal_templates.find_one({"id": template_id}, {"_id": 0})
+        return doc
+
+    @router.delete("/journal-templates/{template_id}")
+    async def delete_journal_template(template_id: str, current=Depends(require_admin)):
+        """Soft-delete a template (lands in Trash like everything else)."""
+        existing = await db.journal_templates.find_one({"id": template_id, "is_deleted": {"$ne": True}})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Template not found")
+        await db.journal_templates.update_one(
+            {"id": template_id},
+            {"$set": {
+                "is_deleted": True,
+                "deleted_at": datetime.now(timezone.utc).isoformat(),
+                "deleted_by_user_id": current.get("id"),
+            }},
+        )
+        return {"ok": True, "id": template_id}
+
+    @router.post("/journal-templates/{template_id}/use")
+    async def mark_journal_template_used(template_id: str, current=Depends(get_current_user)):
+        """Bump use_count / last_used_at — called by frontend after a posting that
+        originated from this template, so the dropdown can sort MRU."""
+        existing = await db.journal_templates.find_one({"id": template_id, "is_deleted": {"$ne": True}})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Template not found")
+        await db.journal_templates.update_one(
+            {"id": template_id},
+            {"$inc": {"use_count": 1}, "$set": {"last_used_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        return {"ok": True}
 
     # ---------- Reports / KPIs ----------
     @router.get("/reports/kpis")

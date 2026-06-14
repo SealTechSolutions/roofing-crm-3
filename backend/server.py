@@ -2806,6 +2806,348 @@ async def delete_vendor_bill(bill_id: str, current=Depends(get_current_user)):
     return {"ok": True}
 
 
+# ----- Bulk CSV Import (Vendor Bills) -----
+
+CSV_COLUMN_ALIASES = {
+    # canonical          -> accepted header variants (lowercased, stripped)
+    "vendor":            ["vendor", "vendor_name", "vendor name", "supplier", "payee"],
+    "bill_number":       ["bill_number", "bill number", "bill #", "invoice_number", "invoice number", "invoice #", "ref", "reference"],
+    "bill_date":         ["bill_date", "bill date", "date", "invoice_date", "invoice date"],
+    "due_date":          ["due_date", "due date", "due", "payment_due"],
+    "description":       ["description", "memo", "notes", "line_description", "details"],
+    "amount":            ["amount", "total", "amount_due", "total_amount", "subtotal"],
+    "expense_account":   ["expense_account", "expense account", "account", "account_number", "gl_account", "gl"],
+    "project":           ["project", "project_name", "project name", "deal", "job"],
+}
+
+
+def _normalize_csv_headers(fieldnames: list) -> dict[str, str]:
+    """Maps canonical column names → the actual header string in the CSV."""
+    out: dict[str, str] = {}
+    if not fieldnames:
+        return out
+    lookup = {(h or "").strip().lower(): h for h in fieldnames}
+    for canon, aliases in CSV_COLUMN_ALIASES.items():
+        for alias in aliases:
+            if alias in lookup:
+                out[canon] = lookup[alias]
+                break
+    return out
+
+
+def _parse_csv_date(s: str) -> str:
+    """Accept ISO YYYY-MM-DD, MM/DD/YYYY, M/D/YY, or empty. Returns ISO or empty."""
+    if not s:
+        return ""
+    s = s.strip()
+    if not s:
+        return ""
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%m-%d-%Y", "%m-%d-%y"):
+        try:
+            return datetime.strptime(s, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return ""
+
+
+def _parse_csv_amount(s: str) -> Optional[float]:
+    """Lenient amount parser: strips $, commas, parens (negative)."""
+    if s is None:
+        return None
+    raw = str(s).strip()
+    if not raw:
+        return None
+    neg = raw.startswith("(") and raw.endswith(")")
+    cleaned = raw.replace("$", "").replace(",", "").replace("(", "").replace(")", "").strip()
+    try:
+        v = float(cleaned)
+        return -v if neg else v
+    except (ValueError, TypeError):
+        return None
+
+
+async def _resolve_csv_vendor(vendor_name: str) -> Optional[dict]:
+    """Try to match a CSV vendor cell to an existing vendor (case-insensitive exact, then prefix)."""
+    if not vendor_name:
+        return None
+    name = vendor_name.strip()
+    # Exact case-insensitive
+    v = await db.vendors.find_one({"name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}}, {"_id": 0})
+    if v:
+        return v
+    # Prefix
+    v = await db.vendors.find_one({"name": {"$regex": f"^{re.escape(name[:20])}", "$options": "i"}}, {"_id": 0})
+    return v
+
+
+async def _resolve_csv_expense_account(entity_id: str, provided: str, vendor: Optional[dict]) -> dict:
+    """Resolve to a real account doc. provided may be an account number, a name, or blank.
+    Falls back to gl.cogs_account_for(vendor)."""
+    candidates = []
+    p = (provided or "").strip()
+    if p:
+        # Try as number first
+        a = await db.chart_of_accounts.find_one({"entity_id": entity_id, "number": p, "is_active": True}, {"_id": 0})
+        if a:
+            return {"account": a, "source": "csv-number"}
+        # Try as exact name
+        a = await db.chart_of_accounts.find_one({"entity_id": entity_id, "name": {"$regex": f"^{re.escape(p)}$", "$options": "i"}, "is_active": True}, {"_id": 0})
+        if a:
+            return {"account": a, "source": "csv-name"}
+        candidates.append(p)
+    # Fallback to vendor category default
+    from gl import cogs_account_for
+    default_num = cogs_account_for(vendor)
+    a = await db.chart_of_accounts.find_one({"entity_id": entity_id, "number": default_num, "is_active": True}, {"_id": 0})
+    if a:
+        return {"account": a, "source": "vendor-default"}
+    return {"account": None, "source": "missing", "tried": candidates}
+
+
+@api_router.post("/vendor-bills/csv-preview")
+async def vendor_bills_csv_preview(
+    file: UploadFile = File(...),
+    entity_id: str = Form(...),
+    current=Depends(get_current_user),
+):
+    """Parse a CSV of vendor bills and return a per-row preview with vendor match,
+    suggested expense account, and the GL impact lines that WOULD post (DR expense,
+    CR AP) — without committing anything. The frontend renders this as a review table
+    where the user can fix any flagged rows before clicking "Commit".
+
+    Required CSV columns (case-insensitive, header synonyms supported):
+       vendor (or vendor_name), amount
+    Optional:
+       bill_number, bill_date, due_date, description, expense_account (number or name)
+    """
+    import csv
+    import io as _io
+
+    ent = await db.entities.find_one({"id": entity_id})
+    if not ent:
+        raise HTTPException(status_code=404, detail="Entity not found")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="CSV too large (max 5 MB)")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            text = raw.decode("latin-1")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="Could not decode file — please save as UTF-8 CSV")
+
+    reader = csv.DictReader(_io.StringIO(text))
+    headers = _normalize_csv_headers(reader.fieldnames or [])
+    missing_required = [c for c in ("vendor", "amount") if c not in headers]
+    if missing_required:
+        return {
+            "ok": False,
+            "header_error": f"CSV is missing required columns: {', '.join(missing_required)}. Found: {reader.fieldnames}",
+            "preview": [],
+            "summary": {"total_rows": 0, "valid_rows": 0, "error_rows": 0, "total_amount": 0.0},
+        }
+
+    preview = []
+    total_amount = 0.0
+    valid_rows = 0
+    error_rows = 0
+
+    for row_num, raw_row in enumerate(reader, start=2):  # row 1 was header
+        errors = []
+        vendor_str = (raw_row.get(headers.get("vendor", "")) or "").strip()
+        amount = _parse_csv_amount(raw_row.get(headers.get("amount", ""), ""))
+        if not vendor_str:
+            errors.append("Vendor name is required")
+        if amount is None:
+            errors.append("Amount could not be parsed")
+        elif amount <= 0:
+            errors.append("Amount must be greater than zero")
+
+        vendor = await _resolve_csv_vendor(vendor_str) if vendor_str else None
+        if vendor_str and not vendor:
+            errors.append(f'Vendor "{vendor_str}" not found — create it before importing, or fix the name')
+
+        provided_acct = (raw_row.get(headers.get("expense_account", ""), "") or "").strip() if "expense_account" in headers else ""
+        acct_result = await _resolve_csv_expense_account(entity_id, provided_acct, vendor)
+        expense_acct = acct_result["account"]
+        if not expense_acct:
+            errors.append(f'Expense account not found (provided: "{provided_acct or "—"}", fallback also missing)')
+
+        bill_date = _parse_csv_date(raw_row.get(headers.get("bill_date", ""), "")) if "bill_date" in headers else ""
+        if not bill_date:
+            bill_date = datetime.now(timezone.utc).date().isoformat()
+        due_date = _parse_csv_date(raw_row.get(headers.get("due_date", ""), "")) if "due_date" in headers else ""
+        if not due_date:
+            due_date = bill_date  # Due-on-receipt
+
+        bill_number = (raw_row.get(headers.get("bill_number", ""), "") or "").strip() if "bill_number" in headers else ""
+        description = (raw_row.get(headers.get("description", ""), "") or "").strip() if "description" in headers else ""
+        if not description:
+            description = f"{vendor_str} bill" if vendor_str else "Imported bill"
+
+        # GL preview lines (what would post on create)
+        gl_lines = []
+        if expense_acct and amount and amount > 0:
+            gl_lines = [
+                {"side": "DR", "account_number": expense_acct["number"], "account_name": expense_acct["name"], "amount": round(amount, 2)},
+                {"side": "CR", "account_number": "2000", "account_name": "Accounts Payable", "amount": round(amount, 2)},
+            ]
+
+        is_valid = len(errors) == 0
+        if is_valid:
+            valid_rows += 1
+            total_amount += amount or 0
+        else:
+            error_rows += 1
+
+        preview.append({
+            "row": row_num,
+            "vendor_input": vendor_str,
+            "vendor_id": (vendor or {}).get("id"),
+            "vendor_name": (vendor or {}).get("name") or vendor_str,
+            "vendor_matched": bool(vendor),
+            "bill_number": bill_number,
+            "bill_date": bill_date,
+            "due_date": due_date,
+            "description": description,
+            "amount": round(amount or 0, 2),
+            "expense_account_id": (expense_acct or {}).get("id"),
+            "expense_account_number": (expense_acct or {}).get("number") or provided_acct,
+            "expense_account_name": (expense_acct or {}).get("name") or "",
+            "expense_account_source": acct_result.get("source"),
+            "gl_lines": gl_lines,
+            "errors": errors,
+            "valid": is_valid,
+        })
+
+    return {
+        "ok": True,
+        "preview": preview,
+        "summary": {
+            "total_rows": len(preview),
+            "valid_rows": valid_rows,
+            "error_rows": error_rows,
+            "total_amount": round(total_amount, 2),
+        },
+    }
+
+
+class CsvCommitRow(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    vendor_id: Optional[str] = None
+    vendor_name: str = ""
+    bill_number: str = ""
+    bill_date: str = ""
+    due_date: str = ""
+    description: str = ""
+    amount: float
+    expense_account_id: Optional[str] = None
+    expense_account_number: str = ""
+
+
+class CsvCommitIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    entity_id: str
+    rows: List[CsvCommitRow]
+
+
+@api_router.post("/vendor-bills/csv-commit")
+async def vendor_bills_csv_commit(body: CsvCommitIn, current=Depends(get_current_user)):
+    """Commit a previewed CSV import. Each row is validated again (idempotency: rows missing
+    a vendor_id or expense_account are skipped). Each created bill runs through the normal
+    GL posting (DR expense / CR AP) — same as a manual Add Bill. Returns per-row results."""
+    ent = await db.entities.find_one({"id": body.entity_id})
+    if not ent:
+        raise HTTPException(status_code=404, detail="Entity not found")
+    if not body.rows:
+        raise HTTPException(status_code=400, detail="No rows to commit")
+
+    created = []
+    skipped = []
+    for r in body.rows:
+        if not r.vendor_id:
+            skipped.append({"vendor_name": r.vendor_name, "reason": "Vendor not matched"})
+            continue
+        if r.amount is None or r.amount <= 0:
+            skipped.append({"vendor_name": r.vendor_name, "reason": "Invalid amount"})
+            continue
+        if not r.expense_account_id and not r.expense_account_number:
+            skipped.append({"vendor_name": r.vendor_name, "reason": "Expense account missing"})
+            continue
+
+        # Build the VendorBill doc inline (mirrors create_vendor_bill but bypasses the body model
+        # since we trust the previewed/validated rows from the same session).
+        line_id = str(uuid.uuid4())
+        bill_id = str(uuid.uuid4())
+        bill_date = r.bill_date or datetime.now(timezone.utc).date().isoformat()
+        due_date = r.due_date or bill_date
+        data = {
+            "id": bill_id,
+            "vendor_id": r.vendor_id,
+            "vendor_name": r.vendor_name,
+            "entity_id": body.entity_id,
+            "counter_entity_id": None,
+            "bill_number": r.bill_number,
+            "bill_date": bill_date,
+            "received_date": datetime.now(timezone.utc).date().isoformat(),
+            "due_date": due_date,
+            "terms": "Due on Receipt",
+            "total": round(r.amount, 2),
+            "subtotal": round(r.amount, 2),
+            "tax": 0.0,
+            "shipping": 0.0,
+            "status": "Pending",
+            "notes": "Imported from CSV bulk upload",
+            "attached_file_id": None,
+            "parsed_by_ai": False,
+            "line_items": [{
+                "id": line_id,
+                "description": r.description or r.vendor_name,
+                "sku": "",
+                "project_id": None,
+                "project_title": "",
+                "quantity": 1.0,
+                "unit_price": round(r.amount, 2),
+                "amount": round(r.amount, 2),
+                "takeoff_line_id": None,
+                # CSV path explicitly carries the expense override so GL routes correctly:
+                "expense_account_id": r.expense_account_id,
+                "expense_account_number": r.expense_account_number,
+            }],
+            "paid_amount": 0.0,
+            "paid_date": "",
+            "paid_method": "",
+            "paid_reference": "",
+            "created_at": now_iso(),
+            "created_by_user_id": current["id"],
+            "is_deleted": False,
+            "csv_import": True,
+        }
+        await db.vendor_bills.insert_one(data.copy())
+        try:
+            await gl.post_bill_received(db, data, posted_by_user_id=current["id"])
+        except Exception as e:
+            logger.warning(f"GL post (CSV import bill {bill_id}) failed: {type(e).__name__}: {e}")
+        created.append({
+            "id": bill_id,
+            "vendor_name": r.vendor_name,
+            "bill_number": r.bill_number,
+            "amount": r.amount,
+        })
+
+    return {
+        "ok": True,
+        "created_count": len(created),
+        "skipped_count": len(skipped),
+        "created": created,
+        "skipped": skipped,
+    }
+
+
 @api_router.post("/vendor-bills/parse")
 async def parse_vendor_bill(file: UploadFile = File(...), current=Depends(get_current_user)):
     """Upload a vendor invoice (PDF/image), parse with Gemini Vision, return suggested structured data

@@ -967,13 +967,57 @@ function ManualJournalModal({ entityId, entityName, onClose, onSaved }) {
   const [lines, setLines] = useState([blankLine(), blankLine()]);
   const [accounts, setAccounts] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [loadedTemplateId, setLoadedTemplateId] = useState("");
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
 
   useEffect(() => {
     if (!entityId) return;
     api.get(`/books/accounts?entity_id=${entityId}`)
       .then((r) => setAccounts(r.data || []))
       .catch((e) => toast.error(formatApiError(e?.response?.data?.detail) || e.message));
+    api.get(`/books/journal-templates?entity_id=${entityId}`)
+      .then((r) => setTemplates(r.data || []))
+      .catch(() => setTemplates([]));
   }, [entityId]);
+
+  const refreshTemplates = async () => {
+    try {
+      const r = await api.get(`/books/journal-templates?entity_id=${entityId}`);
+      setTemplates(r.data || []);
+    } catch { /* non-fatal */ }
+  };
+
+  const loadTemplate = (tplId) => {
+    if (!tplId) { setLoadedTemplateId(""); return; }
+    const tpl = templates.find((t) => t.id === tplId);
+    if (!tpl) return;
+    setLoadedTemplateId(tplId);
+    setMemo(tpl.default_memo || "");
+    setLines(
+      (tpl.lines || []).map((ln) => ({
+        account_id: ln.account_id,
+        debit: ln.debit ? String(ln.debit) : "",
+        credit: ln.credit ? String(ln.credit) : "",
+        memo: ln.memo || "",
+      })).concat(tpl.lines.length < 2 ? [blankLine()] : [])
+    );
+    toast.success(`Loaded template "${tpl.name}"`);
+  };
+
+  const deleteTemplate = async (tplId) => {
+    const tpl = templates.find((t) => t.id === tplId);
+    if (!tpl) return;
+    if (!window.confirm(`Delete template "${tpl.name}"? It will land in Trash and can be restored.`)) return;
+    try {
+      await api.delete(`/books/journal-templates/${tplId}`);
+      toast.success(`Deleted "${tpl.name}"`);
+      if (loadedTemplateId === tplId) setLoadedTemplateId("");
+      await refreshTemplates();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    }
+  };
 
   const updateLine = (idx, patch) => {
     setLines((prev) => prev.map((ln, i) => (i === idx ? { ...ln, ...patch } : ln)));
@@ -1022,6 +1066,10 @@ function ManualJournalModal({ entityId, entityName, onClose, onSaved }) {
         memo,
         lines: payloadLines,
       });
+      // Bump use_count if posted from a loaded template (best-effort, non-blocking)
+      if (loadedTemplateId) {
+        api.post(`/books/journal-templates/${loadedTemplateId}/use`).catch(() => {});
+      }
       toast.success("Manual journal entry posted");
       onSaved();
     } catch (e) {
@@ -1045,6 +1093,45 @@ function ManualJournalModal({ entityId, entityName, onClose, onSaved }) {
         </div>
 
         <div className="p-6 space-y-4">
+          {/* Template toolbar */}
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-violet-50 border border-violet-200 rounded-sm" data-testid="journal-templates-toolbar">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-violet-700">Templates</span>
+            <select
+              value={loadedTemplateId}
+              onChange={(e) => loadTemplate(e.target.value)}
+              className="text-xs border border-violet-300 px-2 py-1.5 bg-white focus:outline-none focus:border-violet-700 rounded-sm min-w-[220px]"
+              data-testid="template-load-select"
+            >
+              <option value="">— Load a saved template —</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}{t.use_count ? ` · used ${t.use_count}×` : ""}
+                </option>
+              ))}
+            </select>
+            {loadedTemplateId && (
+              <button
+                type="button"
+                onClick={() => deleteTemplate(loadedTemplateId)}
+                className="text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:text-rose-900 inline-flex items-center gap-1"
+                data-testid="template-delete-btn"
+                title="Delete the currently loaded template"
+              >
+                <Trash2 className="w-3 h-3" /> Delete
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowSaveTemplate(true)}
+              disabled={!balanced || !numericLines.some((ln) => ln.account_id && (ln.debit > 0 || ln.credit > 0))}
+              className="ml-auto text-[10px] font-bold uppercase tracking-wider text-violet-700 hover:text-violet-900 inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+              data-testid="template-save-btn"
+              title="Save the current journal layout as a reusable template"
+            >
+              <Save className="w-3 h-3" /> Save as Template
+            </button>
+          </div>
+
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Posting Date *</label>
@@ -1207,6 +1294,128 @@ function ManualJournalModal({ entityId, entityName, onClose, onSaved }) {
             className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-violet-700 text-white hover:bg-violet-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? "Posting..." : "Post Journal Entry"}
+          </button>
+        </div>
+      </div>
+      {showSaveTemplate && (
+        <SaveTemplateModal
+          entityId={entityId}
+          memo={memo}
+          numericLines={numericLines}
+          onClose={() => setShowSaveTemplate(false)}
+          onSaved={async () => {
+            setShowSaveTemplate(false);
+            await refreshTemplates();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function SaveTemplateModal({ entityId, memo, numericLines, onClose, onSaved }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [defaultMemo, setDefaultMemo] = useState(memo || "");
+  const [saving, setSaving] = useState(false);
+
+  const validLines = numericLines.filter((ln) => ln.account_id && (ln.debit > 0 || ln.credit > 0));
+
+  const save = async () => {
+    if (!name.trim()) {
+      toast.error("Template name is required");
+      return;
+    }
+    if (validLines.length < 1) {
+      toast.error("At least one non-zero line is required to save a template");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.post("/books/journal-templates", {
+        entity_id: entityId,
+        name: name.trim(),
+        description: description.trim(),
+        default_memo: defaultMemo.trim(),
+        lines: validLines.map((ln) => ({
+          account_id: ln.account_id,
+          debit: ln.debit || 0,
+          credit: ln.credit || 0,
+          memo: ln.memo || "",
+        })),
+      });
+      toast.success(`Template "${name.trim()}" saved`);
+      onSaved();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" data-testid="save-template-modal">
+      <div className="bg-white max-w-lg w-full">
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
+          <div className="text-sm font-black uppercase tracking-wider text-zinc-900">Save Journal Template</div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-900">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Template Name *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., Monthly Insurance Accrual"
+              maxLength={80}
+              className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-violet-700"
+              data-testid="template-name-input"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Description</label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What this template is for (optional)"
+              className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-violet-700"
+              data-testid="template-desc-input"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Default Memo (pre-fills when loaded)</label>
+            <input
+              type="text"
+              value={defaultMemo}
+              onChange={(e) => setDefaultMemo(e.target.value)}
+              placeholder="Memo text to pre-fill on the journal entry"
+              className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-violet-700"
+              data-testid="template-memo-input"
+            />
+          </div>
+          <div className="bg-zinc-50 border border-zinc-200 px-3 py-2 text-[11px] text-zinc-600">
+            <strong>{validLines.length}</strong> line{validLines.length === 1 ? "" : "s"} will be saved. Lines are immutable on a template — if you need different lines, save a new template.
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-zinc-200 flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-500 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            data-testid="template-save-submit"
+            onClick={save}
+            disabled={saving || !name.trim()}
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-violet-700 text-white hover:bg-violet-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? "Saving..." : "Save Template"}
           </button>
         </div>
       </div>

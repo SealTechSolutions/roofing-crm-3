@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { api, formatCurrency, formatApiError, API, showGlWarnings } from "@/lib/api";
-import { Wallet, Plus, Search, Upload, Trash2, Eye, FileSpreadsheet, Send, AlertCircle } from "lucide-react";
+import { Wallet, Plus, Search, Upload, Trash2, Eye, FileSpreadsheet, Send, AlertCircle, FileUp, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_STYLES = {
@@ -25,6 +25,7 @@ export default function Payables() {
   const [deals, setDeals] = useState([]);
   const fileInputRef = useRef(null);
   const [parsing, setParsing] = useState(false);
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
 
   const loadBills = async () => {
     setLoading(true);
@@ -177,6 +178,9 @@ export default function Payables() {
           <button onClick={handleUploadClick} disabled={parsing} className="inline-flex items-center gap-2 border border-blue-700 text-blue-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-50 rounded-sm transition-colors disabled:opacity-50" data-testid="upload-bill-button">
             <Upload className="w-4 h-4" /> {parsing ? "Parsing…" : "Upload Invoice (AI)"}
           </button>
+          <button onClick={() => setCsvImportOpen(true)} className="inline-flex items-center gap-2 border border-violet-700 text-violet-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-violet-50 rounded-sm transition-colors" data-testid="bulk-csv-button">
+            <FileUp className="w-4 h-4" /> Bulk CSV
+          </button>
           <button onClick={() => setEditor({ _is_new: true, status: "Pending", terms: "Due on Receipt", bill_date: new Date().toISOString().slice(0, 10), line_items: [{ description: "", project_id: "", quantity: 1, unit_price: 0, amount: 0 }] })} className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors" data-testid="manual-bill-button">
             <Plus className="w-4 h-4" /> Add Manual Bill
           </button>
@@ -310,6 +314,12 @@ export default function Payables() {
           deals={deals}
           onClose={() => setEditor(null)}
           onSaved={() => { setEditor(null); loadBills(); loadReport(); }}
+        />
+      )}
+      {csvImportOpen && (
+        <BulkCsvImportModal
+          onClose={() => setCsvImportOpen(false)}
+          onCommitted={() => { setCsvImportOpen(false); loadBills(); loadReport(); }}
         />
       )}
     </div>
@@ -694,3 +704,266 @@ const KpiCard = ({ label, value, hint, testId, accent }) => (
     {hint && <div className="text-xs text-zinc-500 mt-2">{hint}</div>}
   </div>
 );
+
+// ============ Bulk CSV Import Modal ============
+function BulkCsvImportModal({ onClose, onCommitted }) {
+  const [step, setStep] = useState("pick"); // pick → preview → done
+  const [entities, setEntities] = useState([]);
+  const [entityId, setEntityId] = useState("");
+  const [file, setFile] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [commitResult, setCommitResult] = useState(null);
+
+  useEffect(() => {
+    api.get("/books/entities")
+      .then((r) => {
+        setEntities(r.data || []);
+        if (r.data && r.data[0]) setEntityId(r.data[0].id);
+      })
+      .catch(() => setEntities([]));
+  }, []);
+
+  const runPreview = async () => {
+    if (!file || !entityId) { toast.error("Pick an entity and a CSV file first"); return; }
+    setPreviewing(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("entity_id", entityId);
+      const r = await api.post("/vendor-bills/csv-preview", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      if (!r.data.ok && r.data.header_error) {
+        toast.error(r.data.header_error);
+        return;
+      }
+      setPreview(r.data);
+      setRows(r.data.preview || []);
+      setStep("preview");
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const commit = async () => {
+    const validRows = rows.filter((r) => r.valid);
+    if (validRows.length === 0) { toast.error("No valid rows to commit. Fix the flagged rows first."); return; }
+    if (!window.confirm(`Commit ${validRows.length} vendor bill${validRows.length === 1 ? "" : "s"} totalling $${validRows.reduce((s, r) => s + (r.amount || 0), 0).toFixed(2)}?`)) return;
+    setCommitting(true);
+    try {
+      const body = {
+        entity_id: entityId,
+        rows: validRows.map((r) => ({
+          vendor_id: r.vendor_id,
+          vendor_name: r.vendor_name,
+          bill_number: r.bill_number,
+          bill_date: r.bill_date,
+          due_date: r.due_date,
+          description: r.description,
+          amount: r.amount,
+          expense_account_id: r.expense_account_id,
+          expense_account_number: r.expense_account_number,
+        })),
+      };
+      const res = await api.post("/vendor-bills/csv-commit", body);
+      setCommitResult(res.data);
+      setStep("done");
+      toast.success(`${res.data.created_count} bill${res.data.created_count === 1 ? "" : "s"} created`);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setCommitting(false);
+    }
+  };
+
+  const validCount = rows.filter((r) => r.valid).length;
+  const invalidCount = rows.length - validCount;
+  const validTotal = rows.filter((r) => r.valid).reduce((s, r) => s + (r.amount || 0), 0);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" data-testid="bulk-csv-modal">
+      <div className="bg-white max-w-6xl w-full max-h-[92vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-widest text-violet-700">Bulk CSV Import</div>
+            <div className="text-lg font-black uppercase tracking-wider text-zinc-900 mt-0.5">Vendor Bills</div>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-900" data-testid="csv-close">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        {step === "pick" && (
+          <div className="p-6 space-y-5">
+            <div className="bg-violet-50 border border-violet-200 p-4 text-sm text-violet-900 rounded-sm">
+              <div className="font-bold mb-2">Required columns: <code className="bg-white px-1.5 py-0.5 text-xs">vendor</code>, <code className="bg-white px-1.5 py-0.5 text-xs">amount</code></div>
+              <div>Optional: <code className="bg-white px-1.5 py-0.5 text-xs">bill_number</code>, <code className="bg-white px-1.5 py-0.5 text-xs">bill_date</code>, <code className="bg-white px-1.5 py-0.5 text-xs">due_date</code>, <code className="bg-white px-1.5 py-0.5 text-xs">description</code>, <code className="bg-white px-1.5 py-0.5 text-xs">expense_account</code> (number or name)</div>
+              <div className="mt-2 text-xs">Vendors must already exist (by name match). Missing expense account falls back to the vendor&apos;s category default (5000/5010/5020). Dates accept ISO or MM/DD/YYYY. Amounts accept $1,234.56 or (123) for negatives.</div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Entity *</label>
+              <select
+                value={entityId}
+                onChange={(e) => setEntityId(e.target.value)}
+                className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-violet-700"
+                data-testid="csv-entity-select"
+              >
+                {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">CSV File *</label>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                className="w-full border border-zinc-300 px-3 py-2 text-sm file:mr-3 file:py-1 file:px-3 file:border-0 file:bg-violet-700 file:text-white file:text-xs file:font-bold file:uppercase file:tracking-wider hover:file:bg-violet-800"
+                data-testid="csv-file-input"
+              />
+              {file && <div className="text-xs text-zinc-600 mt-1">{file.name} · {(file.size / 1024).toFixed(1)} KB</div>}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2 border-t border-zinc-100">
+              <button onClick={onClose} className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-500">Cancel</button>
+              <button
+                onClick={runPreview}
+                disabled={previewing || !file || !entityId}
+                className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-violet-700 text-white hover:bg-violet-800 disabled:opacity-50"
+                data-testid="csv-preview-btn"
+              >
+                {previewing ? "Parsing…" : "Parse & Preview"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "preview" && preview && (
+          <div className="p-6 space-y-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 text-xs" data-testid="csv-valid-count">
+                <strong className="text-emerald-800">{validCount}</strong> valid · ${validTotal.toFixed(2)}
+              </div>
+              {invalidCount > 0 && (
+                <div className="px-3 py-2 bg-rose-50 border border-rose-200 text-xs" data-testid="csv-invalid-count">
+                  <strong className="text-rose-800">{invalidCount}</strong> flagged — will be skipped
+                </div>
+              )}
+              <div className="text-xs text-zinc-500">Entity: <strong className="text-zinc-900">{entities.find((e) => e.id === entityId)?.name}</strong></div>
+            </div>
+
+            <div className="border border-zinc-200 overflow-x-auto max-h-[55vh] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-zinc-100 sticky top-0">
+                  <tr className="text-left text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                    <th className="px-2 py-2">#</th>
+                    <th className="px-2 py-2">Vendor</th>
+                    <th className="px-2 py-2">Bill #</th>
+                    <th className="px-2 py-2">Date</th>
+                    <th className="px-2 py-2 text-right">Amount</th>
+                    <th className="px-2 py-2">Expense Acct</th>
+                    <th className="px-2 py-2">GL Preview</th>
+                    <th className="px-2 py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.row} className={`border-t border-zinc-100 ${r.valid ? "" : "bg-rose-50/40"}`} data-testid={`csv-row-${r.row}`}>
+                      <td className="px-2 py-1.5 font-mono text-zinc-500">{r.row}</td>
+                      <td className="px-2 py-1.5">
+                        <div className={r.vendor_matched ? "text-zinc-900" : "text-rose-700 font-bold"}>{r.vendor_name}</div>
+                        {!r.vendor_matched && <div className="text-[10px] text-rose-600">not found</div>}
+                      </td>
+                      <td className="px-2 py-1.5 font-mono text-zinc-700">{r.bill_number || "—"}</td>
+                      <td className="px-2 py-1.5 font-mono text-zinc-700">{r.bill_date}</td>
+                      <td className="px-2 py-1.5 text-right font-mono font-bold text-zinc-900">${r.amount.toFixed(2)}</td>
+                      <td className="px-2 py-1.5">
+                        {r.expense_account_number ? (
+                          <div>
+                            <span className="font-mono text-zinc-500">{r.expense_account_number}</span> {r.expense_account_name}
+                            <div className="text-[10px] text-zinc-400 uppercase tracking-wider">{r.expense_account_source}</div>
+                          </div>
+                        ) : <span className="text-rose-600 text-[10px]">missing</span>}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {r.gl_lines.length > 0 ? (
+                          <div className="font-mono text-[10px] text-zinc-700">
+                            {r.gl_lines.map((g, i) => (
+                              <div key={i}>{g.side} <span className="text-zinc-400">{g.account_number}</span> ${g.amount.toFixed(2)}</div>
+                            ))}
+                          </div>
+                        ) : "—"}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {r.valid ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 font-bold text-[10px]"><CheckCircle2 className="w-3 h-3" /> Valid</span>
+                        ) : (
+                          <div className="text-rose-700 text-[10px]">
+                            {r.errors.map((er, i) => <div key={i}>• {er}</div>)}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2 border-t border-zinc-100">
+              <button onClick={() => setStep("pick")} className="px-4 py-2 text-xs font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-500" data-testid="csv-back-btn">Back</button>
+              <button
+                onClick={commit}
+                disabled={committing || validCount === 0}
+                className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-violet-700 text-white hover:bg-violet-800 disabled:opacity-50"
+                data-testid="csv-commit-btn"
+              >
+                {committing ? "Committing…" : `Commit ${validCount} Bill${validCount === 1 ? "" : "s"}`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "done" && commitResult && (
+          <div className="p-6 space-y-4" data-testid="csv-result">
+            <div className="text-center py-4">
+              <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
+              <div className="text-xl font-black uppercase tracking-wider text-zinc-900">{commitResult.created_count} bills created</div>
+              {commitResult.skipped_count > 0 && (
+                <div className="text-sm text-rose-700 mt-2">{commitResult.skipped_count} skipped</div>
+              )}
+            </div>
+            {commitResult.created.length > 0 && (
+              <div className="border border-zinc-200 max-h-[40vh] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-zinc-50">
+                    <tr className="text-left text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                      <th className="px-2 py-2">Vendor</th>
+                      <th className="px-2 py-2">Bill #</th>
+                      <th className="px-2 py-2 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {commitResult.created.map((b) => (
+                      <tr key={b.id} className="border-t border-zinc-100">
+                        <td className="px-2 py-1.5">{b.vendor_name}</td>
+                        <td className="px-2 py-1.5 font-mono">{b.bill_number || "—"}</td>
+                        <td className="px-2 py-1.5 text-right font-mono font-bold">${(b.amount || 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="flex justify-end pt-2 border-t border-zinc-100">
+              <button onClick={onCommitted} className="px-4 py-2 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800" data-testid="csv-done-btn">Done</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
