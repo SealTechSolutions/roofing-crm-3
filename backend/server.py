@@ -35,6 +35,7 @@ import gl
 import coi_reminders
 import project_photos
 import trash
+import assessment as assessment_module
 
 
 # ----- DB -----
@@ -5001,6 +5002,11 @@ async def on_startup():
     try:
         await db.coi_reminder_settings.create_index("key", unique=True)
         await db.coi_reminder_history.create_index("sent_at")
+        # Assessment indexes
+        await db.assessments.create_index("id", unique=True)
+        await db.assessments.create_index("deal_id")
+        await db.assessments.create_index("status")
+        await db.assessments.create_index("created_at")
         asyncio.create_task(coi_reminders.scheduler_loop(db))
         logger.info("COI reminder scheduler started")
     except Exception as e:
@@ -5096,6 +5102,7 @@ api_router.include_router(coi_reminders.create_router(db, require_admin))
 api_router.include_router(project_photos.create_router(db, get_current_user))
 api_router.include_router(project_photos.create_public_router(db))
 api_router.include_router(trash.create_router(db, require_admin))
+api_router.include_router(assessment_module.create_router(db, get_current_user))
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

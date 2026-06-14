@@ -22,6 +22,8 @@ import CoiReminders from "@/pages/CoiReminders";
 import PublicGallery from "@/pages/PublicGallery";
 import TrashPage from "@/pages/Trash";
 import Profile from "@/pages/Profile";
+import Assessments from "@/pages/Assessments";
+import AssessmentEditor from "@/pages/AssessmentEditor";
 import "@/App.css";
 
 const ProtectedRoute = ({ children }) => {
@@ -77,6 +79,9 @@ function App() {
               <Route path="/payables" element={<Payables />} />
               <Route path="/materials" element={<Materials />} />
               <Route path="/library" element={<Library />} />
+              <Route path="/assessments" element={<Assessments />} />
+              <Route path="/assessments/new" element={<AssessmentEditor />} />
+              <Route path="/assessments/:id" element={<AssessmentEditor />} />
               <Route path="/books" element={<BooksCOA />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/profile" element={<Profile />} />

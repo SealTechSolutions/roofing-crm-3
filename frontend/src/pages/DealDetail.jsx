@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
@@ -307,6 +307,20 @@ export default function DealDetail() {
             className="inline-flex items-center gap-2 border border-zinc-300 text-zinc-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:border-zinc-950 rounded-sm transition-colors"
           >
             <Mail className="w-4 h-4" /> Email to Prospect
+          </button>
+          <button
+            data-testid="new-assessment-from-deal"
+            onClick={async () => {
+              try {
+                const r = await api.post("/assessments", { deal_id: id });
+                nav(`/assessments/${r.data.id}`);
+              } catch (e) {
+                toast.error(e?.response?.data?.detail || e.message);
+              }
+            }}
+            className="inline-flex items-center gap-2 border border-blue-700 text-blue-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-50 rounded-sm transition-colors"
+          >
+            <ClipboardCheck className="w-4 h-4" /> New Assessment
           </button>
         </div>
       </div>
