@@ -916,7 +916,13 @@ export default function DealDetail() {
       )}
 
       {emailScopeOpen && (
-        <EmailScopeModal dealId={id} dealTitle={deal.title} primaryContactEmail={contact?.email || ""} onClose={() => setEmailScopeOpen(false)} />
+        <EmailScopeModal
+          dealId={id}
+          dealTitle={deal.title}
+          dealType={deal.deal_type}
+          primaryContactEmail={contact?.email || ""}
+          onClose={() => setEmailScopeOpen(false)}
+        />
       )}
     </div>
   );
@@ -985,7 +991,7 @@ const CellSelect = ({ value, onCommit, options = [], className = "", ...rest }) 
 );
 
 
-function EmailScopeModal({ dealId, dealTitle, primaryContactEmail, onClose }) {
+function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onClose }) {
   const [to, setTo] = useState(primaryContactEmail || "");
   const [cc, setCc] = useState("");
   const [message, setMessage] = useState("");
@@ -997,11 +1003,20 @@ function EmailScopeModal({ dealId, dealTitle, primaryContactEmail, onClose }) {
   const [filterCat, setFilterCat] = useState("");
   const [sending, setSending] = useState(false);
 
+  const isAssessment = (dealType || "").toLowerCase() === "assessment";
+  const docKind = isAssessment ? "assessment" : "scope";
+
   useEffect(() => {
-    api.get("/email-aliases").then((r) => { setAliases(r.data?.aliases || []); setFromEmail(r.data?.default || ""); }).catch(() => {});
+    api.get("/email-aliases").then((r) => {
+      setAliases(r.data?.aliases || []);
+      // Prefer the per-doc-type default (scope@ or assessments@); fall back to legacy `default`
+      const docDefault = (r.data?.defaults || {})[docKind];
+      setFromEmail(docDefault || r.data?.default || "");
+    }).catch(() => {});
     api.get("/library/taxonomy").then((r) => setTaxonomy(r.data?.taxonomy || [])).catch(() => {});
     api.get("/library/files").then((r) => setLibFiles(r.data || [])).catch(() => {});
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docKind]);
 
   const toggleId = (id) => setSelectedIds((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
   const filtered = filterCat ? libFiles.filter((f) => f.category === filterCat) : libFiles;
@@ -1031,9 +1046,14 @@ function EmailScopeModal({ dealId, dealTitle, primaryContactEmail, onClose }) {
       <div className="bg-white border border-zinc-200 rounded-sm w-full max-w-3xl my-8">
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-1">Email Scope</div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-1">
+              Email {isAssessment ? "Assessment" : "Scope"}
+            </div>
             <h3 className="font-heading text-xl font-black tracking-tight">{dealTitle}</h3>
-            <div className="text-xs text-zinc-500 mt-1">Scope PDF is auto-attached. Add Library docs (brochures, specs, certs, contracts) as additional attachments.</div>
+            <div className="text-xs text-zinc-500 mt-1">
+              {isAssessment ? "Assessment" : "Scope"} PDF is auto-attached. Add Library docs (brochures, specs, certs, contracts) as additional attachments.
+              <span className="ml-1 text-zinc-400">Sending from <span className="font-mono text-zinc-700">{fromEmail || "—"}</span>.</span>
+            </div>
           </div>
           <button type="button" onClick={onClose} className="text-zinc-500 hover:text-zinc-950 text-xs uppercase tracking-wider font-bold">Close</button>
         </div>

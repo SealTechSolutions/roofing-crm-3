@@ -3062,15 +3062,30 @@ async def delete_vendor(vendor_id: str, current=Depends(get_current_user)):
 
 @api_router.get("/email-aliases")
 async def email_aliases(current=Depends(get_current_user)):
-    """List of allowed sender addresses (Gmail aliases) for invoice / statement / PO emails.
-    Front-end uses this to populate a 'From' dropdown."""
+    """List of allowed sender addresses (Gmail aliases) for invoice / statement / PO / scope / assessment emails.
+    Returns:
+      - aliases: list of whitelisted FROM addresses
+      - default: legacy single default (GMAIL_FROM_EMAIL)
+      - defaults: per-doc-type defaults so each modal can preselect the right alias
+    """
     try:
         from email_sender import get_from_aliases
         aliases = get_from_aliases()
-        default = (os.environ.get("GMAIL_FROM_EMAIL") or "").strip() or (aliases[0] if aliases else "")
-        return {"aliases": aliases, "default": default}
+        env_default = (os.environ.get("GMAIL_FROM_EMAIL") or "").strip() or (aliases[0] if aliases else "")
+
+        def _pick(preferred: str) -> str:
+            return preferred if preferred in aliases else env_default
+
+        defaults = {
+            "invoice":    _pick("finance@sealtechsolutions.co"),
+            "statement":  _pick("finance@sealtechsolutions.co"),
+            "po":         _pick("finance@sealtechsolutions.co"),
+            "scope":      _pick("scope@sealtechsolutions.co"),
+            "assessment": _pick("assessments@sealtechsolutions.co"),
+        }
+        return {"aliases": aliases, "default": env_default, "defaults": defaults}
     except Exception as e:
-        return {"aliases": [], "default": "", "error": str(e)}
+        return {"aliases": [], "default": "", "defaults": {}, "error": str(e)}
 
 
 # ----- Document Library -----
@@ -3214,6 +3229,11 @@ async def download_library_file(
 async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=Depends(get_current_user)):
     """Email the scope PDF to the customer with optional Library file attachments.
     Body: { to_email, cc_email, from_email, library_file_ids: [str], message }
+
+    FROM-address routing (when not explicitly overridden in body):
+      - deal_type == "Assessment"  → assessments@sealtechsolutions.co
+      - deal_type == "Scope"       → scope@sealtechsolutions.co
+      - Fallback to GMAIL_FROM_EMAIL if either alias isn't whitelisted.
     """
     deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
     if not deal:
@@ -3222,6 +3242,15 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
     cc_email = (body.get("cc_email") or "").strip()
     from_email = (body.get("from_email") or "").strip() or None
     custom_message = (body.get("message") or "").strip()
+
+    # Auto-pick FROM by deal type when caller didn't pin one
+    is_assessment = (deal.get("deal_type") or "").lower() == "assessment"
+    if not from_email:
+        from email_sender import get_from_aliases
+        allowed = set(get_from_aliases())
+        preferred = "assessments@sealtechsolutions.co" if is_assessment else "scope@sealtechsolutions.co"
+        from_email = preferred if preferred in allowed else (os.environ.get("GMAIL_FROM_EMAIL") or "").strip() or None
+
     if not to_email:
         # Auto-populate from primary contact if available
         cid = deal.get("primary_contact_id")
@@ -3258,8 +3287,16 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
         if c:
             cust_company = c.get("company_name") or c.get("contact_name") or ""
 
-    subject = f"Roofing Proposal — {deal.get('title') or 'Project'}"
+    subject = (
+        f"Property Assessment — {deal.get('title') or 'Project'}"
+        if is_assessment
+        else f"Roofing Proposal — {deal.get('title') or 'Project'}"
+    )
     intro = custom_message if custom_message else (
+        f"Please find attached the property assessment for {deal.get('title') or 'your project'}. "
+        f"The report details our findings, recommendations, and next steps."
+        if is_assessment
+        else
         f"Please find attached the roofing proposal for {deal.get('title') or 'your project'}. "
         f"The scope details our recommended system, pricing tiers, and standard inclusions/exclusions."
     )
