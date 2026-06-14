@@ -78,6 +78,7 @@ class AssessmentIn(BaseModel):
 
     # ---- Cover ----
     prepared_for: str = ""
+    contact_name: str = ""  # Specific person at the client (between Prepared For + Property)
     property_name: str = ""
     property_address: str = ""
     prepared_by: str = "Darren Oliver, CSI, IIBEC · SealTech Building Solutions"
@@ -250,11 +251,14 @@ def create_router(db, get_current_user) -> APIRouter:
                 # Pull contact if not supplied
                 if not body.contact_id and deal.get("contact_id"):
                     body.contact_id = deal["contact_id"]
-        # Hydrate prepared_for from contact
-        if body.contact_id and not body.prepared_for:
+        # Hydrate prepared_for + contact_name from contact
+        if body.contact_id:
             c = await db.contacts.find_one({"id": body.contact_id}, {"_id": 0})
             if c:
-                body.prepared_for = c.get("company_name") or c.get("contact_name") or ""
+                if not body.prepared_for:
+                    body.prepared_for = c.get("company_name") or c.get("contact_name") or ""
+                if not body.contact_name:
+                    body.contact_name = c.get("contact_name") or ""
 
         if not body.assessment_date:
             body.assessment_date = datetime.now(timezone.utc).date().isoformat()

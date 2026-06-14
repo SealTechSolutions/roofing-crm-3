@@ -22,6 +22,7 @@ const BLANK_ASSESSMENT = {
   entity_id: "",
   // Cover
   prepared_for: "",
+  contact_name: "",
   property_name: "",
   property_address: "",
   prepared_by: "Darren Oliver, CSI, IIBEC · SealTech Building Solutions",
@@ -424,6 +425,9 @@ function StepCover({ doc, update, contacts, deals, linkedDeal }) {
         </Field>
         <Field label="Assessment Date">
           <input type="date" value={doc.assessment_date || ""} onChange={(e) => update({ assessment_date: e.target.value })} className={inputCls} data-testid="assessment-date" />
+        </Field>
+        <Field label="Contact Name (point of contact at client)" full>
+          <input value={doc.contact_name} onChange={(e) => update({ contact_name: e.target.value })} className={inputCls} placeholder="e.g., John Smith, Facilities Manager" data-testid="contact-name" />
         </Field>
         <Field label="Property Name" full>
           <input value={doc.property_name} onChange={(e) => update({ property_name: e.target.value })} className={inputCls} placeholder="e.g., Acme Distribution Center" data-testid="property-name" />

@@ -132,33 +132,34 @@ def _score_color(score: int) -> colors.Color:
 
 
 def _score_box(label: str, score_val, reasoning: str) -> Table:
-    """A score card: big number on top, label below, reasoning text on the right."""
+    """A score card: number on top, label below, reasoning text on the right."""
     s = _styles()
     try:
         score = int(score_val or 0)
     except Exception:
         score = 0
+    # Reduced from 24pt to 18pt per request to lighten the visual weight
     score_para = Paragraph(
         f'<font color="{_score_color(score).hexval()}"><b>{score}</b></font>'
         f'<font color="#A0A0A0"><b>/100</b></font>',
-        ParagraphStyle("sn", fontName="Helvetica-Bold", fontSize=24, leading=28, alignment=TA_CENTER, textColor=DARK),
+        ParagraphStyle("sn", fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=TA_CENTER, textColor=DARK),
     )
     label_para = Paragraph(label.upper(), s["score_label"])
-    score_cell = Table([[score_para], [label_para]], colWidths=[1.2 * inch])
+    score_cell = Table([[score_para], [label_para]], colWidths=[1.0 * inch])
     score_cell.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), SOFT_BLUE),
         ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     reasoning_para = Paragraph(reasoning or "<i><font color='#A0A0A0'>Not yet documented.</font></i>", s["body_sm"])
-    outer = Table([[score_cell, reasoning_para]], colWidths=[1.3 * inch, 5.8 * inch])
+    outer = Table([[score_cell, reasoning_para]], colWidths=[1.1 * inch, 5.9 * inch])
     outer.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (1, 0), (1, 0), 12),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
     ]))
     return outer
 
@@ -193,6 +194,71 @@ def _check(yes: bool) -> str:
     return '<font color="#16A34A"><b>☑</b></font>' if yes else '<font color="#A0A0A0">☐</font>'
 
 
+def _text_box(text: str, num_rows: int = 8, row_height: float = 0.22 * inch, width: float = 7.0 * inch,
+              placeholder: str = "—") -> Table:
+    """Fixed-height bordered container that always reserves `num_rows` of line space —
+    keeps the page layout stable regardless of how much text the user types.
+    The content is rendered as a single paragraph inside the box (it wraps naturally),
+    but the BOX itself never shrinks below num_rows × row_height."""
+    s = _styles()
+    content = text or f"<i><font color='#A0A0A0'>{placeholder}</font></i>"
+    # Make body style with a slightly tighter leading
+    para_style = ParagraphStyle(
+        "boxed_body", parent=s["body"],
+        fontSize=10, leading=row_height * 72 / inch,  # leading in pt
+        textColor=DARK,
+    )
+    p = Paragraph(content, para_style)
+    box = Table([[p]], colWidths=[width], rowHeights=[num_rows * row_height])
+    box.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+        ("BOX", (0, 0), (-1, -1), 1.0, GRAY),  # Darker, thicker border so the box reads clearly
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    return box
+
+
+def _finding_box(items: list, num_slots: int = 3, row_height: float = 0.32 * inch,
+                 width: float = 7.0 * inch) -> Table:
+    """Fixed-slot box that always shows N labeled rows ('Finding #1:', 'Finding #2:', ...).
+    If the user has provided fewer items, the empty slots render as bronze labels with a
+    thin baseline so the report layout never shifts."""
+    s = _styles()
+    items = [str(i).strip() for i in (items or []) if str(i).strip()]
+    rows = []
+    for i in range(num_slots):
+        label = f"Finding #{i + 1}:"
+        value = items[i] if i < len(items) else ""
+        if value:
+            row_html = (
+                f'<font color="#A0703A"><b>{label}</b></font> '
+                f'<font color="#0A0A0A">{value}</font>'
+            )
+        else:
+            row_html = (
+                f'<font color="#A0703A"><b>{label}</b></font> '
+                f'<font color="#D4D4D8">_________________________________________________</font>'
+            )
+        rows.append([Paragraph(row_html, s["body_sm"])])
+
+    box = Table(rows, colWidths=[width], rowHeights=[row_height] * num_slots)
+    box.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+        ("BOX", (0, 0), (-1, -1), 1.0, GRAY),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, BORDER),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    return box
+
+
 def _fmt_date(d: str) -> str:
     if not d:
         return ""
@@ -220,21 +286,23 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     # ============================================================
     if os.path.exists(LOGO_PATH):
         try:
-            logo = Image(LOGO_PATH, width=2.6 * inch, height=0.8 * inch)
+            # 2× the previous size: 5.2" × 1.6"
+            logo = Image(LOGO_PATH, width=5.2 * inch, height=1.6 * inch)
             logo.hAlign = "CENTER"
             story.append(logo)
         except Exception:
             pass
-    story.append(Spacer(1, 16))
+    story.append(Spacer(1, 24))
     story.append(Paragraph("COMMERCIAL ROOF ASSESSMENT REPORT", s["title"]))
-    story.append(Paragraph("Independent Roof Consulting &amp; Asset Management", s["subtitle"]))
+    story.append(Paragraph("Roof Consulting &amp; Asset Management", s["subtitle"]))
     story.append(Spacer(1, 40))
 
     cover_rows = [
-        ["Prepared For", a.get("prepared_for", "")],
-        ["Property",     f"{a.get('property_name', '')}<br/>{a.get('property_address', '')}".strip("<br/>")],
-        ["Prepared By",  a.get("prepared_by", "")],
-        ["Date",         _fmt_date(a.get("assessment_date", ""))],
+        ["Prepared For",  a.get("prepared_for", "")],
+        ["Contact Name",  a.get("contact_name", "")],
+        ["Property",      f"{a.get('property_name', '')}<br/>{a.get('property_address', '')}".strip("<br/>")],
+        ["Prepared By",   a.get("prepared_by", "")],
+        ["Date",          _fmt_date(a.get("assessment_date", ""))],
     ]
     cover_data = [[
         Paragraph(f'<b><font color="#A0703A">{k.upper()}</font></b>', s["label"]),
@@ -265,7 +333,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         s["body"]))
     story.append(Spacer(1, 6))
     story.append(Paragraph("<b>Executive Conclusion</b>", s["h3"]))
-    story.append(Paragraph(a.get("executive_conclusion") or "<i><font color='#A0A0A0'>Conclusion not yet documented.</font></i>", s["body"]))
+    story.append(_text_box(a.get("executive_conclusion") or "", num_rows=8))
     story.append(Spacer(1, 8))
 
     story.append(Paragraph("<b>Roof Asset Score™</b>", s["h3"]))
@@ -278,11 +346,11 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     for label, sc in score_blocks:
         story.append(_score_box(label, sc.get("score") if isinstance(sc, dict) else 0,
                                 sc.get("reasoning") if isinstance(sc, dict) else ""))
-        story.append(Spacer(1, 4))
+        story.append(Spacer(1, 3))
 
     story.append(Spacer(1, 6))
     story.append(Paragraph("<b>Overall Recommendation</b>", s["h3"]))
-    story.append(Paragraph(a.get("overall_recommendation") or "<i><font color='#A0A0A0'>Pending.</font></i>", s["body"]))
+    story.append(_text_box(a.get("overall_recommendation") or "", num_rows=8))
     story.append(PageBreak())
 
     # ============================================================
@@ -325,23 +393,23 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     story.append(Spacer(1, 14))
     _section_header("Executive Findings", story, s)
     story.append(Paragraph("<b>Primary Concerns</b>", s["h3"]))
-    story.append(_bullet_list(a.get("primary_concerns", []), empty_text="No concerns documented."))
-    story.append(Spacer(1, 6))
+    story.append(_finding_box(a.get("primary_concerns", []), num_slots=3))
+    story.append(Spacer(1, 8))
     story.append(Paragraph("<b>Positive Findings</b>", s["h3"]))
-    story.append(_bullet_list(a.get("positive_findings", []), empty_text="No positive findings documented."))
+    story.append(_finding_box(a.get("positive_findings", []), num_slots=3))
     story.append(PageBreak())
 
     # ============================================================
     # PAGE 4 — Strategy + Property Info + Scope
     # ============================================================
     _section_header("Recommended Strategy", story, s)
-    story.append(Paragraph(a.get("recommended_strategy") or "<i><font color='#A0A0A0'>Strategy not yet documented.</font></i>", s["body"]))
-    story.append(Spacer(1, 8))
+    story.append(_text_box(a.get("recommended_strategy") or "", num_rows=6))
+    story.append(Spacer(1, 10))
     story.append(Paragraph("<b>Capital Planning Impact</b>", s["h3"]))
-    story.append(Paragraph(a.get("capital_planning_impact") or "<i><font color='#A0A0A0'>—</font></i>", s["body"]))
-    story.append(Spacer(1, 8))
+    story.append(_text_box(a.get("capital_planning_impact") or "", num_rows=6))
+    story.append(Spacer(1, 10))
     story.append(Paragraph("<b>Immediate Action Items</b>", s["h3"]))
-    story.append(_bullet_list(a.get("immediate_action_items", []), empty_text="No immediate actions."))
+    story.append(_finding_box(a.get("immediate_action_items", []), num_slots=3))
 
     story.append(Spacer(1, 12))
     _section_header("Property Information", story, s)
@@ -671,15 +739,16 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
 
 
 def _score_pill(sc: dict) -> Paragraph:
-    """Compact score rendering used inside the dashboard grid."""
+    """Compact score rendering used inside the dashboard grid (8 metrics, 2-column)."""
     if not isinstance(sc, dict):
         sc = {}
     score = int(sc.get("score") or 0)
     color = _score_color(score).hexval()
+    # Reduced from 14pt to 12pt per request
     return Paragraph(
-        f'<font color="{color}" size="14"><b>{score}</b></font>'
-        f'<font color="#A0A0A0" size="9"><b>/100</b></font>',
-        ParagraphStyle("sp", fontName="Helvetica-Bold", fontSize=14, leading=18, alignment=TA_LEFT),
+        f'<font color="{color}" size="12"><b>{score}</b></font>'
+        f'<font color="#A0A0A0" size="8"><b>/100</b></font>',
+        ParagraphStyle("sp", fontName="Helvetica-Bold", fontSize=12, leading=15, alignment=TA_LEFT),
     )
 
 
