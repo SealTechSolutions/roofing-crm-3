@@ -41,6 +41,7 @@ AMBER  = colors.HexColor("#D97706")
 RED    = colors.HexColor("#B91C1C")
 SOFT_BLUE = colors.HexColor("#EFF6FF")
 SOFT_BRONZE = colors.HexColor("#FBF7F0")
+BOX_BORDER = colors.HexColor("#C7C7CC")  # Soft light grey for all section boxes (just visible)
 
 PAGE_TAGLINE = "Extending Roof Life Through Restorative Solutions™"
 
@@ -186,7 +187,7 @@ def _bullet_list(items: List[str], style_key: str = "bullet", empty_text: str = 
 def _section_header(title: str, story: list, s: dict):
     """Section heading with a bronze underline bar."""
     story.append(Spacer(1, 6))
-    bar = Table([[Paragraph(title.upper(), s["h1"])]], colWidths=[7.0 * inch])
+    bar = Table([[Paragraph(title.upper(), s["h1"])]], colWidths=[7.3 * inch])
     bar.setStyle(TableStyle([
         ("LINEBELOW", (0, 0), (-1, -1), 2, BRONZE),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -200,7 +201,7 @@ def _check(yes: bool) -> str:
     return '<font color="#16A34A"><b>☑</b></font>' if yes else '<font color="#A0A0A0">☐</font>'
 
 
-def _text_box(text: str, num_rows: int = 8, row_height: float = 0.22 * inch, width: float = 7.0 * inch,
+def _text_box(text: str, num_rows: int = 8, row_height: float = 0.22 * inch, width: float = 7.3 * inch,
               placeholder: str = "—") -> Table:
     """Fixed-height bordered container that always reserves `num_rows` of line space —
     keeps the page layout stable regardless of how much text the user types.
@@ -219,7 +220,7 @@ def _text_box(text: str, num_rows: int = 8, row_height: float = 0.22 * inch, wid
     box.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-        ("BOX", (0, 0), (-1, -1), 1.0, GRAY),  # Darker, thicker border so the box reads clearly
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),  # Light grey — just visible
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
         ("RIGHTPADDING", (0, 0), (-1, -1), 10),
         ("TOPPADDING", (0, 0), (-1, -1), 8),
@@ -229,7 +230,7 @@ def _text_box(text: str, num_rows: int = 8, row_height: float = 0.22 * inch, wid
 
 
 def _finding_box(items: list, num_slots: int = 3, row_height: float = 0.32 * inch,
-                 width: float = 7.0 * inch) -> Table:
+                 width: float = 7.3 * inch) -> Table:
     """Fixed-slot box that always shows N labeled rows ('Finding #1:', 'Finding #2:', ...).
     If the user has provided fewer items, the empty slots render as bronze labels with a
     thin baseline so the report layout never shifts."""
@@ -255,8 +256,8 @@ def _finding_box(items: list, num_slots: int = 3, row_height: float = 0.32 * inc
     box.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-        ("BOX", (0, 0), (-1, -1), 1.0, GRAY),
-        ("INNERGRID", (0, 0), (-1, -1), 0.5, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, BOX_BORDER),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
         ("RIGHTPADDING", (0, 0), (-1, -1), 10),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
@@ -451,11 +452,11 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         Paragraph(f'<b><font color="#A0703A">{k.upper()}</font></b>', s["label"]),
         Paragraph(v or "—", s["body_sm"]),
     ] for k, v in prop_rows]
-    prop_t = Table(prop_data, colWidths=[1.6 * inch, 5.4 * inch])
+    prop_t = Table(prop_data, colWidths=[1.6 * inch, 5.7 * inch])
     prop_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOX", (0, 0), (-1, -1), 0.75, GRAY),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
         ("BACKGROUND", (0, 0), (0, -1), SOFT_BRONZE),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
@@ -493,7 +494,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     # ============================================================
     _section_header("Aerial Image of Roof", story, s)
     aerial_bytes = await _load_photo(db, a.get("aerial_photo_id"))
-    story.append(_photo_flowable(aerial_bytes, w=7.0 * inch, h=3.2 * inch, placeholder="Aerial roof image — upload in editor"))
+    story.append(_photo_flowable(aerial_bytes, w=7.3 * inch, h=3.3 * inch, placeholder="Aerial roof image — upload in editor"))
     story.append(Spacer(1, 12))
     _section_header("Asset Condition Findings", story, s)
     await _render_finding(db, story, s, idx=1, finding=a.get("finding_r1") or {})
@@ -811,12 +812,12 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict):
         Paragraph(f'<font color="#A0703A"><b>{k}</b></font>', s["label"]),
         Paragraph(v, s["body_sm"]),
     ] for k, v in body_rows]
-    body_t = Table(body_data, colWidths=[1.3 * inch, 5.7 * inch])
+    body_t = Table(body_data, colWidths=[1.3 * inch, 6.0 * inch])
     body_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (0, -1), SOFT_BRONZE),
-        ("BOX", (0, 0), (-1, -1), 0.75, GRAY),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
@@ -829,10 +830,10 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict):
     photos = []
     for pid in photo_ids:
         img_bytes = await _load_photo(db, pid)
-        photos.append(_photo_flowable(img_bytes, w=3.4 * inch, h=1.9 * inch, placeholder="Photo placeholder"))
+        photos.append(_photo_flowable(img_bytes, w=3.55 * inch, h=1.9 * inch, placeholder="Photo placeholder"))
     while len(photos) < 2:
-        photos.append(_photo_flowable(None, w=3.4 * inch, h=1.9 * inch, placeholder="Photo placeholder"))
-    ph_t = Table([photos], colWidths=[3.5 * inch, 3.5 * inch], rowHeights=[1.95 * inch])
+        photos.append(_photo_flowable(None, w=3.55 * inch, h=1.9 * inch, placeholder="Photo placeholder"))
+    ph_t = Table([photos], colWidths=[3.65 * inch, 3.65 * inch], rowHeights=[1.95 * inch])
     ph_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
