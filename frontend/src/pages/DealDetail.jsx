@@ -8,6 +8,7 @@ import Documents from "@/components/Documents";
 import MaterialTakeoff from "@/components/MaterialTakeoff";
 import { ScopePreview } from "@/pages/Deals";
 import { formatPhoneDisplay } from "@/lib/format";
+import ProjectPhotos from "@/components/ProjectPhotos";
 
 export default function DealDetail() {
   const { id } = useParams();
@@ -914,6 +915,11 @@ export default function DealDetail() {
           <div className="text-sm text-zinc-800 whitespace-pre-wrap" data-testid="deal-notes-view">{deal.notes}</div>
         </div>
       )}
+
+      {/* Project Photos — upload, organize by album + tag, share with customer */}
+      <div className="mt-6">
+        <ProjectPhotos dealId={id} dealTitle={deal.title} />
+      </div>
 
       {emailScopeOpen && (
         <EmailScopeModal

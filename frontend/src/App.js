@@ -19,6 +19,7 @@ import Materials from "@/pages/Materials";
 import Library from "@/pages/Library";
 import BooksCOA from "@/pages/BooksCOA";
 import CoiReminders from "@/pages/CoiReminders";
+import PublicGallery from "@/pages/PublicGallery";
 import Profile from "@/pages/Profile";
 import "@/App.css";
 
@@ -50,6 +51,8 @@ function App() {
           <Routes>
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
             <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+            {/* Public photo-share gallery — NO auth required */}
+            <Route path="/share/photos/:token" element={<PublicGallery />} />
             <Route
               element={
                 <ProtectedRoute>

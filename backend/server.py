@@ -33,6 +33,7 @@ from spec_sheet import build_spec_sheet
 from books import make_router as make_books_router, seed_default_entities
 import gl
 import coi_reminders
+import project_photos
 
 
 # ----- DB -----
@@ -4707,6 +4708,8 @@ async def shutdown_db_client():
 # ----- Router & CORS -----
 api_router.include_router(make_books_router(db, get_current_user, require_admin))
 api_router.include_router(coi_reminders.create_router(db, require_admin))
+api_router.include_router(project_photos.create_router(db, get_current_user))
+api_router.include_router(project_photos.create_public_router(db))
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
