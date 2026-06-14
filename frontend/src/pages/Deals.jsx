@@ -65,6 +65,7 @@ const empty = {
   project_type: "Repair",
   current_roof_type: "None (new construction)",
   proposed_roof_type: "TPO Over-Lay",
+  custom_scope: "",
   property_sqft: 0,
   perimeter_lnft: 0,
   avg_parapet_height: 0,
@@ -321,10 +322,10 @@ export default function Deals() {
               <Field label="Date Sent">
                 <Input data-testid="deal-date-sent" type="date" value={form.date_sent} onChange={(v) => setForm({ ...form, date_sent: v })} />
               </Field>
-              <Field label="Current Roof Type">
+              <Field label="Current Roof Type / Or Construction Project">
                 <Select data-testid="deal-current-roof" value={form.current_roof_type} onChange={(v) => setForm({ ...form, current_roof_type: v })} options={options.current_roof_types?.length ? options.current_roof_types : options.roof_types} />
               </Field>
-              <Field label="Proposed Roof Type">
+              <Field label="Proposed Roof Type / Other Construction Project">
                 <Select data-testid="deal-proposed-roof" value={form.proposed_roof_type} onChange={(v) => setForm({ ...form, proposed_roof_type: v })} options={options.roof_types} />
                 <ScopePreview currentRoof={form.current_roof_type} proposedRoof={form.proposed_roof_type} />
               </Field>
@@ -332,6 +333,26 @@ export default function Deals() {
                 <Select data-testid="deal-assigned-to" value={form.assigned_to_user_id || ""} onChange={(v) => setForm({ ...form, assigned_to_user_id: v })} options={userOpts} />
               </Field>
             </Grid2>
+
+            {/* Free-form Scope — only when the proposed item is non-roofing (Construction Project / Other) */}
+            {(/^(construction project|other)$/i.test(form.proposed_roof_type || "") || /other construction work/i.test(form.current_roof_type || "")) && (
+              <div className="pt-4 border-t border-zinc-200" data-testid="custom-scope-block">
+                <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-2">
+                  Custom Scope (concrete / landscape / construction)
+                </div>
+                <textarea
+                  data-testid="deal-custom-scope"
+                  value={form.custom_scope || ""}
+                  onChange={(e) => setForm({ ...form, custom_scope: e.target.value })}
+                  rows={8}
+                  placeholder={"Describe the scope of work in plain English.\n\nLeave a blank line between sections to split the PDF into 'Scope of Work' + 'Project Requirements'.\n\nExamples:\n• Demo existing 8&apos; concrete walkway at south entry.\n• Form, pour and finish 1,400 SF of new colored concrete to match adjacent.\n• Install 12 LF of trench drain.\n\nMaterials per attached cut sheets. Standard SealTech workmanship guarantee."}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm focus:outline-none focus:border-blue-700 font-mono"
+                />
+                <div className="text-[10px] text-zinc-500 mt-1">
+                  This text replaces the standard roof-scope content on the proposal PDF. Use bullet points or short paragraphs.
+                </div>
+              </div>
+            )}
 
             <div className="pt-4 border-t border-zinc-200">
               <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">Measurements</div>

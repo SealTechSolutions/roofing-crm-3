@@ -592,6 +592,17 @@ FARM_TEMPLATE = {
 
 # Lookup table — keys are normalized (lower-cased, alphanumeric chunks)
 # Maps roof_type → template dict
+CUSTOM_SCOPE_TEMPLATE = {
+    "title": "PROJECT SCOPE",
+    "dynamic_scope": True,  # build_spec_sheet renders scope from data["custom_scope"] free-form text
+    "spread_page_2": True,
+    "scope_1_title": "Scope of Work",
+    "scope_1": ["Free-form scope to be supplied per project (see deal record)."],
+    "scope_2_title": "Project Requirements",
+    "scope_2": ["Standard SealTech workmanship guarantee. All materials per manufacturer specification."],
+}
+
+
 ROOF_TEMPLATE_MAP = {
     "silicone": SILICONE_TEMPLATE,
     "siliconewgranules": SILICONE_TEMPLATE,
@@ -628,6 +639,9 @@ ROOF_TEMPLATE_MAP = {
     "farm": FARM_TEMPLATE,
     "farmfluidappliedreinforcedmembrane": FARM_TEMPLATE,
     "fluidappliedreinforcedmembrane": FARM_TEMPLATE,
+    "constructionproject": CUSTOM_SCOPE_TEMPLATE,
+    "other": CUSTOM_SCOPE_TEMPLATE,
+    "otherconstructionwork": CUSTOM_SCOPE_TEMPLATE,
 }
 
 
@@ -671,6 +685,9 @@ def _resolve_template(roof_type: str | None, current_roof_type: str | None = Non
     Falls back to the silicone restoration scope when nothing matches.
     """
     key = "".join(ch for ch in str(roof_type or "").lower() if ch.isalnum())
+    # Custom-scope path always wins over new-construction mapping
+    if key in ("constructionproject", "other", "otherconstructionwork"):
+        return CUSTOM_SCOPE_TEMPLATE
     if _is_new_construction(current_roof_type) and key in NEW_CONSTRUCTION_MAP:
         return NEW_CONSTRUCTION_MAP[key]
     if not roof_type:
@@ -890,6 +907,26 @@ def build_spec_sheet(
         roof_type or data.get("roof_type_label"),
         current_roof_type or data.get("current_roof_type"),
     )
+
+    # Dynamic scope: when template is the custom-scope (Construction / Other), the bullets
+    # come from the deal's free-form `custom_scope` text. Split into two sections at the first
+    # blank line. If no blank line, everything lives under "Scope of Work" and section 2 stays brief.
+    if template.get("dynamic_scope"):
+        raw = (data.get("custom_scope") or "").strip()
+        if raw:
+            paragraphs = [p.strip() for p in raw.split("\n\n") if p.strip()]
+            def _to_bullets(text: str) -> list:
+                lines = [ln.strip().lstrip("-•* ") for ln in text.splitlines() if ln.strip()]
+                return lines or [text]
+            if len(paragraphs) >= 2:
+                scope1 = _to_bullets(paragraphs[0])
+                scope2 = _to_bullets("\n".join(paragraphs[1:]))
+            else:
+                scope1 = _to_bullets(raw)
+                scope2 = ["Materials, labor, and workmanship per industry standard.",
+                          "Standard SealTech workmanship guarantee applies."]
+            # Build a fresh template dict so we don't mutate the module constant
+            template = {**template, "scope_1": scope1, "scope_2": scope2}
 
     buf = BytesIO()
     pdf = SimpleDocTemplate(buf, pagesize=letter,

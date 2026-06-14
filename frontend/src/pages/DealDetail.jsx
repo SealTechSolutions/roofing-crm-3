@@ -537,11 +537,17 @@ export default function DealDetail() {
         </Card>
 
         <Card title="Roof Spec & Measurements">
-          <Row label="Current Roof" value={deal.current_roof_type} />
-          <Row label="Proposed Roof" value={deal.proposed_roof_type} bold />
+          <Row label="Current Roof / Project" value={deal.current_roof_type} />
+          <Row label="Proposed Roof / Project" value={deal.proposed_roof_type} bold />
           <div className="pl-1 pb-2">
             <ScopePreview currentRoof={deal.current_roof_type} proposedRoof={deal.proposed_roof_type} />
           </div>
+          {deal.custom_scope && (
+            <div className="border-t border-zinc-100 mt-2 pt-2">
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-1">Custom Scope (on proposal PDF)</div>
+              <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm" data-testid="deal-detail-custom-scope">{deal.custom_scope}</pre>
+            </div>
+          )}
           <Row label="Project Type" value={deal.project_type} />
           <Row label="Lead Source" value={deal.lead_source} />
           {deal.lead_source === "Referral" && deal.referral_source && (

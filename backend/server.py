@@ -133,11 +133,13 @@ ROOF_TYPES = [
     "TPO Over-Lay",
     "TPO Replacement",
     "TPO",
+    "Construction Project",
+    "Other",
 ]
 
 # CURRENT roof type dropdown — what's on the building today.
 # Excludes Over-Lay / Replacement variants (those are install-method labels, not existing surfaces).
-# Includes "None" for new construction.
+# Includes "None" for new construction and "Other Construction Work" for non-roofing scopes.
 CURRENT_ROOF_TYPES = [
     "None (new construction)",
     "FARM (Fluid Applied Reinforced Membrane)",
@@ -152,6 +154,7 @@ CURRENT_ROOF_TYPES = [
     "EPDM",
     "PVC",
     "TPO",
+    "Other Construction Work",
 ]
 DEAL_STATUSES = ["Lead", "Sent", "Won", "Lost", "Past Lead"]
 DEAL_TYPES = ["Assessment", "Scope"]
@@ -412,6 +415,7 @@ class DealIn(BaseModel):
     project_type: str = "Repair"
     current_roof_type: str = "TPO"
     proposed_roof_type: str = "TPO"
+    custom_scope: str = ""  # Free-form scope body — used on the PDF when proposed_roof_type is "Construction Project" or "Other"
     property_sqft: float = 0.0
     perimeter_lnft: float = 0.0
     avg_parapet_height: float = 0.0
@@ -838,7 +842,13 @@ async def preview_scope_title(
         "BUR (Built-Up)": "Built-Up Roof",
     }
     is_new = bool(current) and (current.strip().lower().startswith("none") or "new construction" in current.lower())
-    if is_new and proposed in NEW_CONSTRUCTION_LABELS:
+    # Custom-scope paths (non-roofing) shouldn't be labeled "Roof System"
+    if template.get("dynamic_scope") or proposed in ("Construction Project", "Other"):
+        if current and current.lower() != "other construction work":
+            product_desc = f"Construction Project — Custom Scope (existing: {current})"
+        else:
+            product_desc = "Construction Project — Custom Scope"
+    elif is_new and proposed in NEW_CONSTRUCTION_LABELS:
         product_desc = f"{NEW_CONSTRUCTION_LABELS[proposed]} Roof System on New Construction"
     elif proposed in PRODUCT_TYPE_DEFAULTS:
         product_desc = PRODUCT_TYPE_DEFAULTS[proposed]
@@ -3591,6 +3601,9 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
     )
     if deal.get("product_description"):
         product_desc = deal["product_description"]
+    elif proposed in ("Construction Project", "Other") or current.lower() == "other construction work":
+        # Non-roofing scope — keep the PDF header generic and let the free-form scope tell the story
+        product_desc = "Construction Project — Custom Scope"
     elif is_new and proposed in NEW_CONSTRUCTION_LABELS:
         product_desc = f"{NEW_CONSTRUCTION_LABELS[proposed]} Roof System on New Construction"
     elif proposed in PRODUCT_TYPE_DEFAULTS:
@@ -3616,6 +3629,7 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
         "total_sqft": float(deal.get("total_sqft") or 0),
         "color": color,
         "roof_type_label": (deal.get("proposed_roof_type") or "silicone").lower(),
+        "custom_scope": (deal.get("custom_scope") or "").strip(),
     }
 
     # Fetch cover photo if set

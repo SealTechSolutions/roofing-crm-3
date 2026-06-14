@@ -1,0 +1,38 @@
+{
+  "summary": "Tested Construction Project / Other Construction Work custom-scope feature end-to-end. Backend: 9/9 pytest passed (options list, scope-preview short-circuit, deal CRUD with custom_scope roundtrip, PDF generation for Construction Project / Other / TPO regression, _resolve_template short-circuit unit test). Frontend: New Project modal labels renamed correctly, dropdowns include all new options, custom-scope-block toggles correctly based on proposed/current selections, WILL GENERATE chip shows 'PROJECT SCOPE', deal list shows construction type, DealDetail page renders the 'Custom Scope (on proposal PDF)' panel with the saved text. All acceptance criteria met.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/deals/{id}", "issue": "PUT requires full DealIn body (title field required). Not a regression from this feature, but partial-update PATCH semantics would be more ergonomic — tests had to send the full body to update custom_scope."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_construction_scope.py",
+    "/app/test_reports/pytest/pytest_iter10.xml"
+  ],
+  "action_items": [
+    "None — feature is working as specified. Optional: consider implementing PATCH semantics for /api/deals/{id} so partial updates (e.g. just custom_scope) don't require resending the whole DealIn body."
+  ],
+  "critical_code_review_comments": [
+    "spec_sheet.py is 1100+ lines with extensive template constants — fine for now but watch for further growth; templates could be moved to a data module.",
+    "_resolve_template correctly short-circuits to CUSTOM_SCOPE_TEMPLATE for 'Construction Project' / 'Other' / 'Other Construction Work' BEFORE consulting NEW_CONSTRUCTION_MAP, preventing accidental new-construction template selection.",
+    "build_spec_sheet correctly creates a copied template dict (not mutating module constant) when applying dynamic_scope — good.",
+    "Custom-scope visibility logic in Deals.jsx is correctly gated on proposed in ('Construction Project','Other') OR current == 'Other Construction Work'.",
+    "Server /api/options/scope-preview path for the custom-scope branch includes 'existing: {current}' tag when current is set — matches spec."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_construction_scope.py (new pytest module)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (12/12 spec checks)"},
+  "test_credentials": "admin@roofingcrm.com / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created and cleaned up: TEST_CustomScopeProp property, TEST_ConstructionDeal, TEST_PDFDeal_* deals. Also incidentally cleaned up TEST_Lead Deal and TEST_Won Deal (TEST_ prefix matched cleanup script). If those were seeded for other iterations, they may need re-seeding.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_construction_scope.py covers the full Construction Project / Other custom-scope feature. To run: cd /app/backend && REACT_APP_BACKEND_URL=<url> python -m pytest tests/test_construction_scope.py -v. PUT /api/deals/{id} requires the full DealIn body — when adding new fields to Deal model, tests must always send title + property_id. Frontend modal has 3 text inputs at the top; first is Project Title.",
+  "rca_of_the_issue": "N/A — feature was working as designed."
+}
