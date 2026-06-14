@@ -58,12 +58,12 @@ export default function Trash() {
 
   const purge = async (item) => {
     const typed = window.prompt(
-      `PERMANENTLY DELETE this item? This CANNOT be undone.\n\nType the item name to confirm:\n"${item.label}"`
+      `PERMANENTLY DELETE this item? This CANNOT be undone.\n\nItem: ${item.label}\n\nType DELETE to confirm:`
     );
-    if (!typed) return;
-    const norm = (s) => (s || "").replace(/["'`]/g, "").trim().toLowerCase();
-    if (norm(typed) !== norm(item.label)) {
-      toast.error("Name did not match — purge cancelled");
+    if (typed === null) return;
+    const normalized = typed.replace(/["'`]/g, "").trim().toUpperCase();
+    if (normalized !== "DELETE") {
+      toast.error("Confirmation did not match — purge cancelled");
       return;
     }
     try {
