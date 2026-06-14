@@ -363,8 +363,27 @@
 - Files: `gl.py`, `books.py`, `server.py`, `statement_pdf.py`, `invoice_pdf.py`, `BooksCOA.jsx`, `Contacts.jsx`.
 - ✅ Tested: 8/8 resolver unit tests + 8/8 integration tests + frontend e2e (100% pass).
 
+### Recurring Journal Templates (Feb 2026)
+- Save the current journal-entry layout as a reusable template (name, description, default_memo, lines snapshot).
+- Load any template from a dropdown inside the Manual Journal composer → prefills memo + lines instantly.
+- Tracks `use_count` + `last_used_at`; dropdown sorts MRU.
+- Soft-delete to Admin Trash (restorable like any other entity).
+- Snapshots account number/name/type per line so renaming an account later doesn't break the template's UX; validation runs at use-time.
+- Endpoints: `GET/POST/PUT/DELETE /api/books/journal-templates`, `POST /api/books/journal-templates/{id}/use`.
+- UI: violet "Templates" toolbar in ManualJournalModal; SaveTemplateModal sub-modal for naming.
+- ✅ Tested: 9/9 backend pytest + frontend e2e (100% pass).
+
+### Bulk Vendor-Bill CSV Import with GL Impact Preview (Feb 2026)
+- New "Bulk CSV" button on Payables page → modal with 3 steps: Pick file → Preview → Done.
+- Server parses CSV (case-insensitive headers, accepts synonyms like `vendor_name`, `supplier`, `payee`), matches vendors (case-insensitive exact + prefix), resolves expense accounts (csv-number → csv-name → vendor-category default), and returns per-row preview with `gl_lines:[{side:DR/CR, account_number, amount}]`.
+- Lenient parsers: dates accept ISO, MM/DD/YYYY, M/D/YY; amounts accept `$1,234.56`, `(123)` for negatives.
+- Preview table flags each row: ✓ Valid (green) or list of errors (red). Commit only runs valid rows; invalid skipped with reasons.
+- Each created bill posts through the normal GL pipeline (DR expense / CR 2000 AP) — same path as Add Manual Bill.
+- Endpoints: `POST /api/vendor-bills/csv-preview` (multipart), `POST /api/vendor-bills/csv-commit` (JSON).
+- ✅ Tested: 9/9 backend pytest + frontend e2e (100% pass).
+
 ## Backlog (P0)
-- Books — _(both P0 above are now complete)_
+- _(empty — all P0 items complete)_
 
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics) — DONE

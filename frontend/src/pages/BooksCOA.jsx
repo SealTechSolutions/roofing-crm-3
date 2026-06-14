@@ -1105,7 +1105,7 @@ function ManualJournalModal({ entityId, entityName, onClose, onSaved }) {
               <option value="">— Load a saved template —</option>
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name}{t.use_count ? ` · used ${t.use_count}×` : ""}
+                  {t.use_count ? `${t.name} · used ${t.use_count}×` : t.name}
                 </option>
               ))}
             </select>
