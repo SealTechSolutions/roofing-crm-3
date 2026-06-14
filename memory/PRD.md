@@ -397,6 +397,11 @@
 - Endpoints: `GET/POST/PUT/DELETE /api/assessments`, `POST /api/assessments/{id}/finalize`, `GET /api/assessments/{id}/pdf`, `POST /api/assessments/{id}/email`, `POST /api/assessments/{id}/convert-to-scope`.
 - ✅ Tested: 6/6 backend pytest (incl. 3 convert-to-scope tests) + full frontend e2e (100% pass).
 
+### Assessment PDF Page-2 Polish (Feb 2026)
+- "Purpose of Assessment" body text replaced with the official two-paragraph language; `Commercial Roof Assessment Report™` includes the TM mark.
+- Roof Asset Score™ rows: compact score boxes (0.85" × auto, 13pt number) restructured to a single non-nested Table so the blue box left-edge sits flush with the Executive Conclusion / Overall Recommendation text boxes (verified at X=81 px in the rendered PDF — perfect alignment).
+- All 6 backend assessment tests still pass.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

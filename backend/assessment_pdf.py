@@ -55,7 +55,7 @@ def _styles():
         "subtitle":  ParagraphStyle("subtitle", fontName="Helvetica-Oblique", fontSize=11, textColor=GRAY, leading=14, alignment=TA_CENTER, spaceAfter=14),
         "h1":        ParagraphStyle("h1", fontName="Helvetica-Bold", fontSize=16, textColor=BLUE, leading=20, spaceBefore=6, spaceAfter=8),
         "h2":        ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=12, textColor=DARK, leading=15, spaceBefore=8, spaceAfter=4),
-        "h3":        ParagraphStyle("h3", fontName="Helvetica-Bold", fontSize=10, textColor=BLUE, leading=12, spaceBefore=6, spaceAfter=2),
+        "h3":        ParagraphStyle("h3", fontName="Helvetica-Bold", fontSize=12, textColor=BLUE, leading=14, spaceBefore=6, spaceAfter=2),
         "label":     ParagraphStyle("label", fontName="Helvetica-Bold", fontSize=8, textColor=GRAY, leading=10),
         "body":      ParagraphStyle("body", fontName="Helvetica", fontSize=10, textColor=DARK, leading=14, spaceAfter=3),
         "body_sm":   ParagraphStyle("body_sm", fontName="Helvetica", fontSize=9, textColor=DARK, leading=12),
@@ -106,12 +106,14 @@ async def _load_photo(db, photo_id: str) -> bytes | None:
         return None
 
 
-def _photo_flowable(img_bytes: bytes | None, w: float, h: float, placeholder: str = "Image placeholder") -> object:
-    """Return an Image flowable for embedded bytes, or a styled placeholder table."""
+def _photo_flowable(img_bytes: bytes | None, w: float, h: float, placeholder: str = "Image placeholder",
+                    h_align: str = "CENTER") -> object:
+    """Return an Image flowable for embedded bytes, or a styled placeholder table.
+    `h_align` controls horizontal alignment within its parent cell (LEFT / CENTER / RIGHT)."""
     if img_bytes:
         try:
             img = Image(BytesIO(img_bytes), width=w, height=h)
-            img.hAlign = "CENTER"
+            img.hAlign = h_align
             return img
         except Exception:
             pass
@@ -121,10 +123,11 @@ def _photo_flowable(img_bytes: bytes | None, w: float, h: float, placeholder: st
     t = Table([[cell]], colWidths=[w], rowHeights=[h])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.5, BOX_BORDER),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
     ]))
+    t.hAlign = h_align  # Placeholder Tables also respect hAlign as a flowable
     return t
 
 
@@ -139,34 +142,39 @@ def _score_color(score: int) -> colors.Color:
 
 
 def _score_box(label: str, score_val, reasoning: str) -> Table:
-    """A score card: number on top, label below, reasoning text on the right."""
+    """A score card: number on top, label below, reasoning text on the right.
+    Single-Table structure (no nesting) so the blue box left-edge sits flush with
+    the text-box columns above/below it."""
     s = _styles()
     try:
         score = int(score_val or 0)
     except Exception:
         score = 0
-    # Reduced from 24pt to 18pt per request to lighten the visual weight
+    # Compact score number — lighter visual weight to balance with reasoning text
     score_para = Paragraph(
         f'<font color="{_score_color(score).hexval()}"><b>{score}</b></font>'
         f'<font color="#A0A0A0"><b>/100</b></font>',
-        ParagraphStyle("sn", fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=TA_CENTER, textColor=DARK),
+        ParagraphStyle("sn", fontName="Helvetica-Bold", fontSize=13, leading=15, alignment=TA_CENTER, textColor=DARK),
     )
     label_para = Paragraph(label.upper(), s["score_label"])
-    score_cell = Table([[score_para], [label_para]], colWidths=[1.0 * inch])
-    score_cell.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), SOFT_BLUE),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
     reasoning_para = Paragraph(reasoning or "<i><font color='#A0A0A0'>Not yet documented.</font></i>", s["body_sm"])
-    outer = Table([[score_cell, reasoning_para]], colWidths=[1.1 * inch, 5.9 * inch])
+    # 2 rows × 2 cols; reasoning spans both rows on the right.
+    outer = Table([
+        [score_para, reasoning_para],
+        [label_para, ""],
+    ], colWidths=[1.1 * inch, 6.2 * inch])
+    outer.hAlign = "LEFT"
     outer.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (1, 0), (1, 0), 12),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BACKGROUND", (0, 0), (0, 1), SOFT_BLUE),
+        ("BOX",        (0, 0), (0, 1), 0.5, BORDER),
+        ("SPAN",       (1, 0), (1, 1)),
+        ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN",      (0, 0), (0, -1), "CENTER"),
+        ("LEFTPADDING",  (0, 0), (0, -1), 2),
+        ("RIGHTPADDING", (0, 0), (0, -1), 2),
+        ("LEFTPADDING",  (1, 0), (1, 0), 12),
+        ("TOPPADDING",   (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 3),
     ]))
     return outer
 
@@ -188,6 +196,7 @@ def _section_header(title: str, story: list, s: dict):
     """Section heading with a bronze underline bar."""
     story.append(Spacer(1, 6))
     bar = Table([[Paragraph(title.upper(), s["h1"])]], colWidths=[7.3 * inch])
+    bar.hAlign = "LEFT"
     bar.setStyle(TableStyle([
         ("LINEBELOW", (0, 0), (-1, -1), 2, BRONZE),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -217,6 +226,7 @@ def _text_box(text: str, num_rows: int = 8, row_height: float = 0.22 * inch, wid
     )
     p = Paragraph(content, para_style)
     box = Table([[p]], colWidths=[width], rowHeights=[num_rows * row_height])
+    box.hAlign = "LEFT"
     box.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (-1, -1), colors.white),
@@ -253,6 +263,7 @@ def _finding_box(items: list, num_slots: int = 3, row_height: float = 0.32 * inc
         rows.append([Paragraph(row_html, s["body_sm"])])
 
     box = Table(rows, colWidths=[width], rowHeights=[row_height] * num_slots)
+    box.hAlign = "LEFT"
     box.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (-1, -1), colors.white),
@@ -335,8 +346,13 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     _section_header("Executive Summary", story, s)
     story.append(Paragraph("<b>Purpose of Assessment</b>", s["h3"]))
     story.append(Paragraph(a.get("purpose") or
-        "Provide an objective, third-party evaluation of the commercial roofing system's condition, performance, and "
-        "potential for restoration or replacement to support informed capital planning.",
+        "The purpose of this Commercial Roof Assessment Report&#8482; is to provide an objective evaluation of the "
+        "current condition, performance, remaining service life, restoration potential, and future risk exposure of "
+        "the roofing asset.",
+        s["body"]))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(
+        "This assessment is intended to support informed maintenance, restoration, replacement, and capital planning decisions.",
         s["body"]))
     story.append(Spacer(1, 6))
     story.append(Paragraph("<b>Executive Conclusion</b>", s["h3"]))
@@ -385,11 +401,12 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
             Paragraph(right[0], s["h3"]) if right[0] else "",
             _score_pill(right[1]) if right[0] else "",
         ])
-    dash_t = Table(rows, colWidths=[2.0 * inch, 1.5 * inch, 2.0 * inch, 1.5 * inch])
+    dash_t = Table(rows, colWidths=[2.1 * inch, 1.55 * inch, 2.1 * inch, 1.55 * inch])
+    dash_t.hAlign = "LEFT"
     dash_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
         ("TOPPADDING", (0, 0), (-1, -1), 10),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
         ("LEFTPADDING", (0, 0), (-1, -1), 12),
@@ -453,6 +470,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         Paragraph(v or "—", s["body_sm"]),
     ] for k, v in prop_rows]
     prop_t = Table(prop_data, colWidths=[1.6 * inch, 5.7 * inch])
+    prop_t.hAlign = "LEFT"
     prop_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
@@ -484,7 +502,8 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
             Paragraph(f'{_check(bool(left[1]))} &nbsp; {left[0]}', s["body_sm"]),
             Paragraph(f'{_check(bool(right[1]))} &nbsp; {right[0]}' if right[0] else "", s["body_sm"]),
         ])
-    scope_t = Table(scope_rows, colWidths=[3.5 * inch, 3.5 * inch])
+    scope_t = Table(scope_rows, colWidths=[3.65 * inch, 3.65 * inch])
+    scope_t.hAlign = "LEFT"
     scope_t.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
     story.append(scope_t)
     story.append(PageBreak())
@@ -534,14 +553,15 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         ["60 – 69",  "Marginal — significant repair/restoration needed; replacement on horizon."],
         ["Below 60", "Poor — replacement recommended; restoration unlikely to extend life cost-effectively."],
     ]
-    interp_t = Table(interp_data, colWidths=[1.4 * inch, 5.6 * inch])
+    interp_t = Table(interp_data, colWidths=[1.4 * inch, 5.9 * inch])
+    interp_t.hAlign = "LEFT"
     interp_t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BLUE),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
@@ -556,11 +576,12 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
          Paragraph('<font color="#B91C1C"><b>NEGATIVE FACTORS</b></font>', s["label"])],
         [_bullet_list(a.get("positive_factors", []), empty_text="(none)"),
          _bullet_list(a.get("negative_factors", []), empty_text="(none)")],
-    ], colWidths=[3.5 * inch, 3.5 * inch])
+    ], colWidths=[3.65 * inch, 3.65 * inch])
+    drivers_t.hAlign = "LEFT"
     drivers_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
         ("TOPPADDING", (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
@@ -595,7 +616,8 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
             Paragraph(f'{_check(bool(left[1]))} &nbsp; {left[0]}', s["body_sm"]),
             Paragraph(f'{_check(bool(right[1]))} &nbsp; {right[0]}' if right[0] else "", s["body_sm"]),
         ])
-    f_t = Table(factor_rows, colWidths=[3.5 * inch, 3.5 * inch])
+    f_t = Table(factor_rows, colWidths=[3.65 * inch, 3.65 * inch])
+    f_t.hAlign = "LEFT"
     f_t.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
     story.append(f_t)
     story.append(PageBreak())
@@ -613,14 +635,15 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         ["Restoration", restore.get("cost", ""), restore.get("life_extension", ""), restore.get("disruption", "")],
         ["Replacement", replace.get("cost", ""), replace.get("life_extension", ""), replace.get("disruption", "")],
     ]
-    comp_t = Table(comp, colWidths=[1.6 * inch, 1.8 * inch, 1.8 * inch, 1.8 * inch])
+    comp_t = Table(comp, colWidths=[1.6 * inch, 1.9 * inch, 1.9 * inch, 1.9 * inch])
+    comp_t.hAlign = "LEFT"
     comp_t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BLUE),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
         ("ALIGN", (1, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, -1), 8),
@@ -642,11 +665,12 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
             [_bullet_list(opt.get("advantages", []), empty_text="(none)"),
              _bullet_list(opt.get("disadvantages", []), empty_text="(none)"),
              _bullet_list(opt.get("limitations", []), empty_text="(none)")],
-        ], colWidths=[2.33 * inch, 2.33 * inch, 2.34 * inch])
+        ], colWidths=[2.43 * inch, 2.43 * inch, 2.44 * inch])
+        adv_t.hAlign = "LEFT"
         adv_t.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
-            ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+            ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
             ("TOPPADDING", (0, 0), (-1, -1), 6),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ("LEFTPADDING", (0, 0), (-1, -1), 8),
@@ -668,12 +692,13 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         Paragraph(f'<b><font color="#1D4ED8">{k}</font></b>', s["label"]),
         Paragraph(v or "<i><font color='#A0A0A0'>—</font></i>", s["body_sm"]),
     ] for k, v in forecast_rows]
-    f_t = Table(f_data, colWidths=[1.5 * inch, 5.5 * inch])
+    f_t = Table(f_data, colWidths=[1.6 * inch, 5.7 * inch])
+    f_t.hAlign = "LEFT"
     f_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (0, -1), SOFT_BLUE),
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
         ("TOPPADDING", (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
@@ -719,7 +744,8 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
             Paragraph(f'{_check(bool(left[1]))} &nbsp; <b>{left[0]}</b>', s["body_sm"]),
             Paragraph(f'{_check(bool(right[1]))} &nbsp; <b>{right[0]}</b>' if right[0] else "", s["body_sm"]),
         ])
-    rec_t = Table(rec_rows, colWidths=[3.5 * inch, 3.5 * inch])
+    rec_t = Table(rec_rows, colWidths=[3.65 * inch, 3.65 * inch])
+    rec_t.hAlign = "LEFT"
     rec_t.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
     story.append(rec_t)
 
@@ -738,7 +764,8 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
             Paragraph(f"✓  {left}", s["body_sm"]),
             Paragraph(f"✓  {right}" if right else "", s["body_sm"]),
         ])
-    o_t = Table(outcome_rows, colWidths=[3.5 * inch, 3.5 * inch])
+    o_t = Table(outcome_rows, colWidths=[3.65 * inch, 3.65 * inch])
+    o_t.hAlign = "LEFT"
     o_t.setStyle(TableStyle([
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
@@ -813,6 +840,7 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict):
         Paragraph(v, s["body_sm"]),
     ] for k, v in body_rows]
     body_t = Table(body_data, colWidths=[1.3 * inch, 6.0 * inch])
+    body_t.hAlign = "LEFT"
     body_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (0, -1), SOFT_BRONZE),
@@ -825,19 +853,20 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict):
     story.append(body_t)
     story.append(Spacer(1, 4))
 
-    # 2 photo slots side-by-side (matches original layout)
+    # 2 photo slots side-by-side (matches original layout). Left photo hugs LEFT edge,
+    # right photo hugs RIGHT edge — both flush to the text margins.
     photo_ids = (finding.get("photo_ids") or [])[:2]
-    photos = []
-    for pid in photo_ids:
-        img_bytes = await _load_photo(db, pid)
-        photos.append(_photo_flowable(img_bytes, w=3.55 * inch, h=1.9 * inch, placeholder="Photo placeholder"))
-    while len(photos) < 2:
-        photos.append(_photo_flowable(None, w=3.55 * inch, h=1.9 * inch, placeholder="Photo placeholder"))
-    ph_t = Table([photos], colWidths=[3.65 * inch, 3.65 * inch], rowHeights=[1.95 * inch])
+    slots = [None, None]
+    for i, pid in enumerate(photo_ids[:2]):
+        slots[i] = await _load_photo(db, pid)
+    left_photo = _photo_flowable(slots[0], w=3.55 * inch, h=1.9 * inch, placeholder="Photo placeholder", h_align="LEFT")
+    right_photo = _photo_flowable(slots[1], w=3.55 * inch, h=1.9 * inch, placeholder="Photo placeholder", h_align="RIGHT")
+    ph_t = Table([[left_photo, right_photo]], colWidths=[3.65 * inch, 3.65 * inch], rowHeights=[1.95 * inch])
+    ph_t.hAlign = "LEFT"
     ph_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
         ("TOPPADDING", (0, 0), (-1, -1), 2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
