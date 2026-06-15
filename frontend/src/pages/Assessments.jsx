@@ -58,14 +58,27 @@ export default function Assessments() {
   const onOpenPdf = (a) => {
     const token = localStorage.getItem("crm_token");
     const url = `${process.env.REACT_APP_BACKEND_URL}/api/assessments/${a.id}/pdf`;
-    // Open in new tab with auth header via temporary fetch
+    // Open the placeholder tab SYNCHRONOUSLY (still inside the click gesture)
+    // so popup blockers don't silently swallow it. We update its URL after the
+    // async fetch resolves.
+    const newWin = window.open("", "_blank");
+    if (!newWin) {
+      toast.error("Browser blocked the pop-up. Allow pop-ups for this site, then try again.");
+      return;
+    }
+    newWin.document.write("<title>Loading PDF…</title><p style=\"font-family:sans-serif;color:#666;padding:20px;\">Generating Assessment PDF — please wait…</p>");
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => {
-        if (!r.ok) throw new Error("Failed to fetch PDF");
+        if (!r.ok) throw new Error(`PDF generation failed (HTTP ${r.status})`);
         return r.blob();
       })
-      .then((blob) => window.open(URL.createObjectURL(blob), "_blank"))
-      .catch((e) => toast.error(`PDF generation failed: ${e.message}`));
+      .then((blob) => {
+        newWin.location.href = URL.createObjectURL(blob);
+      })
+      .catch((e) => {
+        newWin.document.body.innerHTML = `<p style="font-family:sans-serif;color:#b00;padding:20px;">${e.message}</p>`;
+        toast.error(`PDF generation failed: ${e.message}`);
+      });
   };
 
   const counts = useMemo(() => ({

@@ -217,14 +217,22 @@ export default function AssessmentEditor() {
   const viewPdf = async () => {
     if (isNew) { toast.error("Save the assessment first"); return; }
     const token = localStorage.getItem("crm_token");
+    // Open placeholder tab synchronously so popup blockers don't swallow it.
+    const newWin = window.open("", "_blank");
+    if (!newWin) {
+      toast.error("Browser blocked the pop-up. Allow pop-ups for this site, then try again.");
+      return;
+    }
+    newWin.document.write("<title>Loading PDF…</title><p style=\"font-family:sans-serif;color:#666;padding:20px;\">Generating Assessment PDF — please wait…</p>");
     try {
       const r = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/assessments/${id}/pdf`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!r.ok) throw new Error("PDF generation failed");
+      if (!r.ok) throw new Error(`PDF generation failed (HTTP ${r.status})`);
       const blob = await r.blob();
-      window.open(URL.createObjectURL(blob), "_blank");
+      newWin.location.href = URL.createObjectURL(blob);
     } catch (e) {
+      newWin.document.body.innerHTML = `<p style="font-family:sans-serif;color:#b00;padding:20px;">${e.message}</p>`;
       toast.error(`PDF: ${e.message}`);
     }
   };
