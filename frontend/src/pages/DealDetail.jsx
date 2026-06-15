@@ -91,8 +91,14 @@ export default function DealDetail() {
     setSaving(true);
     try {
       const body = { ...deal, ...patch };
-      // strip server-managed
-      delete body.id; delete body.created_at;
+      // Strip server-managed + server-computed fields. Backend recomputes these
+      // from cost_items / payment_milestones / proposal_options on PUT.
+      ["id", "created_at", "updated_at", "created_by",
+       "materials_cost", "labor_cost", "subcontractor_cost", "other_expenses_total",
+       "total_costs", "profit", "margin_pct",
+       "is_deleted", "deleted_at", "deleted_by",
+       "assigned_user_name", "primary_contact_name", "property_name"
+      ].forEach((k) => { delete body[k]; });
       const r = await api.put(`/deals/${id}`, body);
       setDeal(r.data);
     } catch (e) {
@@ -149,9 +155,16 @@ export default function DealDetail() {
 
   const removeCostItem = (idx) => {
     if (!window.confirm("Remove this cost item?")) return;
-    const items = [...(deal.cost_items || [])];
-    items.splice(idx, 1);
-    persist({ cost_items: items });
+    // Blur any active cell input so a pending typed value doesn't re-inject the
+    // row we're about to delete (same root-cause class as the +Add bug).
+    if (document.activeElement && typeof document.activeElement.blur === "function") {
+      document.activeElement.blur();
+    }
+    setTimeout(() => {
+      const items = [...(deal.cost_items || [])];
+      items.splice(idx, 1);
+      Promise.resolve(persist({ cost_items: items })).then(() => toast.success("Cost item removed"));
+    }, 0);
   };
 
   // ----- Maintenance Plan handlers -----
@@ -583,7 +596,7 @@ export default function DealDetail() {
             <ScopePreview currentRoof={deal.current_roof_type} proposedRoof={deal.proposed_roof_type} />
           </div>
           {(deal.construction_project_requirements || deal.construction_other_requirements || deal.construction_exclusions) && (
-            <div className="border-t border-zinc-100 mt-2 pt-2 space-y-2" data-testid="deal-detail-construction-scope">
+            <div id="construction-scope" className="border-t border-zinc-100 mt-2 pt-2 space-y-2" data-testid="deal-detail-construction-scope">
               {deal.project_type_override && (
                 <Row label="Project Type (PDF)" value={deal.project_type_override} bold />
               )}

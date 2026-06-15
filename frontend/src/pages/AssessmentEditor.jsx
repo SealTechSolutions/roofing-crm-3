@@ -4,7 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import {
   ClipboardCheck, ChevronLeft, ChevronRight, Save, FileText, Mail, CheckCircle2,
-  Plus, X, Trash2, Image as ImageIcon, Upload, AlertTriangle, ArrowRightCircle,
+  Plus, X, Trash2, Image as ImageIcon, Upload, AlertTriangle, ArrowRightCircle, ExternalLink,
 } from "lucide-react";
 
 const BLANK_SCORE = { score: 0, reasoning: "" };
@@ -324,13 +324,23 @@ export default function AssessmentEditor() {
               <button
                 onClick={convertToScope}
                 disabled={!doc.deal_id}
-                title={doc.deal_id ? "Pre-fill linked Project's scope from this assessment" : "Link a Project (Step 1) to enable"}
+                title={doc.deal_id ? "Pre-fill linked Deal's scope from this assessment" : "Link a Deal (Step 1) to enable"}
                 className="inline-flex items-center gap-2 border border-bronze-600 px-3 h-9 text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ borderColor: "#A0703A", color: "#A0703A" }}
                 data-testid="convert-to-scope-btn"
               >
                 <ArrowRightCircle className="w-3.5 h-3.5" /> Convert to Scope
               </button>
+              {doc.deal_id && (
+                <button
+                  onClick={() => navigate(`/projects/${doc.deal_id}#construction-scope`)}
+                  className="inline-flex items-center gap-2 border border-zinc-300 px-3 h-9 text-xs font-bold uppercase tracking-wider hover:border-blue-700 hover:text-blue-700"
+                  title="Jump to the linked Deal's Construction Scope section"
+                  data-testid="view-linked-scope-btn"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> View Linked Scope
+                </button>
+              )}
             </>
           )}
           <button onClick={() => save("stay")} disabled={saving} className="inline-flex items-center gap-2 bg-blue-700 text-white px-3 h-9 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 disabled:opacity-60" data-testid="save-btn">
