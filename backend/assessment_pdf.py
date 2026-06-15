@@ -741,29 +741,34 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     # ============================================================
     _section_header("SealTech Recommendation", story, s)
     rec_items = [
-        ("Restoration Program", a.get("rec_restoration_program")),
-        ("Repair &amp; Monitor", a.get("rec_repair_and_monitor")),
-        ("Partial Replacement", a.get("rec_partial_replacement")),
-        ("Full Replacement", a.get("rec_full_replacement")),
-        ("Maintenance Program", a.get("rec_maintenance_program")),
-        ("Drainage Improvements", a.get("rec_drainage_improvements")),
+        ("Restoration Program",    a.get("rec_restoration_program"),    a.get("rec_restoration_program_comment", "")),
+        ("Repair &amp; Monitor",   a.get("rec_repair_and_monitor"),     a.get("rec_repair_and_monitor_comment", "")),
+        ("Partial Replacement",    a.get("rec_partial_replacement"),    a.get("rec_partial_replacement_comment", "")),
+        ("Full Replacement",       a.get("rec_full_replacement"),       a.get("rec_full_replacement_comment", "")),
+        ("Maintenance Program",    a.get("rec_maintenance_program"),    a.get("rec_maintenance_program_comment", "")),
+        ("Drainage Improvements",  a.get("rec_drainage_improvements"),  a.get("rec_drainage_improvements_comment", "")),
     ]
+    # Build a stacked layout — checkbox + label on left, bordered comment box on right.
     rec_rows = []
-    for i in range(0, len(rec_items), 2):
-        left = rec_items[i]
-        right = rec_items[i + 1] if i + 1 < len(rec_items) else ("", False)
-        rec_rows.append([
-            Paragraph(f'{_check(bool(left[1]))} &nbsp; <b>{left[0]}</b>', s["body_sm"]),
-            Paragraph(f'{_check(bool(right[1]))} &nbsp; <b>{right[0]}</b>' if right[0] else "", s["body_sm"]),
-        ])
-    rec_t = Table(rec_rows, colWidths=[3.65 * inch, 3.65 * inch])
+    for label_text, checked, comment in rec_items:
+        check_cell = Paragraph(f'{_check(bool(checked))} &nbsp; <b>{label_text}</b>', s["body_sm"])
+        comment_box = _text_box(comment or "", num_rows=1, row_height=0.32 * inch, width=5.2 * inch, placeholder="Comments")
+        rec_rows.append([check_cell, comment_box])
+    rec_t = Table(rec_rows, colWidths=[2.1 * inch, 5.2 * inch])
     rec_t.hAlign = "LEFT"
-    rec_t.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    rec_t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (0, -1), 8),
+        ("LEFTPADDING", (1, 0), (1, -1), 0),
+        ("RIGHTPADDING", (1, 0), (1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
     story.append(rec_t)
 
     story.append(Spacer(1, 8))
     story.append(Paragraph("<b>Supporting Comments</b>", s["h3"]))
-    story.append(Paragraph(a.get("supporting_comments") or "<i><font color='#A0A0A0'>—</font></i>", s["body_sm"]))
+    story.append(_text_box(a.get("supporting_comments") or "", num_rows=3, row_height=0.26 * inch))
 
     story.append(Spacer(1, 14))
     _section_header("Expected Outcome", story, s)
@@ -788,11 +793,25 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
 
     story.append(Spacer(1, 14))
     _section_header("Conclusion", story, s)
-    story.append(Paragraph(a.get("conclusion") or
-        "This report provides an objective evaluation to support informed decisions about the roofing asset. "
-        "SealTech is available to walk through findings, refine the recommended plan, and assist with execution.",
-        s["body"],
-    ))
+    conclusion_default = (
+        "Commercial roofs are valuable assets."
+    )
+    custom = a.get("conclusion")
+    if custom:
+        story.append(Paragraph(custom, s["body"]))
+    else:
+        story.append(Paragraph("Commercial roofs are valuable assets.", s["body"]))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(
+            "The objective of this assessment is not simply identifying deficiencies. The objective is to understand "
+            "the condition, value, remaining service life, future risks, and long-term potential of the roofing asset.",
+            s["body"],
+        ))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(
+            "The most informed roofing decisions begin with objective information.",
+            s["body"],
+        ))
 
     # ---- Build PDF (two-pass for page count footer) ----
     # First pass: count pages
