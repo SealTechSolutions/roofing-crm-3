@@ -621,7 +621,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         s["body"],
     ))
     story.append(Spacer(1, 4))
-    story.append(_text_box(a.get("restoration_analysis") or "", num_rows=4))
+    story.append(_text_box(a.get("restoration_analysis") or "", num_rows=6, row_height=0.23 * inch))
 
     story.append(Spacer(1, 8))
     story.append(Paragraph("<b>Factors Supporting Restoration</b>", s["h3"]))
