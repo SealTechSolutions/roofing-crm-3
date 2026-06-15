@@ -474,7 +474,7 @@ function StepCover({ doc, update, contacts, deals, linkedDeal }) {
           <input value={doc.building_type} onChange={(e) => update({ building_type: e.target.value })} className={inputCls} placeholder="Warehouse, Office, Retail..." data-testid="building-type" />
         </Field>
         <Field label="Year Constructed">
-          <input type="number" value={doc.year_built ?? ""} onChange={(e) => update({ year_built: e.target.value === "" ? null : parseInt(e.target.value) })} className={inputCls} data-testid="year-built" />
+          <YearOrUnknown value={doc.year_built} onChange={(v) => update({ year_built: v })} testId="year-built" />
         </Field>
         <Field label="Occupancy Type">
           <input value={doc.occupancy_type} onChange={(e) => update({ occupancy_type: e.target.value })} className={inputCls} placeholder="Owner-occupied, Tenant, Mixed..." data-testid="occupancy-type" />
@@ -486,7 +486,7 @@ function StepCover({ doc, update, contacts, deals, linkedDeal }) {
           <input value={doc.manufacturer} onChange={(e) => update({ manufacturer: e.target.value })} className={inputCls} placeholder="Carlisle, GAF, Firestone..." data-testid="manufacturer" />
         </Field>
         <Field label="Installation Date">
-          <input type="date" value={doc.installation_date || ""} onChange={(e) => update({ installation_date: e.target.value })} className={inputCls} data-testid="installation-date" />
+          <DateOrUnknown value={doc.installation_date} onChange={(v) => update({ installation_date: v })} testId="installation-date" />
         </Field>
         <Field label="Estimated Roof Age (years)">
           <input type="number" step="0.5" value={doc.roof_age_years ?? ""} onChange={(e) => update({ roof_age_years: e.target.value === "" ? null : parseFloat(e.target.value) })} className={inputCls} data-testid="roof-age" />
@@ -498,7 +498,7 @@ function StepCover({ doc, update, contacts, deals, linkedDeal }) {
           <input type="number" value={doc.square_footage ?? ""} onChange={(e) => update({ square_footage: e.target.value === "" ? null : parseFloat(e.target.value) })} className={inputCls} data-testid="sqft" />
         </Field>
         <Field label="Last Inspection Date">
-          <input type="date" value={doc.last_inspection_date || ""} onChange={(e) => update({ last_inspection_date: e.target.value })} className={inputCls} data-testid="last-inspection" />
+          <DateOrUnknown value={doc.last_inspection_date} onChange={(v) => update({ last_inspection_date: v })} testId="last-inspection" />
         </Field>
         <Field label="Repair History" full>
           <textarea rows={2} value={doc.repair_history} onChange={(e) => update({ repair_history: e.target.value })} className={inputCls} placeholder="Notes on prior repairs, leak history, prior contractors..." data-testid="repair-history" />
@@ -719,11 +719,11 @@ function StepAnalysis({ doc, update, updateOption }) {
     <div className="space-y-5" data-testid="step-analysis-body">
       <SectionTitle>Score Drivers</SectionTitle>
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Positive Factors">
-          <ListInput value={doc.positive_factors} onChange={(v) => update({ positive_factors: v })} placeholder="Add positive driver..." testId="positive-factors" />
+        <Field label="Positive Factors (one per line)">
+          <LinesArea value={doc.positive_factors} onChange={(v) => update({ positive_factors: v })} rows={3} placeholder="One positive driver per line…" testId="positive-factors" />
         </Field>
-        <Field label="Negative Factors">
-          <ListInput value={doc.negative_factors} onChange={(v) => update({ negative_factors: v })} placeholder="Add negative driver..." testId="negative-factors" />
+        <Field label="Negative Factors (one per line)">
+          <LinesArea value={doc.negative_factors} onChange={(v) => update({ negative_factors: v })} rows={3} placeholder="One negative driver per line…" testId="negative-factors" />
         </Field>
       </div>
 
@@ -787,14 +787,14 @@ function StepAnalysis({ doc, update, updateOption }) {
             </Field>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <Field label="Advantages">
-              <ListInput value={doc[key].advantages} onChange={(v) => updateOption(key, { advantages: v })} testId={`${key}-adv`} />
+            <Field label="Advantages (one per line)">
+              <LinesArea value={doc[key].advantages} onChange={(v) => updateOption(key, { advantages: v })} rows={3} testId={`${key}-adv`} />
             </Field>
-            <Field label="Disadvantages">
-              <ListInput value={doc[key].disadvantages} onChange={(v) => updateOption(key, { disadvantages: v })} testId={`${key}-dis`} />
+            <Field label="Disadvantages (one per line)">
+              <LinesArea value={doc[key].disadvantages} onChange={(v) => updateOption(key, { disadvantages: v })} rows={3} testId={`${key}-dis`} />
             </Field>
-            <Field label="Limitations">
-              <ListInput value={doc[key].limitations} onChange={(v) => updateOption(key, { limitations: v })} testId={`${key}-lim`} />
+            <Field label="Limitations (one per line)">
+              <LinesArea value={doc[key].limitations} onChange={(v) => updateOption(key, { limitations: v })} rows={3} testId={`${key}-lim`} />
             </Field>
           </div>
         </div>
@@ -811,10 +811,13 @@ function StepPlan({ doc, update }) {
     <div className="space-y-5" data-testid="step-plan-body">
       <SectionTitle>Recommended Strategy</SectionTitle>
       <Field label="Recommended Strategy">
-        <textarea rows={3} value={doc.recommended_strategy} onChange={(e) => update({ recommended_strategy: e.target.value })} className={inputCls} data-testid="rec-strategy" />
+        <textarea rows={4} value={doc.recommended_strategy} onChange={(e) => update({ recommended_strategy: e.target.value })} className={inputCls} data-testid="rec-strategy" />
       </Field>
       <Field label="Capital Planning Impact">
-        <textarea rows={3} value={doc.capital_planning_impact} onChange={(e) => update({ capital_planning_impact: e.target.value })} className={inputCls} data-testid="capital-impact" />
+        <textarea rows={4} value={doc.capital_planning_impact} onChange={(e) => update({ capital_planning_impact: e.target.value })} className={inputCls} data-testid="capital-impact" />
+      </Field>
+      <Field label="Immediate Action Items (one per line)">
+        <LinesArea value={doc.immediate_action_items} onChange={(v) => update({ immediate_action_items: v })} rows={4} testId="immediate-action-items" />
       </Field>
 
       <SectionTitle>Capital Planning Forecast</SectionTitle>
@@ -852,14 +855,14 @@ function StepPlan({ doc, update }) {
         </div>
       </Field>
       <div className="grid grid-cols-3 gap-4">
-        <Field label="Immediate Actions (0-12 Mo)">
-          <ListInput value={doc.immediate_actions} onChange={(v) => update({ immediate_actions: v })} testId="immediate-actions" />
+        <Field label="Immediate Actions (0-12 Mo, one per line)">
+          <LinesArea value={doc.immediate_actions} onChange={(v) => update({ immediate_actions: v })} rows={3} testId="immediate-actions" />
         </Field>
-        <Field label="Near-Term (1-3 Yr)">
-          <ListInput value={doc.near_term_actions} onChange={(v) => update({ near_term_actions: v })} testId="near-actions" />
+        <Field label="Near-Term (1-3 Yr, one per line)">
+          <LinesArea value={doc.near_term_actions} onChange={(v) => update({ near_term_actions: v })} rows={3} testId="near-actions" />
         </Field>
-        <Field label="Long-Term (3-10 Yr)">
-          <ListInput value={doc.long_term_actions} onChange={(v) => update({ long_term_actions: v })} testId="long-actions" />
+        <Field label="Long-Term (3-10 Yr, one per line)">
+          <LinesArea value={doc.long_term_actions} onChange={(v) => update({ long_term_actions: v })} rows={3} testId="long-actions" />
         </Field>
       </div>
 
@@ -1119,6 +1122,82 @@ function ListInput({ value, onChange, placeholder, testId }) {
           data-testid={`${testId}-add`}
         />
       </div>
+    </div>
+  );
+}
+
+// Textarea-backed list editor — one line per bullet. Stores List<string>.
+// Use this for fields whose PDF renders as a single text box (Forecast outlooks,
+// Action horizons, Positive/Negative Factors, Option pros/cons).
+function LinesArea({ value, onChange, placeholder, rows = 3, testId }) {
+  const items = Array.isArray(value) ? value : [];
+  const text = items.join("\n");
+  return (
+    <textarea
+      rows={rows}
+      value={text}
+      onChange={(e) => onChange(e.target.value.split("\n").map((s) => s).filter((s, i, arr) => !(s === "" && i === arr.length - 1)))}
+      onBlur={(e) => onChange(e.target.value.split("\n").map((s) => s.trim()).filter(Boolean))}
+      placeholder={placeholder || "One item per line…"}
+      className="w-full border border-zinc-200 px-2 py-1.5 text-sm focus:outline-none focus:border-blue-700"
+      data-testid={testId}
+    />
+  );
+}
+
+// Date OR free-text "Unknown". Stores `""` (empty), `YYYY-MM-DD`, or `"Unknown"`.
+function DateOrUnknown({ value, onChange, testId }) {
+  const isUnknown = String(value || "").trim().toLowerCase() === "unknown";
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="date"
+        value={isUnknown ? "" : (value || "")}
+        disabled={isUnknown}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 border border-zinc-200 px-2 py-1.5 text-sm focus:outline-none focus:border-blue-700 disabled:bg-zinc-50 disabled:text-zinc-400"
+        data-testid={testId}
+      />
+      <label className="inline-flex items-center gap-1.5 text-xs text-zinc-600 select-none cursor-pointer">
+        <input
+          type="checkbox"
+          checked={isUnknown}
+          onChange={(e) => onChange(e.target.checked ? "Unknown" : "")}
+          className="accent-blue-700"
+          data-testid={`${testId}-unknown`}
+        />
+        Unknown
+      </label>
+    </div>
+  );
+}
+
+// Year OR free-text "Unknown". Stores number, "Unknown", or null.
+function YearOrUnknown({ value, onChange, testId }) {
+  const isUnknown = typeof value === "string" && value.trim().toLowerCase() === "unknown";
+  const num = isUnknown ? "" : (value ?? "");
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="number"
+        min={1800}
+        max={2100}
+        value={num}
+        disabled={isUnknown}
+        onChange={(e) => onChange(e.target.value === "" ? null : parseInt(e.target.value))}
+        className="flex-1 border border-zinc-200 px-2 py-1.5 text-sm focus:outline-none focus:border-blue-700 disabled:bg-zinc-50 disabled:text-zinc-400"
+        data-testid={testId}
+      />
+      <label className="inline-flex items-center gap-1.5 text-xs text-zinc-600 select-none cursor-pointer">
+        <input
+          type="checkbox"
+          checked={isUnknown}
+          onChange={(e) => onChange(e.target.checked ? "Unknown" : null)}
+          className="accent-blue-700"
+          data-testid={`${testId}-unknown`}
+        />
+        Unknown
+      </label>
     </div>
   );
 }

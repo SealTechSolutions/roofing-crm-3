@@ -1,0 +1,39 @@
+{
+  "summary": "Frontend e2e test of Assessment Editor wizard new components (YearOrUnknown, DateOrUnknown, LinesArea, rec-comment inputs) on assessment 7bd97c9a-43ce-4958-a65a-2f0dfa078649. All save+reload round-trips passed; PDF endpoint returns 200 application/pdf (1.28 MB). No regressions in recommended_strategy / capital_planning_impact textareas.",
+  "test_steps_executed": [
+    "Login admin@roofingcrm.com (via SIGN IN button after Enter fallback)",
+    "Step 1 (Cover & Property) — Year Constructed Unknown checkbox: tick → input disabled (True), save + reload → still checked (True) & disabled (True). Untick + enter 2010 → reload value = '2010'. PASS",
+    "Step 1 — Installation Date Unknown: tick → disabled, save+reload preserves Unknown. Untick + pick 2018-06-15 → reload value = '2018-06-15'. PASS",
+    "Step 1 — Last Inspection Date Unknown: tick → disabled, save+reload preserves Unknown. PASS",
+    "Step 4 (Analysis & Options) — positive-factors / negative-factors textareas: 3 lines entered, blur, save, reload → exactly 3 lines come back joined by \\n. PASS",
+    "Step 4 — option_repair-adv / option_restoration-dis / option_replacement-lim LinesArea: 2-line inputs round-trip correctly. PASS",
+    "Step 5 (Plan & Recommendation) — immediate-action-items, immediate-actions, near-actions, long-actions LinesArea all round-trip multi-line correctly. PASS",
+    "Step 5 — rec-rec_restoration_program-comment and rec-rec_repair_and_monitor-comment inline text inputs save and reload correctly; data-testid matches `rec-<key>-comment` convention. PASS",
+    "Step 5 — checkbox rec-rec_restoration_program persists checked state. PASS",
+    "Regression — rec-strategy and capital-impact textareas continue to save+reload. PASS",
+    "PDF round-trip with year_built='Unknown' set: GET /api/assessments/{id}/pdf returned status=200, content-type=application/pdf, size=1,280,857 bytes. PASS"
+  ],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AssessmentEditor header", "issues": ["Header shows 'Untitled Assessment' because property_name is blank on this test asset — pre-existing, not a regression of this iteration."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_14.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AssessmentEditor.jsx is 1233 lines — consider extracting StepCover/StepScores/StepFindings/StepAnalysis/StepPlan into separate files (file-size >700-line guideline).",
+    "LinesArea onChange splits raw text but does not trim per-line; final blur trims+drops empties — this means while typing, a trailing space line is briefly stored. Acceptable, behavior matches spec.",
+    "PhotoThumb constructs an unused `url` constant with token_qs query string (lines 1206-1208) — dead code, can be removed.",
+    "DateOrUnknown / YearOrUnknown: nice abstractions; the 'Unknown' string comparison is case-insensitive which is forgiving. Consider exporting these as shared components if reused elsewhere."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only request)", "frontend": "100%"},
+  "test_credentials": "admin@roofingcrm.com / admin123",
+  "seed_data_creation": "Used existing assessment id 7bd97c9a-43ce-4958-a65a-2f0dfa078649; left it with year_built='Unknown', installation_date='2018-06-15', last_inspection_date='Unknown', plus sample Step 4/5 lines and recommendation comments populated.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All new wizard fields (Unknown toggles + LinesArea + rec comments) are working end-to-end. The wizard step numbering in this iteration's review_request was off by one from the code (Property Info actually lives on Step 1 'Cover & Property', not Step 2). data-testids used: year-built[-unknown], installation-date[-unknown], last-inspection[-unknown], positive-factors, negative-factors, option_{repair,restoration,replacement}-{adv,dis,lim}, immediate-action-items, immediate-actions, near-actions, long-actions, rec-rec_<key>[-comment]. PDF endpoint returns binary OK; backend agent already verified the 'Unknown' string appears in rendered PDF via curl."
+}

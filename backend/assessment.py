@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import Response
@@ -111,11 +111,11 @@ class AssessmentIn(BaseModel):
 
     # ---- Property Information (14 fields matching original report) ----
     building_type: str = ""
-    year_built: Optional[int] = None  # "Year Constructed"
+    year_built: Optional[Union[int, str]] = None  # "Year Constructed" — int year OR "Unknown"
     occupancy_type: str = ""
     roof_type: str = ""
     manufacturer: str = ""
-    installation_date: str = ""  # ISO yyyy-mm-dd
+    installation_date: str = ""  # ISO yyyy-mm-dd OR "Unknown"
     roof_age_years: Optional[float] = None  # "Estimated Roof Age"
     warranty_status_text: str = ""  # Free-form text (distinct from the warranty_status score)
     square_footage: Optional[float] = None  # "Approximate Roof Area" in sq ft
