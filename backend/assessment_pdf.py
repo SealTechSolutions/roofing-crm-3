@@ -553,10 +553,10 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     story.append(PageBreak())
 
     # ============================================================
-    # PAGE 6 — R-2 + R-3
+    # PAGE 6 — R-2 + R-3   (2 findings per page)
     # ============================================================
     await _render_finding(db, story, s, idx=2, finding=a.get("finding_r2") or {})
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 10))
     await _render_finding(db, story, s, idx=3, finding=a.get("finding_r3") or {})
     story.append(PageBreak())
 
@@ -564,7 +564,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     # PAGE 7 — R-4 + R-5
     # ============================================================
     await _render_finding(db, story, s, idx=4, finding=a.get("finding_r4") or {})
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 10))
     await _render_finding(db, story, s, idx=5, finding=a.get("finding_r5") or {})
     story.append(PageBreak())
 
@@ -847,7 +847,7 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict, pho
     value so photos fill the balance of the page.
     """
     if photo_size is None:
-        photo_size = 2.85 * inch
+        photo_size = 3.0 * inch
     component = finding.get("component", f"Component {idx}")
     severity = finding.get("severity", "")
     severity_color = {"Critical": RED, "High": RED, "Moderate": AMBER, "Low": GREEN}.get(severity, GRAY).hexval()
@@ -875,8 +875,8 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict, pho
         ("BACKGROUND", (0, 0), (0, -1), SOFT_BRONZE),
         ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
         ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
     ]))
     story.append(body_t)
