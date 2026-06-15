@@ -704,7 +704,8 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     # ============================================================
     _section_header("Capital Planning Forecast", story, s)
     # Stack each outlook as h3 label + bordered text box (matches Recommended Strategy /
-    # Capital Planning Impact pattern from Page 3).
+    # Capital Planning Impact pattern from Page 3). Sized to fill Page 10 along with
+    # the Recommended Roof Asset Plan™ section below.
     forecast_rows = [
         ("1-Year Outlook",  a.get("forecast_1yr", "")),
         ("3-Year Outlook",  a.get("forecast_3yr", "")),
@@ -713,8 +714,8 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     ]
     for k, v in forecast_rows:
         story.append(Paragraph(f"<b>{k}</b>", s["h3"]))
-        story.append(_text_box(v or "", num_rows=2))
-        story.append(Spacer(1, 4))
+        story.append(_text_box(v or "", num_rows=3, row_height=0.26 * inch))
+        story.append(Spacer(1, 2))
 
     story.append(Spacer(1, 12))
     _section_header("Recommended Roof Asset Plan™", story, s)
@@ -724,15 +725,15 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         f'<b>Estimated Budget Priority:</b> <font color="{priority_color.hexval()}"><b>{priority.upper()}</b></font>',
         s["body"],
     ))
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 4))
     story.append(Paragraph("<b>Immediate Actions (0–12 Months)</b>", s["h3"]))
-    story.append(_text_box(" • ".join(a.get("immediate_actions") or []), num_rows=2))
-    story.append(Spacer(1, 4))
+    story.append(_text_box(" • ".join(a.get("immediate_actions") or []), num_rows=3, row_height=0.26 * inch))
+    story.append(Spacer(1, 2))
     story.append(Paragraph("<b>Near-Term Actions (1–3 Years)</b>", s["h3"]))
-    story.append(_text_box(" • ".join(a.get("near_term_actions") or []), num_rows=2))
-    story.append(Spacer(1, 4))
+    story.append(_text_box(" • ".join(a.get("near_term_actions") or []), num_rows=3, row_height=0.26 * inch))
+    story.append(Spacer(1, 2))
     story.append(Paragraph("<b>Long-Term Actions (3–10 Years)</b>", s["h3"]))
-    story.append(_text_box(" • ".join(a.get("long_term_actions") or []), num_rows=2))
+    story.append(_text_box(" • ".join(a.get("long_term_actions") or []), num_rows=3, row_height=0.26 * inch))
     story.append(PageBreak())
 
     # ============================================================
