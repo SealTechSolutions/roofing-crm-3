@@ -157,7 +157,7 @@ def _score_box(label: str, score_val, reasoning: str) -> Table:
         ParagraphStyle("sn", fontName="Helvetica-Bold", fontSize=13, leading=15, alignment=TA_CENTER, textColor=DARK),
     )
     label_para = Paragraph(label.upper(), s["score_label"])
-    reasoning_para = Paragraph(reasoning or "<i><font color='#A0A0A0'>Not yet documented.</font></i>", s["body_sm"])
+    reasoning_para = Paragraph(_esc(reasoning) or "<i><font color='#A0A0A0'>Not yet documented.</font></i>", s["body_sm"])
     # 2 rows × 2 cols; reasoning spans both rows on the right.
     outer = Table([
         [score_para, reasoning_para],
@@ -210,14 +210,26 @@ def _check(yes: bool) -> str:
     return '<font color="#16A34A"><b>☑</b></font>' if yes else '<font color="#A0A0A0">☐</font>'
 
 
+def _esc(s) -> str:
+    """Escape user text so ReportLab's mini-XML Paragraph parser doesn't choke on
+    raw '<', '>', or '&'. Pass any user-provided string through this before
+    embedding into a Paragraph."""
+    if s is None:
+        return ""
+    return (str(s)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;"))
+
+
 def _text_box(text: str, num_rows: int = 8, row_height: float = 0.22 * inch, width: float = 7.3 * inch,
               placeholder: str = "—") -> Table:
-    """Fixed-height bordered container that always reserves `num_rows` of line space —
-    keeps the page layout stable regardless of how much text the user types.
-    The content is rendered as a single paragraph inside the box (it wraps naturally),
-    but the BOX itself never shrinks below num_rows × row_height."""
+    """Fixed-height bordered container. Always reserves exactly `num_rows × row_height`
+    of vertical space. If the user types more text than fits, the Paragraph inside
+    gets shrunk via KeepInFrame so the page layout never breaks.
+    """
     s = _styles()
-    content = text or f"<i><font color='#A0A0A0'>{placeholder}</font></i>"
+    content = _esc(text) if text else f"<i><font color='#A0A0A0'>{placeholder}</font></i>"
     # Make body style with a slightly tighter leading
     para_style = ParagraphStyle(
         "boxed_body", parent=s["body"],
@@ -225,18 +237,21 @@ def _text_box(text: str, num_rows: int = 8, row_height: float = 0.22 * inch, wid
         textColor=DARK,
     )
     p = Paragraph(content, para_style)
-    box = Table([[p]], colWidths=[width], rowHeights=[num_rows * row_height])
+    fixed_h = num_rows * row_height
+    box = Table([[p]], colWidths=[width], rowHeights=[fixed_h])
     box.hAlign = "LEFT"
     box.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),  # Light grey — just visible
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
         ("RIGHTPADDING", (0, 0), (-1, -1), 10),
         ("TOPPADDING", (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
-    return box
+    # Wrap so an over-long Paragraph is shrunk to fit the reserved height rather
+    # than raising a LayoutError. Layout stays rock-stable across content lengths.
+    return KeepInFrame(maxWidth=width, maxHeight=fixed_h, content=[box], mode="shrink")
 
 
 def _finding_box(items: list, num_slots: int = 3, row_height: float = 0.32 * inch,
@@ -253,7 +268,7 @@ def _finding_box(items: list, num_slots: int = 3, row_height: float = 0.32 * inc
         if value:
             row_html = (
                 f'<font color="#A0703A"><b>{label}</b></font> '
-                f'<font color="#0A0A0A">{value}</font>'
+                f'<font color="#0A0A0A">{_esc(value)}</font>'
             )
         else:
             row_html = (
@@ -345,7 +360,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     # ============================================================
     _section_header("Executive Summary", story, s)
     story.append(Paragraph("<b>Purpose of Assessment</b>", s["h3"]))
-    story.append(Paragraph(a.get("purpose") or
+    story.append(Paragraph(_esc(a.get("purpose")) or
         "The purpose of this Commercial Roof Assessment Report&#8482; is to provide an objective evaluation of the "
         "current condition, performance, remaining service life, restoration potential, and future risk exposure of "
         "the roofing asset.",
@@ -445,7 +460,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         "This assessment was performed by a SealTech roof consultant using a combination of various methods, "
         "including but not limited to those below."
     )
-    story.append(Paragraph(a.get("methodology_notes") or methodology_default, s["body"]))
+    story.append(Paragraph(_esc(a.get("methodology_notes")) or methodology_default, s["body"]))
     story.append(Spacer(1, 6))
 
     # 2-column box of assessment focus areas (matches original Page 4 layout)
@@ -500,7 +515,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     ]
     prop_data = [[
         Paragraph(f'<b><font color="#A0703A">{k.upper()}</font></b>', s["label"]),
-        Paragraph(v or "—", s["body_sm"]),
+        Paragraph(_esc(v) or "—", s["body_sm"]),
     ] for k, v in prop_rows]
     prop_t = Table(prop_data, colWidths=[1.6 * inch, 5.7 * inch])
     prop_t.hAlign = "LEFT"
@@ -848,8 +863,8 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict, pho
     """
     if photo_size is None:
         photo_size = 2.7 * inch
-    component = finding.get("component", f"Component {idx}")
-    severity = finding.get("severity", "")
+    component = _esc(finding.get("component", f"Component {idx}"))
+    severity = _esc(finding.get("severity", ""))
     severity_color = {"Critical": RED, "High": RED, "Moderate": AMBER, "Low": GREEN}.get(severity, GRAY).hexval()
 
     block: list = []
@@ -860,10 +875,10 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict, pho
     ))
 
     body_rows = [
-        ["OBSERVATIONS",   finding.get("observations") or "—"],
-        ["SEVERITY",       finding.get("severity") or "—"],
-        ["RISK",           finding.get("risk") or "—"],
-        ["RECOMMENDATION", finding.get("recommendation") or "—"],
+        ["OBSERVATIONS",   _esc(finding.get("observations")) or "—"],
+        ["SEVERITY",       _esc(finding.get("severity")) or "—"],
+        ["RISK",           _esc(finding.get("risk")) or "—"],
+        ["RECOMMENDATION", _esc(finding.get("recommendation")) or "—"],
     ]
     body_data = [[
         Paragraph(f'<font color="#A0703A"><b>{k}</b></font>', s["label"]),
