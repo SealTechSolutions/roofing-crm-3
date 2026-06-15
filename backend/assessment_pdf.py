@@ -417,23 +417,24 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     story.append(Spacer(1, 14))
     _section_header("Executive Findings", story, s)
     story.append(Paragraph("<b>Primary Concerns</b>", s["h3"]))
-    story.append(_finding_box(a.get("primary_concerns", []), num_slots=3))
-    story.append(Spacer(1, 8))
+    story.append(_finding_box(a.get("primary_concerns", []), num_slots=3, row_height=0.26 * inch))
+    story.append(Spacer(1, 6))
     story.append(Paragraph("<b>Positive Findings</b>", s["h3"]))
-    story.append(_finding_box(a.get("positive_findings", []), num_slots=3))
-    story.append(PageBreak())
+    story.append(_finding_box(a.get("positive_findings", []), num_slots=3, row_height=0.26 * inch))
 
     # ============================================================
-    # PAGE 4 — Recommended Strategy + Capital Planning Impact + Immediate Action Items
+    # PAGE 3 (continued) — Recommended Strategy + Capital Planning Impact + Immediate Action Items
+    # (Previously on Page 4; compacted onto Page 3 per spec.)
     # ============================================================
+    story.append(Spacer(1, 10))
     _section_header("Recommended Strategy", story, s)
-    story.append(_text_box(a.get("recommended_strategy") or "", num_rows=7))
-    story.append(Spacer(1, 12))
+    story.append(_text_box(a.get("recommended_strategy") or "", num_rows=3))
+    story.append(Spacer(1, 8))
     story.append(Paragraph("<b>Capital Planning Impact</b>", s["h3"]))
-    story.append(_text_box(a.get("capital_planning_impact") or "", num_rows=7))
-    story.append(Spacer(1, 12))
+    story.append(_text_box(a.get("capital_planning_impact") or "", num_rows=3))
+    story.append(Spacer(1, 8))
     story.append(Paragraph("<b>Immediate Action Items</b>", s["h3"]))
-    story.append(_finding_box(a.get("immediate_action_items", []), num_slots=3))
+    story.append(_finding_box(a.get("immediate_action_items", []), num_slots=3, row_height=0.26 * inch))
     story.append(PageBreak())
 
     # ============================================================
