@@ -768,7 +768,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
 
     story.append(Spacer(1, 8))
     story.append(Paragraph("<b>Supporting Comments</b>", s["h3"]))
-    story.append(_text_box(a.get("supporting_comments") or "", num_rows=3, row_height=0.26 * inch))
+    story.append(_text_box(a.get("supporting_comments") or "", num_rows=6, row_height=0.26 * inch))
 
     story.append(Spacer(1, 14))
     _section_header("Expected Outcome", story, s)
