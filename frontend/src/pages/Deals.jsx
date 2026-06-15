@@ -504,22 +504,25 @@ export default function Deals() {
                     const w15 = Math.max(12.0 * sq, 1500);
                     const w20 = Math.max(15.0 * sq, 1750) + (isFarmScope ? rider : 0);
                     const w25 = Math.max(17.5 * sq, 2000) + rider;
+                    // Round UP to the next $100 so the input fields (which use step=100)
+                    // never carry decimals or odd $50 values like $123.50.
+                    const roundUpTo100 = (n) => Math.ceil(n / 100) * 100;
                     const next = {
                       ...form,
-                      warranty_20yr_add: Math.round(w20 * 100) / 100,
-                      warranty_15yr_add: Math.round(w15 * 100) / 100,
-                      warranty_10yr_add: Math.round(w10 * 100) / 100,
+                      warranty_20yr_add: roundUpTo100(w20),
+                      warranty_15yr_add: roundUpTo100(w15),
+                      warranty_10yr_add: roundUpTo100(w10),
                     };
                     if (isFarmScope) {
-                      next.warranty_25yr_add = Math.round(w25 * 100) / 100;
+                      next.warranty_25yr_add = roundUpTo100(w25);
                     } else {
                       // Non-FARM scopes do not offer 25-yr — clear it so old values don't linger.
                       next.warranty_25yr_add = 0;
                     }
                     setForm(next);
                     toast.success(isFarmScope
-                      ? `FARM warranties calculated for ${sq.toFixed(1)} SQ (incl. Hail Rider on 20/25-yr)`
-                      : `Warranties calculated for ${sq.toFixed(1)} SQ (25-yr skipped — FARM only)`);
+                      ? `FARM warranties calculated for ${sq.toFixed(1)} SQ (incl. Hail Rider on 20/25-yr) — rounded up to nearest $100`
+                      : `Warranties calculated for ${sq.toFixed(1)} SQ (25-yr skipped — FARM only) — rounded up to nearest $100`);
                   }}
                   className="inline-flex items-center gap-2 bg-white border border-blue-700 text-blue-700 px-3 h-8 text-[10px] font-bold uppercase tracking-wider hover:bg-blue-50 rounded-sm transition-colors"
                   title="Auto-fill warranty add-ons from Total SqFt using the standard per-square rates. 25-yr + Hail Rider are FARM-only."
