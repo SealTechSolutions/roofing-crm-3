@@ -12,7 +12,7 @@ import { formatPhoneDisplay, maskTaxIdInput } from "@/lib/format";
 
 export default function Vendors({ kind = "Vendor" }) {
   const isSub = kind === "Subcontractor";
-  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", contact_name: "", contact_title: "", website: "", phone: "", work_phone: "", mobile_phone: "", fax: "", email: "", tin_ein: "", address: "", address_line2: "", city: "", state: DEFAULT_STATE, zip_code: "", notes: "" };
+  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", contact_name: "", contact_title: "", website: "", phone: "", work_phone: "", mobile_phone: "", fax: "", email: "", tin_ein: "", address: "", address_line2: "", city: "", state: DEFAULT_STATE, zip_code: "", notes: "", gl_coi_on_file: false, gl_coi_issued_date: "", gl_coi_expiry_date: "", wc_coi_on_file: false, wc_coi_issued_date: "", wc_coi_expiry_date: "" };
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -126,7 +126,7 @@ export default function Vendors({ kind = "Vendor" }) {
           <table className="w-full text-sm" data-testid={`${kind.toLowerCase()}s-table`}>
             <thead>
               <tr className="border-b-2 border-zinc-950 text-left">
-                <Th>Name</Th><Th>Category</Th><Th>Contact</Th><Th>Phone</Th><Th>Email</Th><Th>Actions</Th>
+                <Th>Name</Th><Th>Category</Th><Th>Contact</Th><Th>Phone</Th><Th>Email</Th>{isSub && <Th>COI</Th>}<Th>Actions</Th>
               </tr>
             </thead>
             <tbody>
@@ -147,6 +147,9 @@ export default function Vendors({ kind = "Vendor" }) {
                   </td>
                   <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{formatPhoneDisplay(v.mobile_phone || v.work_phone || v.phone)}</td>
                   <td className="px-6 py-3 text-zinc-600 text-xs">{v.email}</td>
+                  {isSub && (
+                    <td className="px-6 py-3"><CoiStatusPill form={v} /></td>
+                  )}
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1">
                       <button data-testid={`docs-${kind.toLowerCase()}-${v.id}`} onClick={() => setDocsFor(v)} title="Documents" className="p-1.5 hover:bg-zinc-200 rounded-sm"><FolderOpen className="w-3.5 h-3.5" /></button>
@@ -252,6 +255,48 @@ export default function Vendors({ kind = "Vendor" }) {
                 </Field>
               </div>
             </div>
+            <div className="rounded-sm border border-zinc-200 bg-zinc-50 p-4 space-y-3" data-testid={`${kind.toLowerCase()}-coi-section`}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-blue-700">Certificates of Insurance (COI)</h3>
+                <CoiStatusPill form={form} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-[max-content_1fr_1fr] gap-3 items-end">
+                <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-700 select-none pb-2">
+                  <input
+                    type="checkbox"
+                    checked={!!form.gl_coi_on_file}
+                    onChange={(e) => setForm({ ...form, gl_coi_on_file: e.target.checked })}
+                    className="accent-blue-700"
+                    data-testid={`${kind.toLowerCase()}-gl-coi-on-file`}
+                  />
+                  General Liability COI
+                </label>
+                <Field label="GL Issued">
+                  <Input type="date" disabled={!form.gl_coi_on_file} value={form.gl_coi_issued_date} onChange={(v) => setForm({ ...form, gl_coi_issued_date: v })} data-testid={`${kind.toLowerCase()}-gl-coi-issued`} />
+                </Field>
+                <Field label="GL Expires">
+                  <Input type="date" disabled={!form.gl_coi_on_file} value={form.gl_coi_expiry_date} onChange={(v) => setForm({ ...form, gl_coi_expiry_date: v })} data-testid={`${kind.toLowerCase()}-gl-coi-expiry`} />
+                </Field>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-[max-content_1fr_1fr] gap-3 items-end">
+                <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-700 select-none pb-2">
+                  <input
+                    type="checkbox"
+                    checked={!!form.wc_coi_on_file}
+                    onChange={(e) => setForm({ ...form, wc_coi_on_file: e.target.checked })}
+                    className="accent-blue-700"
+                    data-testid={`${kind.toLowerCase()}-wc-coi-on-file`}
+                  />
+                  Workers&apos; Comp COI
+                </label>
+                <Field label="WC Issued">
+                  <Input type="date" disabled={!form.wc_coi_on_file} value={form.wc_coi_issued_date} onChange={(v) => setForm({ ...form, wc_coi_issued_date: v })} data-testid={`${kind.toLowerCase()}-wc-coi-issued`} />
+                </Field>
+                <Field label="WC Expires">
+                  <Input type="date" disabled={!form.wc_coi_on_file} value={form.wc_coi_expiry_date} onChange={(v) => setForm({ ...form, wc_coi_expiry_date: v })} data-testid={`${kind.toLowerCase()}-wc-coi-expiry`} />
+                </Field>
+              </div>
+            </div>
             <Field label="Notes">
               <textarea
                 data-testid={`${kind.toLowerCase()}-notes`}
@@ -281,6 +326,47 @@ export default function Vendors({ kind = "Vendor" }) {
     </div>
   );
 }
+
+
+// ---------- COI Status helper ----------
+// Returns one of: "ok" | "expiring" | "expired" | "missing"
+// "expiring" = within 30 days of expiry; "expired" = past expiry date.
+function coiStatus(form) {
+  if (!form.gl_coi_on_file && !form.wc_coi_on_file) return "missing";
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const checkOne = (onFile, expiry) => {
+    if (!onFile) return "missing";
+    if (!expiry) return "missing";
+    const d = new Date(expiry); if (isNaN(d.getTime())) return "missing";
+    const diffDays = Math.floor((d - today) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return "expired";
+    if (diffDays <= 30) return "expiring";
+    return "ok";
+  };
+  const gl = form.gl_coi_on_file ? checkOne(form.gl_coi_on_file, form.gl_coi_expiry_date) : "missing";
+  const wc = form.wc_coi_on_file ? checkOne(form.wc_coi_on_file, form.wc_coi_expiry_date) : "missing";
+  if (gl === "expired" || wc === "expired") return "expired";
+  if (gl === "expiring" || wc === "expiring") return "expiring";
+  if (gl === "ok" && wc === "ok") return "ok";
+  return "missing";
+}
+
+function CoiStatusPill({ form }) {
+  const status = coiStatus(form);
+  const map = {
+    ok:       { label: "All Current",     cls: "bg-emerald-50 text-emerald-800 border-emerald-300" },
+    expiring: { label: "Expiring Soon",   cls: "bg-amber-50 text-amber-800 border-amber-300" },
+    expired:  { label: "Expired",         cls: "bg-red-50 text-red-800 border-red-300" },
+    missing:  { label: "Missing / Incomplete", cls: "bg-zinc-100 text-zinc-700 border-zinc-300" },
+  };
+  const cfg = map[status];
+  return (
+    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest border rounded-sm ${cfg.cls}`} data-testid="coi-status-pill">
+      {cfg.label}
+    </span>
+  );
+}
+
 
 
 // ---------- Subcontractor Scorecards modal ----------

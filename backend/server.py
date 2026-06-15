@@ -443,6 +443,13 @@ class VendorIn(BaseModel):
     state: str = ""
     zip_code: str = ""
     notes: str = ""
+    # --- Certificates of Insurance (COI) — used primarily for Subcontractors ---
+    gl_coi_on_file: bool = False
+    gl_coi_issued_date: str = ""   # YYYY-MM-DD
+    gl_coi_expiry_date: str = ""   # YYYY-MM-DD
+    wc_coi_on_file: bool = False
+    wc_coi_issued_date: str = ""
+    wc_coi_expiry_date: str = ""
 
 
 class Vendor(VendorIn):
