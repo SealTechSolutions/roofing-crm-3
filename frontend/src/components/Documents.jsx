@@ -105,39 +105,69 @@ export default function Documents({ parentType, parentId, title = "Documents", c
       {files.length === 0 ? (
         <div className="text-sm text-zinc-500 py-6 text-center">No documents yet. Upload measurement reports, assessments, scopes, invoices, photos, COIs, etc.</div>
       ) : (
-        <ul className="divide-y divide-zinc-100" data-testid="documents-list">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="documents-list">
           {files.map((f) => {
             const Icon = iconFor(f.original_filename, f.content_type);
+            const isImage = (f.content_type || "").startsWith("image/");
+            const token = localStorage.getItem("crm_token");
+            const previewUrl = isImage ? `${API}/files/${f.id}/download?token=${encodeURIComponent(token)}` : null;
+            const isCover = coverPhotoId === f.id;
             return (
-              <li key={f.id} className="flex items-center gap-3 py-2.5" data-testid={`document-${f.id}`}>
-                <Icon className="w-5 h-5 text-zinc-400 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-bold text-zinc-950 truncate">{f.original_filename}</div>
-                  <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-0.5">
+              <div
+                key={f.id}
+                className={`group relative bg-white border ${isCover ? "border-amber-500" : "border-zinc-200"} rounded-sm overflow-hidden hover:border-blue-700 hover:shadow-sm transition-all`}
+                data-testid={`document-${f.id}`}
+              >
+                {/* Thumbnail — square aspect */}
+                <div
+                  className="relative aspect-square bg-zinc-100 cursor-pointer flex items-center justify-center"
+                  onClick={() => downloadFile(f)}
+                  title="Open / download"
+                >
+                  {isImage ? (
+                    <img src={previewUrl} alt={f.original_filename} loading="lazy" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-zinc-400">
+                      <Icon className="w-12 h-12" />
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-zinc-500">
+                        {(f.original_filename.split(".").pop() || "FILE").toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                  {isCover && (
+                    <span className="absolute top-1.5 left-1.5 bg-amber-500 text-white text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm">Cover</span>
+                  )}
+                  {/* Hover actions overlay */}
+                  <div className="absolute top-1.5 right-1.5 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={(e) => { e.stopPropagation(); downloadFile(f); }} title="Download" className="p-1.5 bg-white/95 hover:bg-white shadow-sm rounded-sm" data-testid={`download-${f.id}`}>
+                      <Download className="w-3.5 h-3.5 text-zinc-700" />
+                    </button>
+                    {onSetCover && (f.category === "Photo" || isImage) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onSetCover(f.id); }}
+                        title={isCover ? "Cover photo" : "Set as cover photo"}
+                        className="p-1.5 bg-white/95 hover:bg-white shadow-sm rounded-sm"
+                        data-testid={`cover-${f.id}`}
+                      >
+                        <Star className="w-3.5 h-3.5" style={{ fill: isCover ? "#A0703A" : "none", color: isCover ? "#A0703A" : "#52525B" }} />
+                      </button>
+                    )}
+                    <button onClick={(e) => { e.stopPropagation(); remove(f.id); }} title="Delete" className="p-1.5 bg-white/95 hover:bg-red-100 shadow-sm rounded-sm text-red-700" data-testid={`delete-doc-${f.id}`}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+                {/* Metadata */}
+                <div className="p-2.5 border-t border-zinc-100">
+                  <div className="text-xs font-bold text-zinc-950 truncate" title={f.original_filename}>{f.original_filename}</div>
+                  <div className="text-[9px] uppercase tracking-wider text-zinc-500 mt-0.5 truncate">
                     {f.category} · {formatSize(f.size)} · {new Date(f.created_at).toLocaleDateString()}
                   </div>
                 </div>
-                <button onClick={() => downloadFile(f)} title="Download" className="p-1.5 hover:bg-zinc-100 rounded-sm" data-testid={`download-${f.id}`}>
-                  <Download className="w-4 h-4 text-zinc-700" />
-                </button>
-                {onSetCover && (f.category === "Photo" || f.content_type?.startsWith("image/")) && (
-                  <button
-                    onClick={() => onSetCover(f.id)}
-                    title={coverPhotoId === f.id ? "Cover photo" : "Set as cover photo"}
-                    className="p-1.5 rounded-sm hover:bg-zinc-100"
-                    style={{ color: coverPhotoId === f.id ? "#A0703A" : undefined }}
-                    data-testid={`cover-${f.id}`}
-                  >
-                    <Star className="w-4 h-4" style={{ fill: coverPhotoId === f.id ? "#A0703A" : "none", color: coverPhotoId === f.id ? "#A0703A" : "#a1a1aa" }} />
-                  </button>
-                )}
-                <button onClick={() => remove(f.id)} title="Delete" className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm" data-testid={`delete-doc-${f.id}`}>
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </li>
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
     </div>
   );
