@@ -186,6 +186,13 @@ class AssessmentIn(BaseModel):
     rec_full_replacement: bool = False
     rec_maintenance_program: bool = False
     rec_drainage_improvements: bool = False
+    # Per-recommendation comments (shown to the right of each checkbox on Page 11)
+    rec_restoration_program_comment: str = ""
+    rec_repair_and_monitor_comment: str = ""
+    rec_partial_replacement_comment: str = ""
+    rec_full_replacement_comment: str = ""
+    rec_maintenance_program_comment: str = ""
+    rec_drainage_improvements_comment: str = ""
     supporting_comments: str = ""
 
     # ---- Expected Outcome ----

@@ -109,6 +109,12 @@ const BLANK_ASSESSMENT = {
   rec_full_replacement: false,
   rec_maintenance_program: false,
   rec_drainage_improvements: false,
+  rec_restoration_program_comment: "",
+  rec_repair_and_monitor_comment: "",
+  rec_partial_replacement_comment: "",
+  rec_full_replacement_comment: "",
+  rec_maintenance_program_comment: "",
+  rec_drainage_improvements_comment: "",
   supporting_comments: "",
   expected_outcomes: [
     "Extend roof service life",
@@ -858,7 +864,7 @@ function StepPlan({ doc, update }) {
       </div>
 
       <SectionTitle>SealTech Recommendation</SectionTitle>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-2">
         {[
           ["rec_restoration_program", "Restoration Program"],
           ["rec_repair_and_monitor", "Repair & Monitor"],
@@ -866,12 +872,27 @@ function StepPlan({ doc, update }) {
           ["rec_full_replacement", "Full Replacement"],
           ["rec_maintenance_program", "Maintenance Program"],
           ["rec_drainage_improvements", "Drainage Improvements"],
-        ].map(([key, label]) => (
-          <Checkbox key={key} testId={`rec-${key}`} checked={!!doc[key]} onChange={(v) => update({ [key]: v })} label={label} />
-        ))}
+        ].map(([key, label]) => {
+          const commentKey = `${key}_comment`;
+          return (
+            <div key={key} className="flex items-center gap-3">
+              <div className="w-56 shrink-0">
+                <Checkbox testId={`rec-${key}`} checked={!!doc[key]} onChange={(v) => update({ [key]: v })} label={label} />
+              </div>
+              <input
+                type="text"
+                placeholder="Comments"
+                value={doc[commentKey] || ""}
+                onChange={(e) => update({ [commentKey]: e.target.value })}
+                className={`${inputCls} flex-1`}
+                data-testid={`rec-${key}-comment`}
+              />
+            </div>
+          );
+        })}
       </div>
       <Field label="Supporting Comments">
-        <textarea rows={3} value={doc.supporting_comments} onChange={(e) => update({ supporting_comments: e.target.value })} className={inputCls} data-testid="supporting-comments" />
+        <textarea rows={6} value={doc.supporting_comments} onChange={(e) => update({ supporting_comments: e.target.value })} className={inputCls} data-testid="supporting-comments" />
       </Field>
 
       <SectionTitle>Expected Outcome</SectionTitle>
