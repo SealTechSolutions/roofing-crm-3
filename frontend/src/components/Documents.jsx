@@ -34,28 +34,35 @@ export default function Documents({ parentType, parentId, title = "Documents", c
   useEffect(() => { load(); }, [parentType, parentId]);
 
   const handleSelect = async (e) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files || []);
     e.target.value = "";
-    if (!file) return;
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error("Max file size is 50 MB");
-      return;
+    if (files.length === 0) return;
+    // Pre-flight: enforce 50 MB per file
+    const tooBig = files.filter((f) => f.size > 50 * 1024 * 1024);
+    if (tooBig.length) {
+      toast.error(`Max file size is 50 MB. Skipped: ${tooBig.map((f) => f.name).join(", ")}`);
     }
+    const queue = files.filter((f) => f.size <= 50 * 1024 * 1024);
+    if (queue.length === 0) return;
     setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("parent_type", parentType);
-      fd.append("parent_id", parentId);
-      fd.append("category", category);
-      await api.post(`/files/upload`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success("File uploaded");
-      load();
-    } catch (e) {
-      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
-    } finally {
-      setUploading(false);
+    let ok = 0, failed = 0;
+    for (const file of queue) {
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("parent_type", parentType);
+        fd.append("parent_id", parentId);
+        fd.append("category", category);
+        await api.post(`/files/upload`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+        ok += 1;
+      } catch (err) {
+        failed += 1;
+        toast.error(`${file.name}: ${formatApiError(err?.response?.data?.detail) || err.message}`);
+      }
     }
+    if (ok > 0) toast.success(`${ok} file${ok === 1 ? "" : "s"} uploaded${failed ? ` (${failed} failed)` : ""}`);
+    load();
+    setUploading(false);
   };
 
   const downloadFile = (f) => {
@@ -84,7 +91,7 @@ export default function Documents({ parentType, parentId, title = "Documents", c
           >
             {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <input ref={inputRef} type="file" hidden onChange={handleSelect} data-testid="document-file-input" />
+          <input ref={inputRef} type="file" hidden multiple onChange={handleSelect} data-testid="document-file-input" />
           <button
             data-testid="document-upload-button"
             disabled={uploading || !parentId}

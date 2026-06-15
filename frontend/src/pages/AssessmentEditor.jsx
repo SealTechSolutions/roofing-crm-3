@@ -930,23 +930,30 @@ function PhotoPickerModal({ dealId, dealPhotos, existingIds, multiSelect, onClos
   };
 
   const upload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !dealId) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0 || !dealId) return;
     setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("album_name", "Assessment");
-      const r = await api.post(`/projects/${dealId}/photos`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      onUploaded(r.data);
-      toggle(r.data.id);
-      toast.success("Photo uploaded");
-    } catch (err) {
-      toast.error(formatApiError(err?.response?.data?.detail) || err.message);
-    } finally {
-      setUploading(false);
-      e.target.value = "";
+    let lastUploaded = null;
+    let ok = 0, failed = 0;
+    for (const file of files) {
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("album_name", "Assessment");
+        const r = await api.post(`/projects/${dealId}/photos`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+        onUploaded(r.data);
+        lastUploaded = r.data;
+        ok += 1;
+      } catch (err) {
+        failed += 1;
+        toast.error(`${file.name}: ${formatApiError(err?.response?.data?.detail) || err.message}`);
+      }
     }
+    // Auto-select the last uploaded photo (or the first in the batch when multi-select is off)
+    if (lastUploaded) toggle(lastUploaded.id);
+    if (ok > 0) toast.success(`${ok} photo${ok === 1 ? "" : "s"} uploaded${failed ? ` (${failed} failed)` : ""}`);
+    setUploading(false);
+    e.target.value = "";
   };
 
   return (
@@ -963,8 +970,8 @@ function PhotoPickerModal({ dealId, dealPhotos, existingIds, multiSelect, onClos
         <div className="p-5">
           <div className="mb-4">
             <label className="inline-flex items-center gap-2 border border-blue-700 text-blue-700 px-3 py-2 text-xs font-bold uppercase tracking-wider hover:bg-blue-50 cursor-pointer rounded-sm">
-              <Upload className="w-3.5 h-3.5" /> {uploading ? "Uploading..." : "Upload New Photo"}
-              <input type="file" accept="image/*" onChange={upload} className="hidden" data-testid="photo-upload" />
+              <Upload className="w-3.5 h-3.5" /> {uploading ? "Uploading..." : "Upload Photo(s)"}
+              <input type="file" accept="image/*" multiple onChange={upload} className="hidden" data-testid="photo-upload" />
             </label>
             <span className="ml-3 text-xs text-zinc-500">{dealPhotos.length} photo{dealPhotos.length === 1 ? "" : "s"} in project library</span>
           </div>

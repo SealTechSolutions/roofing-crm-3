@@ -199,7 +199,7 @@ function UploadModal({ preset, taxonomy, onClose, onSaved }) {
   const [subcategory, setSubcategory] = useState(preset?.subcategory || taxonomy[0]?.subcategories?.[0] || "");
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);  // multi-file
   const [saving, setSaving] = useState(false);
   const fileInput = useRef(null);
 
@@ -210,22 +210,31 @@ function UploadModal({ preset, taxonomy, onClose, onSaved }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!file) { toast.error("Pick a file"); return; }
+    if (!files.length) { toast.error("Pick one or more files"); return; }
     setSaving(true);
-    const form = new FormData();
-    form.append("file", file);
-    form.append("category", category);
-    form.append("subcategory", subcategory);
-    form.append("display_name", displayName);
-    form.append("description", description);
-    try {
-      await api.post("/library/files", form, { headers: { "Content-Type": "multipart/form-data" } });
-      toast.success("File uploaded");
+    let ok = 0, failed = 0;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const form = new FormData();
+      form.append("file", f);
+      form.append("category", category);
+      form.append("subcategory", subcategory);
+      // Only apply the custom display name when uploading a single file —
+      // otherwise let each file keep its own filename.
+      form.append("display_name", files.length === 1 ? displayName : "");
+      form.append("description", description);
+      try {
+        await api.post("/library/files", form, { headers: { "Content-Type": "multipart/form-data" } });
+        ok += 1;
+      } catch (err) {
+        failed += 1;
+        toast.error(`${f.name}: ${formatApiError(err?.response?.data?.detail) || err.message}`);
+      }
+    }
+    setSaving(false);
+    if (ok > 0) {
+      toast.success(`${ok} file${ok === 1 ? "" : "s"} uploaded${failed ? ` (${failed} failed)` : ""}`);
       onSaved();
-    } catch (err) {
-      toast.error(formatApiError(err?.response?.data?.detail) || err.message);
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -253,13 +262,18 @@ function UploadModal({ preset, taxonomy, onClose, onSaved }) {
             </select>
           </div>
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">File *</label>
-            <input ref={fileInput} type="file" onChange={(e) => setFile(e.target.files[0])} className="w-full text-sm" data-testid="upload-file" />
-            <div className="text-[10px] text-zinc-500 mt-1">PDF, image, or Word doc. Max 50MB.</div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Files * <span className="font-normal text-zinc-500">(pick one or many)</span></label>
+            <input ref={fileInput} type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files || []))} className="w-full text-sm" data-testid="upload-file" />
+            <div className="text-[10px] text-zinc-500 mt-1">
+              PDF, image, or Word doc. Max 50MB each.
+              {files.length > 0 && <span className="ml-2 font-bold text-blue-700">{files.length} selected</span>}
+            </div>
           </div>
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Display Name</label>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="(defaults to filename)" className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm" data-testid="upload-display-name" />
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">
+              Display Name {files.length > 1 && <span className="font-normal text-zinc-400 normal-case">(ignored — multiple files keep their own names)</span>}
+            </label>
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="(defaults to filename)" disabled={files.length > 1} className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm disabled:bg-zinc-50 disabled:text-zinc-400" data-testid="upload-display-name" />
           </div>
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Description</label>
