@@ -105,7 +105,7 @@ export default function Documents({ parentType, parentId, title = "Documents", c
       {files.length === 0 ? (
         <div className="text-sm text-zinc-500 py-6 text-center">No documents yet. Upload measurement reports, assessments, scopes, invoices, photos, COIs, etc.</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="documents-list">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5" data-testid="documents-list">
           {files.map((f) => {
             const Icon = iconFor(f.original_filename, f.content_type);
             const isImage = (f.content_type || "").startsWith("image/");
@@ -127,41 +127,41 @@ export default function Documents({ parentType, parentId, title = "Documents", c
                   {isImage ? (
                     <img src={previewUrl} alt={f.original_filename} loading="lazy" className="w-full h-full object-cover" />
                   ) : (
-                    <div className="flex flex-col items-center gap-2 text-zinc-400">
-                      <Icon className="w-12 h-12" />
-                      <span className="text-[10px] uppercase tracking-widest font-bold text-zinc-500">
+                    <div className="flex flex-col items-center gap-1 text-zinc-400">
+                      <Icon className="w-7 h-7" />
+                      <span className="text-[8px] uppercase tracking-widest font-bold text-zinc-500">
                         {(f.original_filename.split(".").pop() || "FILE").toUpperCase()}
                       </span>
                     </div>
                   )}
                   {isCover && (
-                    <span className="absolute top-1.5 left-1.5 bg-amber-500 text-white text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm">Cover</span>
+                    <span className="absolute top-1 left-1 bg-amber-500 text-white text-[8px] font-bold uppercase tracking-widest px-1 py-0.5 rounded-sm">Cover</span>
                   )}
                   {/* Hover actions overlay */}
-                  <div className="absolute top-1.5 right-1.5 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={(e) => { e.stopPropagation(); downloadFile(f); }} title="Download" className="p-1.5 bg-white/95 hover:bg-white shadow-sm rounded-sm" data-testid={`download-${f.id}`}>
-                      <Download className="w-3.5 h-3.5 text-zinc-700" />
+                  <div className="absolute top-1 right-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={(e) => { e.stopPropagation(); downloadFile(f); }} title="Download" className="p-1 bg-white/95 hover:bg-white shadow-sm rounded-sm" data-testid={`download-${f.id}`}>
+                      <Download className="w-3 h-3 text-zinc-700" />
                     </button>
                     {onSetCover && (f.category === "Photo" || isImage) && (
                       <button
                         onClick={(e) => { e.stopPropagation(); onSetCover(f.id); }}
                         title={isCover ? "Cover photo" : "Set as cover photo"}
-                        className="p-1.5 bg-white/95 hover:bg-white shadow-sm rounded-sm"
+                        className="p-1 bg-white/95 hover:bg-white shadow-sm rounded-sm"
                         data-testid={`cover-${f.id}`}
                       >
-                        <Star className="w-3.5 h-3.5" style={{ fill: isCover ? "#A0703A" : "none", color: isCover ? "#A0703A" : "#52525B" }} />
+                        <Star className="w-3 h-3" style={{ fill: isCover ? "#A0703A" : "none", color: isCover ? "#A0703A" : "#52525B" }} />
                       </button>
                     )}
-                    <button onClick={(e) => { e.stopPropagation(); remove(f.id); }} title="Delete" className="p-1.5 bg-white/95 hover:bg-red-100 shadow-sm rounded-sm text-red-700" data-testid={`delete-doc-${f.id}`}>
-                      <Trash2 className="w-3.5 h-3.5" />
+                    <button onClick={(e) => { e.stopPropagation(); remove(f.id); }} title="Delete" className="p-1 bg-white/95 hover:bg-red-100 shadow-sm rounded-sm text-red-700" data-testid={`delete-doc-${f.id}`}>
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
                 </div>
-                {/* Metadata */}
-                <div className="p-2.5 border-t border-zinc-100">
-                  <div className="text-xs font-bold text-zinc-950 truncate" title={f.original_filename}>{f.original_filename}</div>
+                {/* Metadata — compact */}
+                <div className="p-1.5 border-t border-zinc-100">
+                  <div className="text-[10px] font-bold text-zinc-950 truncate leading-tight" title={f.original_filename}>{f.original_filename}</div>
                   <div className="text-[9px] uppercase tracking-wider text-zinc-500 mt-0.5 truncate">
-                    {f.category} · {formatSize(f.size)} · {new Date(f.created_at).toLocaleDateString()}
+                    {f.category}
                   </div>
                 </div>
               </div>
