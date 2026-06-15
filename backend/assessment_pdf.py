@@ -442,11 +442,43 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     # ============================================================
     _section_header("Assessment Methodology", story, s)
     methodology_default = (
-        "This assessment was performed by a SealTech-certified roof consultant using a combination of visual inspection, "
-        "measurement, and documentation review. Findings reflect conditions observed at the time of assessment and are "
-        "intended to support informed capital-planning decisions."
+        "This assessment was performed by a SealTech roof consultant using a combination of various methods, "
+        "including but not limited to those below."
     )
-    story.append(Paragraph(a.get("methodology_notes") or methodology_default, s["body_sm"]))
+    story.append(Paragraph(a.get("methodology_notes") or methodology_default, s["body"]))
+    story.append(Spacer(1, 6))
+
+    # 2-column box of assessment focus areas (matches original Page 4 layout)
+    method_items = [
+        "Waterproofing Integrity",
+        "Flashings & Penetrations",
+        "Structural Indicators",
+        "Maintenance History",
+        "Surface Condition",
+        "Drainage Performance",
+        "Weather-Related Damage",
+        "Future Risk Exposure",
+    ]
+    method_rows = []
+    for i in range(0, len(method_items), 2):
+        left = method_items[i]
+        right = method_items[i + 1] if i + 1 < len(method_items) else ""
+        method_rows.append([
+            Paragraph(f'<font color="#A0703A">•</font> &nbsp; {left}', s["body_sm"]),
+            Paragraph(f'<font color="#A0703A">•</font> &nbsp; {right}' if right else "", s["body_sm"]),
+        ])
+    method_t = Table(method_rows, colWidths=[3.65 * inch, 3.65 * inch])
+    method_t.hAlign = "LEFT"
+    method_t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
+        ("BACKGROUND", (0, 0), (-1, -1), SOFT_BRONZE),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(method_t)
     story.append(Spacer(1, 10))
 
     _section_header("Property Information", story, s)
