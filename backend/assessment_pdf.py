@@ -434,7 +434,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     story.append(_text_box(a.get("capital_planning_impact") or "", num_rows=4))
     story.append(Spacer(1, 8))
     story.append(Paragraph("<b>Immediate Action Items</b>", s["h3"]))
-    story.append(_finding_box(a.get("immediate_action_items", []), num_slots=3, row_height=0.26 * inch))
+    story.append(_text_box(" • ".join(a.get("immediate_action_items") or []), num_rows=4))
     story.append(PageBreak())
 
     # ============================================================
