@@ -153,18 +153,26 @@ export default function DealDetail() {
     persist({ cost_items: items });
   };
 
-  const removeCostItem = (idx) => {
+  const removeCostItem = async (idx) => {
     if (!window.confirm("Remove this cost item?")) return;
-    // Blur any active cell input so a pending typed value doesn't re-inject the
-    // row we're about to delete (same root-cause class as the +Add bug).
-    if (document.activeElement && typeof document.activeElement.blur === "function") {
-      document.activeElement.blur();
+    // Compute the new list from the CURRENT deal (this read is synchronous and
+    // captures any cell edits that have already committed). Then PUT directly.
+    const items = (deal.cost_items || []).filter((_, i) => i !== idx);
+    try {
+      const r = await api.put(`/deals/${id}`, (() => {
+        const body = { ...deal, cost_items: items };
+        ["id","created_at","updated_at","created_by",
+         "materials_cost","labor_cost","subcontractor_cost","other_expenses_total",
+         "total_costs","profit","margin_pct","is_deleted","deleted_at","deleted_by",
+         "assigned_user_name","primary_contact_name","property_name"
+        ].forEach((k) => delete body[k]);
+        return body;
+      })());
+      setDeal(r.data);
+      toast.success("Cost item removed");
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message || "Delete failed");
     }
-    setTimeout(() => {
-      const items = [...(deal.cost_items || [])];
-      items.splice(idx, 1);
-      Promise.resolve(persist({ cost_items: items })).then(() => toast.success("Cost item removed"));
-    }, 0);
   };
 
   // ----- Maintenance Plan handlers -----
