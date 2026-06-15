@@ -402,6 +402,10 @@
 - Roof Asset Score™ rows: compact score boxes (0.85" × auto, 13pt number) restructured to a single non-nested Table so the blue box left-edge sits flush with the Executive Conclusion / Overall Recommendation text boxes (verified at X=81 px in the rendered PDF — perfect alignment).
 - All 6 backend assessment tests still pass.
 
+### Object Storage Hard-Delete — Resolved (Feb 2026)
+- Confirmed per Emergent Object Storage playbook: **no permanent-delete API exists**; the platform allocates 5 GB per app.
+- Our Admin Trash "Permanently Delete" workflow already does the right thing — purges the MongoDB record and gracefully swallows the storage 405. No code change required.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
