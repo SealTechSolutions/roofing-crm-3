@@ -3419,6 +3419,122 @@ async def list_vendors(kind: Optional[str] = None, current=Depends(get_current_u
     return await cursor.to_list(1000)
 
 
+@api_router.get("/coi-roster")
+async def coi_roster(current=Depends(get_current_user)):
+    """Return Subcontractors whose GL or WC COI is missing, expired, or expiring within 30 days.
+
+    Response shape per row:
+      { id, name, email, gl_status, gl_expiry, wc_status, wc_expiry, worst_status }
+    `worst_status` ∈ {"expired", "expiring", "missing"} — rows where both COIs
+    are current ("ok") are excluded.
+    """
+    from datetime import datetime, date as _date
+    today = _date.today()
+    rows = []
+    cursor = db.vendors.find({"kind": "Subcontractor", "is_deleted": {"$ne": True}}, {"_id": 0})
+    async for v in cursor:
+        def _one(on_file, exp):
+            if not on_file:
+                return "missing", None
+            if not exp:
+                return "missing", None
+            try:
+                d = datetime.strptime(exp, "%Y-%m-%d").date()
+            except Exception:
+                return "missing", None
+            days = (d - today).days
+            if days < 0:
+                return "expired", d.isoformat()
+            if days <= 30:
+                return "expiring", d.isoformat()
+            return "ok", d.isoformat()
+        gl_status, gl_exp = _one(v.get("gl_coi_on_file"), v.get("gl_coi_expiry_date"))
+        wc_status, wc_exp = _one(v.get("wc_coi_on_file"), v.get("wc_coi_expiry_date"))
+        # Worst-of ranking: expired > expiring > missing > ok
+        rank = {"expired": 3, "expiring": 2, "missing": 1, "ok": 0}
+        worst = max([gl_status, wc_status], key=lambda x: rank.get(x, 0))
+        if worst == "ok":
+            continue  # exclude fully-current subs
+        rows.append({
+            "id": v["id"],
+            "name": v.get("name", ""),
+            "email": v.get("email", ""),
+            "contact_name": v.get("contact_name", ""),
+            "gl_status": gl_status,
+            "gl_expiry": gl_exp,
+            "wc_status": wc_status,
+            "wc_expiry": wc_exp,
+            "worst_status": worst,
+        })
+    rows.sort(key=lambda r: ({"expired": 0, "expiring": 1, "missing": 2}.get(r["worst_status"], 9), r["name"].lower()))
+    return rows
+
+
+class CoiRenewalEmailIn(BaseModel):
+    to_override: Optional[str] = None  # optional override email
+    cc: Optional[str] = None
+
+
+@api_router.post("/coi-roster/{vendor_id}/email-renewal")
+async def email_coi_renewal(vendor_id: str, body: CoiRenewalEmailIn, current=Depends(get_current_user)):
+    """Send a one-click "Please send updated COI" email to the subcontractor."""
+    v = await db.vendors.find_one({"id": vendor_id, "is_deleted": {"$ne": True}})
+    if not v:
+        raise HTTPException(404, "Subcontractor not found")
+    to = (body.to_override or v.get("email") or "").strip()
+    if not to:
+        raise HTTPException(400, "Subcontractor has no email on file — provide to_override or add an email to the contact record")
+
+    name = v.get("contact_name") or v.get("name") or "there"
+    company = v.get("name") or ""
+    # Compose human-readable missing/expired summary
+    parts = []
+    if v.get("gl_coi_on_file"):
+        gx = v.get("gl_coi_expiry_date") or "no expiry on file"
+        parts.append(f"• General Liability COI — expires {gx}")
+    else:
+        parts.append("• General Liability COI — not on file")
+    if v.get("wc_coi_on_file"):
+        wx = v.get("wc_coi_expiry_date") or "no expiry on file"
+        parts.append(f"• Workers' Comp COI — expires {wx}")
+    else:
+        parts.append("• Workers' Comp COI — not on file")
+    bullets = "\n".join(parts)
+
+    subject = f"Action Needed: Updated Certificates of Insurance for {company}"
+    body_text = (
+        f"Hi {name},\n\n"
+        f"Our records show the following insurance documents need to be updated for {company}:\n\n"
+        f"{bullets}\n\n"
+        "Please send us a current Certificate of Insurance at your earliest convenience so we can keep "
+        "your account active for upcoming projects.\n\n"
+        "Thanks,\n"
+        "SealTech Commercial Roofing"
+    )
+    body_html = (
+        f"<p>Hi {name},</p>"
+        f"<p>Our records show the following insurance documents need to be updated for <b>{company}</b>:</p>"
+        f"<ul>{''.join(f'<li>{p[2:]}</li>' for p in parts)}</ul>"
+        "<p>Please send us a current Certificate of Insurance at your earliest convenience so we can keep "
+        "your account active for upcoming projects.</p>"
+        "<p>Thanks,<br/>SealTech Commercial Roofing</p>"
+    )
+    try:
+        from email_sender import send_email
+        result = send_email(to=to, subject=subject, body_text=body_text, body_html=body_html, cc=body.cc)
+        # Log a touchpoint on the vendor for visibility
+        await db.vendors.update_one(
+            {"id": vendor_id},
+            {"$set": {"coi_last_renewal_email_at": datetime.now(timezone.utc).isoformat(),
+                      "coi_last_renewal_email_by": current.get("id")}},
+        )
+        return {"ok": True, "to": to, "result": result}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to send: {e}")
+
+
+
+
 @api_router.post("/vendors", response_model=Vendor)
 async def create_vendor(body: VendorIn, current=Depends(get_current_user)):
     data = body.model_dump()

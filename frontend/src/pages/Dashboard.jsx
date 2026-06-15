@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { api, formatCurrency } from "@/lib/api";
+import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { Link } from "react-router-dom";
-import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail } from "lucide-react";
 import { ExportButtons } from "@/components/ExportImport";
+import { toast } from "sonner";
 
 const KPI = ({ label, value, hint, icon: Icon, testId }) => (
   <div className="bg-white border border-zinc-200 p-6 rounded-sm" data-testid={testId}>
@@ -107,6 +108,9 @@ export default function Dashboard() {
 
       {/* Materials In Motion */}
       <MaterialsInMotion motion={motion} />
+
+      {/* COI Roster — Subcontractors with expired/expiring/missing insurance */}
+      <CoiRoster />
 
       {/* Revenue by Project Type */}
       <div className="bg-white border border-zinc-200 rounded-sm mb-12" data-testid="revenue-by-type-card">
@@ -451,6 +455,133 @@ function KpiCell({ label, value, hint, tone = "zinc" }) {
       <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{label}</div>
       <div className={`font-mono font-black text-base ${toneMap[tone]} mt-0.5`}>{value}</div>
       {hint && <div className="text-[10px] text-zinc-400 mt-0.5">{hint}</div>}
+    </div>
+  );
+}
+
+
+// =========================================================
+// COI Roster — Subcontractors with expired / expiring / missing insurance
+// =========================================================
+function CoiRoster() {
+  const [rows, setRows] = useState(null);
+  const [sending, setSending] = useState(null); // vendor id currently emailing
+
+  const load = () => {
+    api.get("/coi-roster")
+      .then((r) => setRows(r.data))
+      .catch((e) => {
+        toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+        setRows([]);
+      });
+  };
+  useEffect(load, []);
+
+  const sendRenewal = async (row) => {
+    if (!row.email) {
+      toast.error(`No email on file for ${row.name}. Add an email to the subcontractor first.`);
+      return;
+    }
+    if (!window.confirm(`Email ${row.email} requesting an updated COI for ${row.name}?`)) return;
+    setSending(row.id);
+    try {
+      await api.post(`/coi-roster/${row.id}/email-renewal`, {});
+      toast.success(`Renewal request sent to ${row.email}`);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSending(null);
+    }
+  };
+
+  const statusPill = (status) => {
+    const map = {
+      expired:  "bg-red-50 text-red-800 border-red-300",
+      expiring: "bg-amber-50 text-amber-800 border-amber-300",
+      missing:  "bg-zinc-100 text-zinc-700 border-zinc-300",
+      ok:       "bg-emerald-50 text-emerald-800 border-emerald-300",
+    };
+    return (
+      <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest border rounded-sm ${map[status] || map.missing}`}>
+        {status}
+      </span>
+    );
+  };
+
+  if (rows === null) {
+    return <div className="mb-12 text-xs uppercase tracking-[0.2em] text-zinc-500">Loading COI roster…</div>;
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="mb-12 bg-emerald-50 border border-emerald-200 p-6 rounded-sm flex items-center gap-3" data-testid="coi-roster-empty">
+        <ShieldAlert className="w-5 h-5 text-emerald-700" />
+        <div>
+          <div className="font-heading text-base font-bold text-emerald-900">All Subcontractor COIs Current</div>
+          <div className="text-xs text-emerald-800 mt-0.5">No expired, expiring, or missing certificates.</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Counts
+  const counts = rows.reduce((acc, r) => { acc[r.worst_status] = (acc[r.worst_status] || 0) + 1; return acc; }, {});
+
+  return (
+    <div className="mb-12" data-testid="coi-roster">
+      <div className="flex items-end justify-between mb-4 gap-3 flex-wrap">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-1 flex items-center gap-1.5"><ShieldAlert className="w-3 h-3" /> Compliance</div>
+          <h2 className="font-heading text-2xl font-black tracking-tight">COI Roster</h2>
+          <div className="text-xs text-zinc-600 mt-1">
+            {counts.expired ? <span className="mr-3"><b className="text-red-700">{counts.expired}</b> expired</span> : null}
+            {counts.expiring ? <span className="mr-3"><b className="text-amber-700">{counts.expiring}</b> expiring soon</span> : null}
+            {counts.missing ? <span className="mr-3"><b className="text-zinc-700">{counts.missing}</b> missing</span> : null}
+          </div>
+        </div>
+        <Link to="/subcontractors" className="text-xs uppercase tracking-wider text-blue-700 hover:underline">Manage Subcontractors →</Link>
+      </div>
+      <div className="bg-white border border-zinc-200 rounded-sm overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b-2 border-zinc-950 text-left">
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Subcontractor</th>
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Email</th>
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">GL</th>
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">GL Expires</th>
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">WC</th>
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">WC Expires</th>
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b border-zinc-100 hover:bg-zinc-50" data-testid={`coi-roster-row-${r.id}`}>
+                <td className="px-4 py-3 font-bold text-zinc-950">
+                  <Link to="/subcontractors" className="hover:underline">{r.name}</Link>
+                  {r.contact_name && <div className="text-[10px] font-normal text-zinc-500 mt-0.5">{r.contact_name}</div>}
+                </td>
+                <td className="px-4 py-3 text-zinc-600">{r.email || <span className="text-zinc-400 italic">no email</span>}</td>
+                <td className="px-4 py-3">{statusPill(r.gl_status)}</td>
+                <td className="px-4 py-3 font-mono text-zinc-700">{r.gl_expiry || "—"}</td>
+                <td className="px-4 py-3">{statusPill(r.wc_status)}</td>
+                <td className="px-4 py-3 font-mono text-zinc-700">{r.wc_expiry || "—"}</td>
+                <td className="px-4 py-3 text-right">
+                  <button
+                    onClick={() => sendRenewal(r)}
+                    disabled={sending === r.id || !r.email}
+                    className="inline-flex items-center gap-1.5 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-sm transition-colors"
+                    data-testid={`coi-email-renewal-${r.id}`}
+                    title={r.email ? `Email ${r.email}` : "No email on file"}
+                  >
+                    <Mail className="w-3 h-3" />
+                    {sending === r.id ? "Sending…" : "Email Renewal"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
