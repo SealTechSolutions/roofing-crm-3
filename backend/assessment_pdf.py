@@ -549,7 +549,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     story.append(_photo_flowable(aerial_bytes, w=7.3 * inch, h=3.3 * inch, placeholder="Aerial roof image — upload in editor", h_align="LEFT"))
     story.append(Spacer(1, 12))
     _section_header("Asset Condition Findings", story, s)
-    await _render_finding(db, story, s, idx=1, finding=a.get("finding_r1") or {})
+    await _render_finding(db, story, s, idx=1, finding=a.get("finding_r1") or {}, photo_size=3.3 * inch)
     story.append(PageBreak())
 
     # ============================================================
@@ -837,13 +837,17 @@ def _score_pill(sc: dict) -> Paragraph:
     )
 
 
-async def _render_finding(db, story: list, s: dict, idx: int, finding: dict):
+async def _render_finding(db, story: list, s: dict, idx: int, finding: dict, photo_size: float = None):
     """Render one R-N finding block matching the original layout:
        - Header with code + component name + severity badge
        - 4-row info table (Observations / Severity / Risk / Recommendation)
-       - 2 photo slots side-by-side below
-    Designed to fit 1× on page 5 (with aerial) and 2× per page on pages 6-7.
+       - 2 square photo slots side-by-side below
+    `photo_size` controls the square photo edge length. Defaults to 2.85" — sized
+    so two findings stack onto pages 6/7. Page 5 (single finding) passes a larger
+    value so photos fill the balance of the page.
     """
+    if photo_size is None:
+        photo_size = 2.85 * inch
     component = finding.get("component", f"Component {idx}")
     severity = finding.get("severity", "")
     severity_color = {"Critical": RED, "High": RED, "Moderate": AMBER, "Low": GREEN}.get(severity, GRAY).hexval()
@@ -878,17 +882,18 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict):
     story.append(body_t)
     story.append(Spacer(1, 4))
 
-    # 2 photo slots — square placeholders. Left photo flush LEFT edge, right photo
-    # flush RIGHT edge (aligned with right edge of body_t above). Gap column in middle.
+    # 2 photo slots — square placeholders sized to fill remaining vertical space.
+    # Left photo flush LEFT, right photo flush RIGHT (aligned with body_t right edge).
     photo_ids = (finding.get("photo_ids") or [])[:2]
     slots = [None, None]
     for i, pid in enumerate(photo_ids[:2]):
         slots[i] = await _load_photo(db, pid)
-    left_photo = _photo_flowable(slots[0], w=2.5 * inch, h=2.5 * inch, placeholder="Photo placeholder", h_align="LEFT")
-    right_photo = _photo_flowable(slots[1], w=2.5 * inch, h=2.5 * inch, placeholder="Photo placeholder", h_align="RIGHT")
+    gap = (7.3 * inch) - (2 * photo_size)
+    left_photo = _photo_flowable(slots[0], w=photo_size, h=photo_size, placeholder="Photo placeholder", h_align="LEFT")
+    right_photo = _photo_flowable(slots[1], w=photo_size, h=photo_size, placeholder="Photo placeholder", h_align="RIGHT")
     ph_t = Table([[left_photo, "", right_photo]],
-                 colWidths=[2.5 * inch, 2.3 * inch, 2.5 * inch],
-                 rowHeights=[2.55 * inch])
+                 colWidths=[photo_size, gap, photo_size],
+                 rowHeights=[photo_size + 0.05 * inch])
     ph_t.hAlign = "LEFT"
     ph_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
