@@ -681,26 +681,22 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     for label, opt in [("Option 1 — Continue Repairs and Maintenance", repair),
                        ("Option 2 — Restoration", restore),
                        ("Option 3 — Replacement", replace)]:
-        story.append(Spacer(1, 8))
-        story.append(Paragraph(f"<b>{label}</b>", s["h3"]))
-        adv_t = Table([
-            [Paragraph('<font color="#16A34A"><b>ADVANTAGES</b></font>', s["label"]),
-             Paragraph('<font color="#B91C1C"><b>DISADVANTAGES</b></font>', s["label"]),
-             Paragraph('<font color="#D97706"><b>LIMITATIONS</b></font>', s["label"])],
-            [_bullet_list(opt.get("advantages", []), empty_text="(none)"),
-             _bullet_list(opt.get("disadvantages", []), empty_text="(none)"),
-             _bullet_list(opt.get("limitations", []), empty_text="(none)")],
-        ], colWidths=[2.43 * inch, 2.43 * inch, 2.44 * inch])
-        adv_t.hAlign = "LEFT"
-        adv_t.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
-            ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ]))
-        story.append(adv_t)
+        block = [
+            Spacer(1, 8),
+            Paragraph(f"<b>{label}</b>", s["h3"]),
+            Paragraph('<font color="#16A34A"><b>ADVANTAGES</b></font>', s["label"]),
+            Spacer(1, 2),
+            _finding_box(opt.get("advantages", []), num_slots=3, row_height=0.22 * inch),
+            Spacer(1, 4),
+            Paragraph('<font color="#B91C1C"><b>DISADVANTAGES</b></font>', s["label"]),
+            Spacer(1, 2),
+            _finding_box(opt.get("disadvantages", []), num_slots=3, row_height=0.22 * inch),
+            Spacer(1, 4),
+            Paragraph('<font color="#D97706"><b>LIMITATIONS</b></font>', s["label"]),
+            Spacer(1, 2),
+            _finding_box(opt.get("limitations", []), num_slots=3, row_height=0.22 * inch),
+        ]
+        story.append(KeepTogether(block))
     story.append(PageBreak())
 
     # ============================================================
