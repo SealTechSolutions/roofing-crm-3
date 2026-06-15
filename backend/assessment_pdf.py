@@ -726,13 +726,13 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     ))
     story.append(Spacer(1, 6))
     story.append(Paragraph("<b>Immediate Actions (0–12 Months)</b>", s["h3"]))
-    story.append(_bullet_list(a.get("immediate_actions", []), empty_text="None planned."))
+    story.append(_text_box(" • ".join(a.get("immediate_actions") or []), num_rows=2))
     story.append(Spacer(1, 4))
     story.append(Paragraph("<b>Near-Term Actions (1–3 Years)</b>", s["h3"]))
-    story.append(_bullet_list(a.get("near_term_actions", []), empty_text="None planned."))
+    story.append(_text_box(" • ".join(a.get("near_term_actions") or []), num_rows=2))
     story.append(Spacer(1, 4))
     story.append(Paragraph("<b>Long-Term Actions (3–10 Years)</b>", s["h3"]))
-    story.append(_bullet_list(a.get("long_term_actions", []), empty_text="None planned."))
+    story.append(_text_box(" • ".join(a.get("long_term_actions") or []), num_rows=2))
     story.append(PageBreak())
 
     # ============================================================
