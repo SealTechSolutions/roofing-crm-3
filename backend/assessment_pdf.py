@@ -21,7 +21,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    Image, KeepTogether, PageBreak, ListFlowable, ListItem,
+    Image, KeepTogether, KeepInFrame, PageBreak, ListFlowable, ListItem,
 )
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 
@@ -848,17 +848,18 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict, pho
        - Header with code + component name + severity badge
        - 4-row info table (Observations / Severity / Risk / Recommendation)
        - 2 square photo slots side-by-side below
-    `photo_size` controls the square photo edge length. Defaults to 2.85" — sized
-    so two findings stack onto pages 6/7. Page 5 (single finding) passes a larger
-    value so photos fill the balance of the page.
+    `photo_size` controls the square photo edge length. Defaults to 2.7" — a safe
+    size that handles longer text content without overflowing on dual-finding pages.
+    The full finding block is wrapped in KeepTogether so it never splits across pages.
     """
     if photo_size is None:
-        photo_size = 3.0 * inch
+        photo_size = 2.7 * inch
     component = finding.get("component", f"Component {idx}")
     severity = finding.get("severity", "")
     severity_color = {"Critical": RED, "High": RED, "Moderate": AMBER, "Low": GREEN}.get(severity, GRAY).hexval()
 
-    story.append(Paragraph(
+    block: list = []
+    block.append(Paragraph(
         f'<font color="#A0703A"><b>R-{idx}</b></font>  &nbsp; <b>{component}</b> '
         f'&nbsp;&nbsp; <font color="{severity_color}"><b>[{severity or "—"}]</b></font>',
         s["h2"],
@@ -885,8 +886,8 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict, pho
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ("LEFTPADDING", (0, 0), (-1, -1), 10),
     ]))
-    story.append(body_t)
-    story.append(Spacer(1, 4))
+    block.append(body_t)
+    block.append(Spacer(1, 4))
 
     # 2 photo slots — square placeholders sized to fill remaining vertical space.
     # Left photo flush LEFT, right photo flush RIGHT (aligned with body_t right edge).
@@ -908,4 +909,7 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict, pho
         ("TOPPADDING", (0, 0), (-1, -1), 2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
-    story.append(ph_t)
+    block.append(ph_t)
+    # Keep the whole finding (heading + body table + photos) atomic so it never
+    # splits mid-block and never overlaps the next finding's photo row.
+    story.append(KeepTogether(block))
