@@ -604,22 +604,13 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
 
     story.append(Spacer(1, 10))
     story.append(Paragraph("<b>Score Drivers</b>", s["h3"]))
-    drivers_t = Table([
-        [Paragraph('<font color="#16A34A"><b>POSITIVE FACTORS</b></font>', s["label"]),
-         Paragraph('<font color="#B91C1C"><b>NEGATIVE FACTORS</b></font>', s["label"])],
-        [_bullet_list(a.get("positive_factors", []), empty_text="(none)"),
-         _bullet_list(a.get("negative_factors", []), empty_text="(none)")],
-    ], colWidths=[3.65 * inch, 3.65 * inch])
-    drivers_t.hAlign = "LEFT"
-    drivers_t.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-    ]))
-    story.append(drivers_t)
+    story.append(Paragraph('<font color="#16A34A"><b>POSITIVE FACTORS</b></font>', s["label"]))
+    story.append(Spacer(1, 2))
+    story.append(_finding_box(a.get("positive_factors", []), num_slots=3, row_height=0.28 * inch))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph('<font color="#B91C1C"><b>NEGATIVE FACTORS</b></font>', s["label"]))
+    story.append(Spacer(1, 2))
+    story.append(_finding_box(a.get("negative_factors", []), num_slots=3, row_height=0.28 * inch))
 
     story.append(Spacer(1, 10))
     story.append(Paragraph("<b>Restoration Suitability™ Analysis</b>", s["h3"]))
@@ -629,7 +620,8 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         f'Rating: <font color="{rating_color.hexval()}"><b>{rating.upper()}</b></font>',
         s["body"],
     ))
-    story.append(Paragraph(a.get("restoration_analysis") or "<i><font color='#A0A0A0'>—</font></i>", s["body_sm"]))
+    story.append(Spacer(1, 4))
+    story.append(_text_box(a.get("restoration_analysis") or "", num_rows=4))
 
     story.append(Spacer(1, 8))
     story.append(Paragraph("<b>Factors Supporting Restoration</b>", s["h3"]))
