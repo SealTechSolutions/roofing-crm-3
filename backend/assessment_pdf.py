@@ -369,7 +369,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     for label, sc in score_blocks:
         story.append(_score_box(label, sc.get("score") if isinstance(sc, dict) else 0,
                                 sc.get("reasoning") if isinstance(sc, dict) else ""))
-        story.append(Spacer(1, 3))
+        story.append(Spacer(1, 14))
 
     story.append(Spacer(1, 6))
     story.append(Paragraph("<b>Overall Recommendation</b>", s["h3"]))
