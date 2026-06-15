@@ -546,7 +546,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     # ============================================================
     _section_header("Aerial Image of Roof", story, s)
     aerial_bytes = await _load_photo(db, a.get("aerial_photo_id"))
-    story.append(_photo_flowable(aerial_bytes, w=7.3 * inch, h=3.3 * inch, placeholder="Aerial roof image — upload in editor"))
+    story.append(_photo_flowable(aerial_bytes, w=7.3 * inch, h=3.3 * inch, placeholder="Aerial roof image — upload in editor", h_align="LEFT"))
     story.append(Spacer(1, 12))
     _section_header("Asset Condition Findings", story, s)
     await _render_finding(db, story, s, idx=1, finding=a.get("finding_r1") or {})
@@ -872,7 +872,7 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict):
         Paragraph(f'<font color="#A0703A"><b>{k}</b></font>', s["label"]),
         Paragraph(v, s["body_sm"]),
     ] for k, v in body_rows]
-    body_t = Table(body_data, colWidths=[1.3 * inch, 6.0 * inch])
+    body_t = Table(body_data, colWidths=[1.6 * inch, 5.7 * inch])
     body_t.hAlign = "LEFT"
     body_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -886,15 +886,17 @@ async def _render_finding(db, story: list, s: dict, idx: int, finding: dict):
     story.append(body_t)
     story.append(Spacer(1, 4))
 
-    # 2 photo slots side-by-side (matches original layout). Left photo hugs LEFT edge,
-    # right photo hugs RIGHT edge — both flush to the text margins.
+    # 2 photo slots — square placeholders. Left photo flush LEFT edge, right photo
+    # flush RIGHT edge (aligned with right edge of body_t above). Gap column in middle.
     photo_ids = (finding.get("photo_ids") or [])[:2]
     slots = [None, None]
     for i, pid in enumerate(photo_ids[:2]):
         slots[i] = await _load_photo(db, pid)
-    left_photo = _photo_flowable(slots[0], w=3.55 * inch, h=1.9 * inch, placeholder="Photo placeholder", h_align="LEFT")
-    right_photo = _photo_flowable(slots[1], w=3.55 * inch, h=1.9 * inch, placeholder="Photo placeholder", h_align="RIGHT")
-    ph_t = Table([[left_photo, right_photo]], colWidths=[3.65 * inch, 3.65 * inch], rowHeights=[1.95 * inch])
+    left_photo = _photo_flowable(slots[0], w=2.5 * inch, h=2.5 * inch, placeholder="Photo placeholder", h_align="LEFT")
+    right_photo = _photo_flowable(slots[1], w=2.5 * inch, h=2.5 * inch, placeholder="Photo placeholder", h_align="RIGHT")
+    ph_t = Table([[left_photo, "", right_photo]],
+                 colWidths=[2.5 * inch, 2.3 * inch, 2.5 * inch],
+                 rowHeights=[2.55 * inch])
     ph_t.hAlign = "LEFT"
     ph_t.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
