@@ -793,25 +793,19 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
 
     story.append(Spacer(1, 14))
     _section_header("Conclusion", story, s)
-    conclusion_default = (
-        "Commercial roofs are valuable assets."
-    )
-    custom = a.get("conclusion")
-    if custom:
-        story.append(Paragraph(custom, s["body"]))
-    else:
-        story.append(Paragraph("Commercial roofs are valuable assets.", s["body"]))
-        story.append(Spacer(1, 6))
-        story.append(Paragraph(
-            "The objective of this assessment is not simply identifying deficiencies. The objective is to understand "
-            "the condition, value, remaining service life, future risks, and long-term potential of the roofing asset.",
-            s["body"],
-        ))
-        story.append(Spacer(1, 6))
-        story.append(Paragraph(
-            "The most informed roofing decisions begin with objective information.",
-            s["body"],
-        ))
+    # Standard boilerplate (always rendered, no per-assessment override)
+    story.append(Paragraph("Commercial roofs are valuable assets.", s["body"]))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(
+        "The objective of this assessment is not simply identifying deficiencies. The objective is to understand "
+        "the condition, value, remaining service life, future risks, and long-term potential of the roofing asset.",
+        s["body"],
+    ))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(
+        "The most informed roofing decisions begin with objective information.",
+        s["body"],
+    ))
 
     # ---- Build PDF (two-pass for page count footer) ----
     # First pass: count pages
