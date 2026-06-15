@@ -379,9 +379,15 @@ export const Input = ({ value, onChange, type = "text", format, taxIdKind, ...pr
     if (props.onBlur) props.onBlur(e);
   };
 
+  // Spell-check ON for plain text inputs only — never for phone/email/tax IDs/numbers.
+  const enableSpellCheck = type === "text" && !format;
+
   return (
     <input
       type={type}
+      spellCheck={enableSpellCheck}
+      autoCorrect={enableSpellCheck ? "on" : "off"}
+      autoCapitalize={enableSpellCheck ? "sentences" : "off"}
       {...props}
       value={displayValue}
       onChange={handleChange}
