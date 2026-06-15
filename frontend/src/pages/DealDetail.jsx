@@ -129,8 +129,16 @@ export default function DealDetail() {
   };
 
   const addCostItem = () => {
-    const items = [...(deal.cost_items || []), { category: "Materials", vendor_id: null, vendor_name: "", description: "", amount: 0, date: "", status: "Pending" }];
-    persist({ cost_items: items });
+    // Blur any in-progress cell edit so pending typed values commit BEFORE we
+    // add a new row (otherwise the re-render wipes uncommitted input).
+    if (document.activeElement && typeof document.activeElement.blur === "function") {
+      document.activeElement.blur();
+    }
+    // Defer to the next microtask so the blur's onCommit handler runs first
+    setTimeout(() => {
+      const items = [...(deal?.cost_items || []), { category: "Materials", vendor_id: null, vendor_name: "", description: "", amount: 0, date: "", status: "Pending" }];
+      persist({ cost_items: items });
+    }, 0);
   };
 
   const updateCostItem = (idx, patch) => {
@@ -982,13 +990,29 @@ const Mini = ({ label, value }) => (
 
 const CellInput = ({ value, onCommit, type = "text", className = "", disabled, ...rest }) => {
   const [v, setV] = useState(value ?? "");
-  useEffect(() => { setV(value ?? ""); }, [value]);
+  // When the underlying value changes externally (other user, server sync) but the
+  // user has unsaved local edits, commit the local value FIRST so we don't lose typing.
+  useEffect(() => {
+    if (String(v) !== String(value ?? "") && document.activeElement?.dataset?.testid !== rest["data-testid"]) {
+      // External update + we don't have focus → safe to sync down
+      setV(value ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
   return (
     <input
       type={type}
       value={v}
       disabled={disabled}
-      onChange={(e) => setV(e.target.value)}
+      onChange={(e) => {
+        const next = e.target.value;
+        setV(next);
+        // For numeric cells, commit on every keystroke so a parent re-render
+        // (e.g., a sibling "Add Row" click) doesn't wipe unsaved input.
+        if (type === "number" && String(next) !== String(value ?? "")) {
+          onCommit(next);
+        }
+      }}
       onBlur={() => { if (String(v) !== String(value ?? "")) onCommit(v); }}
       onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
       className={`w-full h-9 px-2 border border-transparent hover:border-zinc-300 focus:border-blue-700 focus:outline-none bg-transparent rounded-sm text-sm ${className} ${disabled ? "opacity-50" : ""}`}
