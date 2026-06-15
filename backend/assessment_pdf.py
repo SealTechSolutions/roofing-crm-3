@@ -549,7 +549,7 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     story.append(_photo_flowable(aerial_bytes, w=7.3 * inch, h=3.3 * inch, placeholder="Aerial roof image — upload in editor", h_align="LEFT"))
     story.append(Spacer(1, 12))
     _section_header("Asset Condition Findings", story, s)
-    await _render_finding(db, story, s, idx=1, finding=a.get("finding_r1") or {}, photo_size=3.3 * inch)
+    await _render_finding(db, story, s, idx=1, finding=a.get("finding_r1") or {})
     story.append(PageBreak())
 
     # ============================================================
