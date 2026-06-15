@@ -703,28 +703,18 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     # PAGE 11 — Capital Planning Forecast + Recommended Plan
     # ============================================================
     _section_header("Capital Planning Forecast", story, s)
+    # Stack each outlook as h3 label + bordered text box (matches Recommended Strategy /
+    # Capital Planning Impact pattern from Page 3).
     forecast_rows = [
-        ["1-YEAR OUTLOOK",  a.get("forecast_1yr", "")],
-        ["3-YEAR OUTLOOK",  a.get("forecast_3yr", "")],
-        ["5-YEAR OUTLOOK",  a.get("forecast_5yr", "")],
-        ["10-YEAR OUTLOOK", a.get("forecast_10yr", "")],
+        ("1-Year Outlook",  a.get("forecast_1yr", "")),
+        ("3-Year Outlook",  a.get("forecast_3yr", "")),
+        ("5-Year Outlook",  a.get("forecast_5yr", "")),
+        ("10-Year Outlook", a.get("forecast_10yr", "")),
     ]
-    f_data = [[
-        Paragraph(f'<b><font color="#1D4ED8">{k}</font></b>', s["label"]),
-        Paragraph(v or "<i><font color='#A0A0A0'>—</font></i>", s["body_sm"]),
-    ] for k, v in forecast_rows]
-    f_t = Table(f_data, colWidths=[1.6 * inch, 5.7 * inch])
-    f_t.hAlign = "LEFT"
-    f_t.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BACKGROUND", (0, 0), (0, -1), SOFT_BLUE),
-        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-    ]))
-    story.append(f_t)
+    for k, v in forecast_rows:
+        story.append(Paragraph(f"<b>{k}</b>", s["h3"]))
+        story.append(_text_box(v or "", num_rows=2))
+        story.append(Spacer(1, 4))
 
     story.append(Spacer(1, 12))
     _section_header("Recommended Roof Asset Plan™", story, s)
