@@ -682,19 +682,19 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
                        ("Option 2 — Restoration", restore),
                        ("Option 3 — Replacement", replace)]:
         block = [
-            Spacer(1, 6),
+            Spacer(1, 4),
             Paragraph(f"<b>{label}</b>", s["h3"]),
             Paragraph('<font color="#16A34A"><b>ADVANTAGES</b></font>', s["label"]),
             Spacer(1, 2),
-            _text_box(" • ".join(opt.get("advantages") or []), num_rows=2),
-            Spacer(1, 3),
+            _text_box(" • ".join(opt.get("advantages") or []), num_rows=2, row_height=0.26 * inch),
+            Spacer(1, 2),
             Paragraph('<font color="#B91C1C"><b>DISADVANTAGES</b></font>', s["label"]),
             Spacer(1, 2),
-            _text_box(" • ".join(opt.get("disadvantages") or []), num_rows=2),
-            Spacer(1, 3),
+            _text_box(" • ".join(opt.get("disadvantages") or []), num_rows=2, row_height=0.26 * inch),
+            Spacer(1, 2),
             Paragraph('<font color="#D97706"><b>LIMITATIONS</b></font>', s["label"]),
             Spacer(1, 2),
-            _text_box(" • ".join(opt.get("limitations") or []), num_rows=2),
+            _text_box(" • ".join(opt.get("limitations") or []), num_rows=2, row_height=0.26 * inch),
         ]
         story.append(KeepTogether(block))
     story.append(PageBreak())
