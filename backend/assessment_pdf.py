@@ -368,7 +368,10 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         s["body"]))
     story.append(Spacer(1, 4))
     story.append(Paragraph(
-        "This assessment is intended to support informed maintenance, restoration, replacement, and capital planning decisions.",
+        "This assessment is intended to support informed maintenance, restoration, and capital "
+        "planning decisions. Restoration is our primary recommendation pathway; replacement is "
+        "reserved for the limited cases where the insulation is saturated or the structural deck "
+        "is damaged.",
         s["body"]))
     story.append(Spacer(1, 6))
     story.append(Paragraph("<b>Executive Conclusion</b>", s["h3"]))
@@ -628,9 +631,9 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         ["SCORE", "INTERPRETATION"],
         ["90 – 100", "Excellent — roof in like-new condition, minimal capital risk."],
         ["80 – 89",  "Good — minor maintenance items; restoration highly suitable."],
-        ["70 – 79",  "Fair — moderate findings; restoration suitable with proactive plan."],
-        ["60 – 69",  "Marginal — significant repair/restoration needed; replacement on horizon."],
-        ["Below 60", "Poor — replacement recommended; restoration unlikely to extend life cost-effectively."],
+        ["70 – 79",  "Fair — moderate findings; restoration suitable with a proactive plan."],
+        ["60 – 69",  "Marginal — significant repair / restoration needed."],
+        ["Below 60", "Poor — immediate restoration and possible replacement needed."],
     ]
     interp_t = Table(interp_data, colWidths=[1.4 * inch, 5.9 * inch])
     interp_t.hAlign = "LEFT"
@@ -647,6 +650,25 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     story.append(interp_t)
+
+    # Restoration-first note — supports the SealTech business model where the
+    # vast majority of low-scoring roofs remain candidates for restoration.
+    story.append(Spacer(1, 6))
+    note_style = ParagraphStyle(
+        "restore_note", parent=s["body_sm"], fontName="Helvetica",
+        fontSize=8, leading=11, textColor=colors.HexColor("#404040"),
+        backColor=colors.HexColor("#EFF6FF"), borderColor=BLUE,
+        borderWidth=0.5, borderPadding=6,
+    )
+    story.append(Paragraph(
+        "<b>Restoration-First Note:</b> Virtually every low-slope roof system can be restored, "
+        "including those scoring below 60. Roof replacement is only required when (a) the roof "
+        "<b>insulation is saturated</b> beyond cost-effective drying / replacement, or (b) the "
+        "<b>structural deck is damaged</b>. In all other cases, restoration is the recommended path "
+        "\u2014 extending service life, preserving capital, and avoiding the disruption and landfill "
+        "impact of a tear-off.",
+        note_style,
+    ))
 
     story.append(Spacer(1, 10))
     story.append(Paragraph("<b>Score Drivers</b>", s["h3"]))
@@ -723,6 +745,24 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
     ]))
     story.append(comp_t)
+
+    # Restoration eligibility note — clarifies the only conditions where
+    # replacement is genuinely required vs. just a more expensive option.
+    story.append(Spacer(1, 8))
+    elig_style = ParagraphStyle(
+        "elig", parent=s["body_sm"], fontName="Helvetica",
+        fontSize=8, leading=11, textColor=colors.HexColor("#404040"),
+        backColor=colors.HexColor("#F0FDF4"), borderColor=colors.HexColor("#16A34A"),
+        borderWidth=0.5, borderPadding=6,
+    )
+    story.append(Paragraph(
+        "<b>Restoration Eligibility:</b> Virtually every flat / low-slope roof system can be "
+        "restored. Replacement is only required when (1) the <b>insulation is saturated</b> beyond "
+        "cost-effective drying / replacement, or (2) the <b>structural deck is damaged</b>. Where "
+        "neither condition is present, restoration delivers comparable life extension at a fraction "
+        "of the cost and disruption of a full tear-off.",
+        elig_style,
+    ))
 
     for label, opt in [("Option 1 — Continue Repairs and Maintenance", repair),
                        ("Option 2 — Restoration", restore),
