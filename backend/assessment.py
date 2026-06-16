@@ -260,26 +260,73 @@ def create_router(db, get_current_user) -> APIRouter:
     # ---------- Create ----------
     @router.post("")
     async def create_assessment(body: AssessmentIn, current=Depends(get_current_user)):
-        # If linked to a deal, snapshot some defaults so the cover prefills
-        if body.deal_id and not body.property_address:
+        # ============================================================
+        # Auto-prefill: pull as much known data as possible from the
+        # linked Deal → Property → Contact graph so the inspector starts
+        # the wizard with the cover/page-1 fields already filled in.
+        # All hydration is "fill if blank" so user-typed values win.
+        # ============================================================
+        deal = None
+        if body.deal_id:
             deal = await db.deals.find_one({"id": body.deal_id}, {"_id": 0})
-            if deal:
-                body.property_address = deal.get("property_address", "") or body.property_address
-                body.property_name = deal.get("property_name", "") or deal.get("title", "") or body.property_name
-                # Pull contact if not supplied
-                if not body.contact_id and deal.get("contact_id"):
-                    body.contact_id = deal["contact_id"]
-        # Hydrate prepared_for + contact_name from contact
+        # Resolve property_id (from body or deal)
+        property_id = (getattr(body, "property_id", None) or "")
+        if not property_id and deal:
+            property_id = deal.get("property_id") or ""
+        prop = None
+        if property_id:
+            prop = await db.properties.find_one({"id": property_id}, {"_id": 0})
+
+        def _fill(field, value):
+            """Set body.field to value if it's currently blank/None."""
+            if value in (None, ""):
+                return
+            if not getattr(body, field, "") and hasattr(body, field):
+                setattr(body, field, value)
+
+        # ---- From Property ----
+        if prop:
+            # Cover identity
+            _fill("property_name", prop.get("property_name"))
+            # Pieced address
+            full_addr = prop.get("property_address") or ""
+            if prop.get("property_address_line2"):
+                full_addr = f"{full_addr}, {prop['property_address_line2']}".strip(", ")
+            _fill("property_address", full_addr)
+            _fill("property_city", prop.get("property_city"))
+            _fill("property_state", prop.get("property_state"))
+            _fill("property_zip", prop.get("property_zip"))
+            # Optional fields some properties may carry
+            _fill("property_sqft", prop.get("property_sqft"))
+            _fill("year_built", prop.get("year_built"))
+            _fill("contact_id", prop.get("property_contact_id"))
+
+        # ---- From Deal (overlay; preserves anything already set above) ----
+        if deal:
+            _fill("property_address", deal.get("property_address"))
+            _fill("property_name", deal.get("property_name") or deal.get("title"))
+            _fill("contact_id", deal.get("contact_id"))
+            # Roof system context — useful for Page-2 prefilled defaults
+            _fill("existing_roof_type", deal.get("current_roof_type"))
+            _fill("proposed_roof_type", deal.get("proposed_roof_type"))
+            _fill("approx_sqft", deal.get("approx_sq"))
+            _fill("project_value", deal.get("chosen_amount"))
+
+        # ---- From Contact (after we may have hydrated contact_id above) ----
         if body.contact_id:
             c = await db.contacts.find_one({"id": body.contact_id}, {"_id": 0})
             if c:
-                if not body.prepared_for:
-                    body.prepared_for = c.get("company_name") or c.get("contact_name") or ""
-                if not body.contact_name:
-                    body.contact_name = c.get("contact_name") or ""
+                _fill("prepared_for", c.get("company_name") or c.get("contact_name"))
+                _fill("contact_name", c.get("contact_name"))
+                _fill("contact_email", c.get("email"))
+                _fill("contact_phone", c.get("phone"))
 
+        # Default assessment_date to today
         if not body.assessment_date:
             body.assessment_date = datetime.now(timezone.utc).date().isoformat()
+        # Default inspector to the creating user
+        if hasattr(body, "inspector_name") and not getattr(body, "inspector_name", ""):
+            body.inspector_name = current.get("name") or current.get("email", "")
 
         doc = body.model_dump()
         doc["id"] = str(uuid.uuid4())

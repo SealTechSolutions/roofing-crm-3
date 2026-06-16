@@ -149,12 +149,14 @@ export default function AssessmentEditor() {
   const [saving, setSaving] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [deals, setDeals] = useState([]);
+  const [properties, setProperties] = useState([]);
   const [dealPhotos, setDealPhotos] = useState([]);
   const [photoPickerFor, setPhotoPickerFor] = useState(null); // 'aerial' | 'finding_rN'
 
   useEffect(() => {
     api.get("/contacts").then((r) => setContacts(r.data || [])).catch(() => {});
     api.get("/deals").then((r) => setDeals(r.data || [])).catch(() => {});
+    api.get("/properties").then((r) => setProperties(r.data || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -372,7 +374,7 @@ export default function AssessmentEditor() {
 
       {/* Step content */}
       <div className="bg-white border border-zinc-200 p-6">
-        {step === 0 && <StepCover doc={doc} update={update} contacts={contacts} deals={deals} linkedDeal={linkedDeal} />}
+        {step === 0 && <StepCover doc={doc} update={update} contacts={contacts} deals={deals} properties={properties} linkedDeal={linkedDeal} />}
         {step === 1 && <StepScores doc={doc} updateScore={updateScore} update={update} />}
         {step === 2 && (
           <StepFindings
@@ -448,7 +450,37 @@ export default function AssessmentEditor() {
 // =====================================================================
 // Step 1 — Cover & Property
 // =====================================================================
-function StepCover({ doc, update, contacts, deals, linkedDeal }) {
+function StepCover({ doc, update, contacts, deals, properties, linkedDeal }) {
+  // Property selection auto-fills address + chains contact info from the linked record
+  const onPropertyPick = (propertyId) => {
+    if (!propertyId) {
+      update({ property_id: "" });
+      return;
+    }
+    const p = properties.find((x) => x.id === propertyId);
+    if (!p) return;
+    const fullAddr = [p.property_address, p.property_address_line2].filter(Boolean).join(", ");
+    const patch = {
+      property_id: p.id,
+      property_name: p.property_name || doc.property_name,
+      property_address: fullAddr || doc.property_address,
+      property_city: p.property_city || doc.property_city,
+      property_state: p.property_state || doc.property_state,
+      property_zip: p.property_zip || doc.property_zip,
+    };
+    // Chain contact info if the property has a default contact
+    if (p.property_contact_id && !doc.contact_id) {
+      patch.contact_id = p.property_contact_id;
+      const c = contacts.find((x) => x.id === p.property_contact_id);
+      if (c) {
+        if (!doc.prepared_for) patch.prepared_for = c.company_name || c.contact_name || "";
+        if (!doc.contact_name) patch.contact_name = c.contact_name || "";
+      }
+    } else if (p.property_contact_name && !doc.contact_name) {
+      patch.contact_name = p.property_contact_name;
+    }
+    update(patch);
+  };
   return (
     <div className="space-y-5" data-testid="step-cover-body">
       <SectionTitle>Cover Block</SectionTitle>
@@ -463,7 +495,28 @@ function StepCover({ doc, update, contacts, deals, linkedDeal }) {
           <input value={doc.contact_name} onChange={(e) => update({ contact_name: e.target.value })} className={inputCls} placeholder="e.g., John Smith, Facilities Manager" data-testid="contact-name" />
         </Field>
         <Field label="Property Name" full>
-          <input value={doc.property_name} onChange={(e) => update({ property_name: e.target.value })} className={inputCls} placeholder="e.g., Acme Distribution Center" data-testid="property-name" />
+          <div className="flex gap-2">
+            <select
+              value={doc.property_id || ""}
+              onChange={(e) => onPropertyPick(e.target.value)}
+              className={`${inputCls} flex-1`}
+              data-testid="property-picker"
+            >
+              <option value="">— Select an existing property to auto-fill —</option>
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.property_name}{p.property_city ? ` · ${p.property_city}` : ""}
+                </option>
+              ))}
+            </select>
+            <input
+              value={doc.property_name}
+              onChange={(e) => update({ property_name: e.target.value, property_id: "" })}
+              className={`${inputCls} flex-1`}
+              placeholder="…or type a new property name"
+              data-testid="property-name"
+            />
+          </div>
         </Field>
         <Field label="Property Address" full>
           <input value={doc.property_address} onChange={(e) => update({ property_address: e.target.value })} className={inputCls} placeholder="Street, City, ST ZIP" data-testid="property-address" />
