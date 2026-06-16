@@ -522,6 +522,12 @@
 - Hardened InvoiceEditor backdrop: `onClick` now uses `e.target === e.currentTarget` so bubbled clicks from descendant elements don't accidentally close the modal.
 - **Fix (Feb 2026 — iteration_19)**: `_recalc_invoice()` now auto-promotes Draft invoices to `Partial` (paid > 0) or `Paid` (balance_due ≤ 0.01) whenever payment is recorded. Previously a Draft invoice paid in full via the Record-Payment modal would stay stuck at "Draft" while the cash was correctly stored. 4 new pytest cases in `tests/test_invoice_status.py` cover all four transitions (Draft→Paid, Draft→Partial, Draft+$0 stays Draft, Void never flips).
 
+### Scope-Sent Pipeline Stamp (Feb 2026 — iteration_20)
+- **Bug**: clicking EMAIL TO PROSPECT / EMAIL SCOPE sent the email successfully but the "Scope Sent" pipeline dot stayed gray and the Next-Step card stayed stuck at "Email the scope". Root cause was two-layered: (1) the `/spec-sheet/email` endpoint never wrote `last_scope_sent_at` back to the deal, and (2) the `Deal` Pydantic model (with `extra="ignore"`) was stripping the field off `GET /deals/{id}` responses even if it had been written.
+- **Fix**: After a successful send, the endpoint now `$set`s `last_scope_sent_at` + `last_scope_sent_to`, `$inc`s `scope_send_count`, and `$push`es a "Scope emailed" entry into `status_history`. Added `last_scope_sent_at`, `last_scope_sent_to`, `scope_send_count`, `status_history`, and `scope_signed_at` to the `DealIn` Pydantic model so they round-trip through the response.
+- Frontend: `EmailScopeModal.send()` now calls `onClose(true)` on success, and `DealDetail` reloads the deal when that flag arrives — pipeline dot updates without a hard refresh.
+- Tested: 2 pytest cases (`tests/test_scope_sent_stamp.py`) — Deal model serializes the new fields, end-to-end send increments scope_send_count and appends a status_history entry. Verified visually on deal "2278 Mannatt Ct _ 2": SCOPE SENT dot turns green and Next-Step card advances to "Mark this deal as Won".
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

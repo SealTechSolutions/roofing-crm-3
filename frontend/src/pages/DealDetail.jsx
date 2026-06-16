@@ -1130,7 +1130,12 @@ export default function DealDetail() {
           dealTitle={deal.title}
           dealType={deal.deal_type}
           primaryContactEmail={contact?.email || ""}
-          onClose={() => setEmailScopeOpen(false)}
+          onClose={(sent) => {
+            setEmailScopeOpen(false);
+            // After a successful send the backend stamps `last_scope_sent_at`
+            // on the deal — refresh so the pipeline dot turns green immediately.
+            if (sent) reload().catch(() => {});
+          }}
         />
       )}
 
@@ -1302,7 +1307,7 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
         library_file_ids: selectedIds,
       });
       toast.success(r.data?.message || "Scope emailed");
-      onClose();
+      onClose(true);
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message);
     } finally {

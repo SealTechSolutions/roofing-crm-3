@@ -521,6 +521,17 @@ class DealIn(BaseModel):
     scheduled_start_date: str = ""   # YYYY-MM-DD — when crews start on site
     scheduled_end_date: str = ""     # YYYY-MM-DD — anticipated completion
     material_order_date: str = ""    # YYYY-MM-DD — when materials should be delivered / PO needs to fire
+    # Scope send bookkeeping — populated when POST /deals/{id}/spec-sheet/email
+    # succeeds; drives the "Scope Sent" pipeline dot on Deal Detail.
+    last_scope_sent_at: str = ""
+    last_scope_sent_to: str = ""
+    scope_send_count: int = 0
+    # Free-form append-only timeline (status changes, scope emails, etc.) used
+    # by the Deal Detail "Activity Timeline" card and pipeline derivations.
+    status_history: List[dict] = Field(default_factory=list)
+    # Set when the customer counter-signs the proposal — promotes the
+    # "Scope Sent" pipeline derivation to a stronger checkpoint.
+    scope_signed_at: str = ""
 
 
 class Deal(DealIn):
@@ -4057,6 +4068,36 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Email send failed: {type(e).__name__}: {e}")
 
+    # Stamp the deal so the "Scope Sent" pipeline dot turns green and the
+    # Next-Step card moves forward. (Bug: previously the email fired but the
+    # pipeline visualization stayed stuck at "Email the scope".)
+    sent_at = now_iso()
+    history_label = "Assessment emailed" if is_assessment else "Scope emailed"
+    history_entry = {
+        "at": sent_at,
+        "user_id": current.get("id", ""),
+        "user_name": current.get("name", ""),
+        "label": history_label,
+        "to": to_email,
+        "attachments_count": len(attachments),
+    }
+    try:
+        await db.deals.update_one(
+            {"id": deal_id},
+            {
+                "$set": {
+                    "last_scope_sent_at": sent_at,
+                    "last_scope_sent_to": to_email,
+                },
+                "$inc": {"scope_send_count": 1},
+                "$push": {"status_history": history_entry},
+            },
+        )
+    except Exception as e:
+        # Email already went out — don't blow up the response on a bookkeeping
+        # failure, just warn so it shows up in logs.
+        logger.warning(f"deal stamp (scope-sent) failed for {deal_id}: {type(e).__name__}: {e}")
+
     return {
         "ok": True,
         "message": f"Scope emailed to {to_email}" + (f" (cc: {cc_email})" if cc_email else "") + f" with {len(attachments)} attachment{'s' if len(attachments) > 1 else ''}",
@@ -4065,6 +4106,7 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
         "from_email": from_email,
         "attachments_count": len(attachments),
         "message_id": result.get("message_id"),
+        "last_scope_sent_at": sent_at,
     }
 
 
