@@ -88,6 +88,39 @@ SILICONE_TEMPLATE = {
     ],
 }
 
+SILICONE_GRANULES_TEMPLATE = {
+    "title": "RESTORATION ROOF SCOPE — GRANULATED SILICONE",
+    "spread_page_2": True,
+    "scope_1_title": "Inspection and Repairs",
+    "scope_1": [
+        "Inspect the roof for existing leaks, deterioration, ponding, and overall substrate condition.",
+        "Identify and document membrane separations, blisters, fastener back-out, and seam failures.",
+        "Cut, patch, and repair damaged areas of the existing membrane to restore a sound substrate.",
+        "Re-seal seams, flashings, and penetrations using manufacturer-approved sealant.",
+        "Verify drains, scuppers, and edge metal are functional and watertight; replace as required.",
+        "Mark all field-found defects with chalk so the embedded granule layer remains a true visual record of the as-applied surface.",
+    ],
+    "scope_2_title": "Substrate Preparation and Granulated Silicone Application",
+    "scope_2": [
+        "Power-wash the entire roof surface to remove all dirt, oxidation, biological growth, and loose debris.",
+        "Allow substrate to fully dry, verifying moisture content with a calibrated meter prior to coating.",
+        "Apply manufacturer-approved primer where required by substrate type or manufacturer specification.",
+        "Apply base coat of silicone restoration coating at manufacturer's specified wet-mil thickness.",
+        "Reinforce all seams, fasteners, drains, and penetrations with polyester fabric set in silicone.",
+        "Apply finish coat of silicone, immediately broadcasting #11 (or specified) ceramic-coated roofing granules into the wet film at full embedment until refusal.",
+        "After cure, sweep and remove all loose / un-embedded granules from drains, scuppers, and gutters to prevent flow obstruction.",
+        "Provide owner with a sealed sample bottle of the granules used for any future spot repairs and warranty matching.",
+        "Final walk-through and quality inspection with the owner or owner's representative — emphasizing improved foot-traffic durability, slip resistance, and easier visual leak detection compared to a smooth silicone finish.",
+    ],
+    "key_advantages": [
+        "Slip resistance — granulated finish meets ASTM D2047 walking-surface conditions.",
+        "Leak detection — granule layer makes future damage and pinholes visually obvious.",
+        "Foot-traffic durability — protects the silicone film from dropped tools, HVAC service, and equipment routes.",
+        "UV reflectivity preserved — Cool Roof rating retained vs. dark gravel surfacings.",
+        "Manufacturer warranty parity — qualifies for the same restoration warranty terms as smooth silicone.",
+    ],
+}
+
 TPO_OVERLAY_TEMPLATE = {
     "title": "TPO OVER-LAY ROOF SYSTEM SCOPE",
     "scope_1_title": "Inspection and Prep",
@@ -605,7 +638,10 @@ CUSTOM_SCOPE_TEMPLATE = {
 
 ROOF_TEMPLATE_MAP = {
     "silicone": SILICONE_TEMPLATE,
-    "siliconewgranules": SILICONE_TEMPLATE,
+    "siliconewgranules": SILICONE_GRANULES_TEMPLATE,
+    "siliconegranulated": SILICONE_GRANULES_TEMPLATE,
+    "siliconewithgranules": SILICONE_GRANULES_TEMPLATE,
+    "granulatedsilicone": SILICONE_GRANULES_TEMPLATE,
     "tpo": TPO_TEMPLATE,
     "tpooverlay": TPO_OVERLAY_TEMPLATE,
     "tpooverexistingtpo": TPO_OVERLAY_TEMPLATE,
