@@ -25,6 +25,7 @@ import Profile from "@/pages/Profile";
 import Assessments from "@/pages/Assessments";
 import AssessmentEditor from "@/pages/AssessmentEditor";
 import Calendar from "@/pages/Calendar";
+import PWAControls from "@/components/PWAControls";
 import "@/App.css";
 
 const ProtectedRoute = ({ children }) => {
@@ -52,6 +53,7 @@ function App() {
     <div className="App">
       <AuthProvider>
         <BrowserRouter>
+          <PWAControls />
           <Routes>
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
             <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />

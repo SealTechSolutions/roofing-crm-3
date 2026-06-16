@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { Camera, Upload, Trash2, Share2, X, Download, Image as ImageIcon, Star, Link2, Copy, Eye, EyeOff } from "lucide-react";
+import CameraCaptureButton from "@/components/CameraCaptureButton";
 
 const PRESET_TAGS = [
   "Before",
@@ -118,6 +119,7 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
           >
             <Share2 className="w-3.5 h-3.5" /> Share with Customer
           </button>
+          <CameraCaptureButton onFiles={uploadFiles} disabled={uploading} testId="camera-photo-btn" />
           <label className="inline-flex items-center gap-1.5 px-3 h-9 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm cursor-pointer">
             <Upload className="w-3.5 h-3.5" /> {uploading ? "Uploading..." : "Upload Photos"}
             <input

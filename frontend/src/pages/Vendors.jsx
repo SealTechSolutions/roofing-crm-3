@@ -9,6 +9,7 @@ import Documents from "@/components/Documents";
 import { US_STATES, DEFAULT_STATE } from "@/constants/states";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { formatPhoneDisplay, maskTaxIdInput } from "@/lib/format";
+import CameraCaptureButton from "@/components/CameraCaptureButton";
 
 export default function Vendors({ kind = "Vendor" }) {
   const isSub = kind === "Subcontractor";
@@ -57,6 +58,30 @@ export default function Vendors({ kind = "Vendor" }) {
   };
 
   const remove = (v) => setConfirmTarget(v);
+
+  const uploadCoi = async (files, vendorName) => {
+    // Push the captured COI image(s) into the central Library under Insurance/COI
+    // so it's searchable, expirable, and shareable. Vendor's checkbox + expiry date
+    // remain the source of truth for the COI Roster status.
+    if (!files || !files.length) return;
+    let ok = 0, failed = 0;
+    for (const file of Array.from(files)) {
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("category", "Insurance");
+        fd.append("subcategory", "COI");
+        fd.append("display_name", `COI — ${vendorName || "Vendor"} — ${new Date().toISOString().slice(0,10)}`);
+        fd.append("description", `Captured via mobile camera for ${vendorName || "vendor"}`);
+        await api.post("/library", fd, { headers: { "Content-Type": "multipart/form-data" } });
+        ok++;
+      } catch (e) {
+        failed++;
+      }
+    }
+    if (ok) toast.success(`${ok} COI file${ok === 1 ? "" : "s"} uploaded to Library`);
+    if (failed) toast.error(`${failed} upload${failed === 1 ? "" : "s"} failed`);
+  };
 
   const removeConfirmed = async () => {
     if (!confirmTarget) return;
@@ -256,9 +281,16 @@ export default function Vendors({ kind = "Vendor" }) {
               </div>
             </div>
             <div className="rounded-sm border border-zinc-200 bg-zinc-50 p-4 space-y-3" data-testid={`${kind.toLowerCase()}-coi-section`}>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="text-xs font-bold uppercase tracking-widest text-blue-700">Certificates of Insurance (COI)</h3>
-                <CoiStatusPill form={form} />
+                <div className="flex items-center gap-2">
+                  <CameraCaptureButton
+                    onFiles={(files) => uploadCoi(files, form.name || "Vendor")}
+                    testId={`${kind.toLowerCase()}-camera-coi-btn`}
+                    label="Snap COI"
+                  />
+                  <CoiStatusPill form={form} />
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-[max-content_1fr_1fr] gap-3 items-end">
                 <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-700 select-none pb-2">

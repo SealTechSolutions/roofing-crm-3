@@ -7,6 +7,7 @@ import {
   Plus, X, Trash2, Image as ImageIcon, Upload, AlertTriangle, ArrowRightCircle, ExternalLink,
 } from "lucide-react";
 import GrammarCheck from "@/components/GrammarCheck";
+import CameraCaptureButton from "@/components/CameraCaptureButton";
 import { bandFor } from "@/lib/assessmentBands";
 
 const BLANK_SCORE = { score: 0, reasoning: "" };
@@ -989,12 +990,13 @@ function PhotoPickerModal({ dealId, dealPhotos, existingIds, multiSelect, onClos
         </div>
 
         <div className="p-5">
-          <div className="mb-4">
+          <div className="mb-4 flex items-center gap-3 flex-wrap">
             <label className="inline-flex items-center gap-2 border border-blue-700 text-blue-700 px-3 py-2 text-xs font-bold uppercase tracking-wider hover:bg-blue-50 cursor-pointer rounded-sm">
               <Upload className="w-3.5 h-3.5" /> {uploading ? "Uploading..." : "Upload Photo(s)"}
               <input type="file" accept="image/*" multiple onChange={upload} className="hidden" data-testid="photo-upload" />
             </label>
-            <span className="ml-3 text-xs text-zinc-500">{dealPhotos.length} photo{dealPhotos.length === 1 ? "" : "s"} in project library</span>
+            <CameraCaptureButton onFiles={(files) => upload({ target: { files } })} disabled={uploading} testId="camera-assessment-photo-btn" />
+            <span className="ml-1 text-xs text-zinc-500">{dealPhotos.length} photo{dealPhotos.length === 1 ? "" : "s"} in project library</span>
           </div>
           {dealPhotos.length === 0 ? (
             <div className="text-sm text-zinc-500 text-center py-8 border border-dashed border-zinc-300">

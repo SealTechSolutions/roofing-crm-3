@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { api, formatApiError, API } from "@/lib/api";
 import { toast } from "sonner";
 import { BookOpen, Search, Upload, Trash2, Download, Folder, FileText, X } from "lucide-react";
+import CameraCaptureButton from "@/components/CameraCaptureButton";
 
 export default function Library() {
   const [taxonomy, setTaxonomy] = useState([]);
@@ -263,7 +264,13 @@ function UploadModal({ preset, taxonomy, onClose, onSaved }) {
           </div>
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Files * <span className="font-normal text-zinc-500">(pick one or many)</span></label>
-            <input ref={fileInput} type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files || []))} className="w-full text-sm" data-testid="upload-file" />
+            <div className="flex items-center gap-2 flex-wrap">
+              <input ref={fileInput} type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files || []))} className="flex-1 min-w-0 text-sm" data-testid="upload-file" />
+              <CameraCaptureButton
+                onFiles={(fl) => setFiles((prev) => [...prev, ...Array.from(fl)])}
+                testId="camera-library-btn"
+              />
+            </div>
             <div className="text-[10px] text-zinc-500 mt-1">
               PDF, image, or Word doc. Max 50MB each.
               {files.length > 0 && <span className="ml-2 font-bold text-blue-700">{files.length} selected</span>}
