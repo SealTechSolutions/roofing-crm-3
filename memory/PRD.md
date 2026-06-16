@@ -397,6 +397,23 @@
 - Endpoints: `GET/POST/PUT/DELETE /api/assessments`, `POST /api/assessments/{id}/finalize`, `GET /api/assessments/{id}/pdf`, `POST /api/assessments/{id}/email`, `POST /api/assessments/{id}/convert-to-scope`.
 - ✅ Tested: 6/6 backend pytest (incl. 3 convert-to-scope tests) + full frontend e2e (100% pass).
 
+### Roof Asset Dashboard™ — Bands + Brand Color (Feb 2026)
+- Replaced raw 0-100 percentages with **executive-friendly categorical bands** across PDF, wizard, and list view.
+  - **Condition**: Excellent / Good / Serviceable / At Risk / Critical
+  - **Remaining Service Life**: `{n} Years Remaining` (not /100)
+  - **Restoration Suitability™ / Hail Resilience™**: High / Moderate / Low
+  - **Maintenance**: Current / Deferred / Poor
+  - **Warranty**: Active / Limited / Expired
+  - **Capital Risk™** (inverted — higher score = worse): Low / Moderate / Elevated / High
+  - **Roof Asset Score™** stays a single composite number with band-derived header color.
+- New backend module `/app/backend/assessment_bands.py` (single source of truth). Frontend mirror `/app/frontend/src/lib/assessmentBands.js`.
+- API: GET `/api/assessments` and GET `/api/assessments/{id}` both now return a `bands` field with 8 keys, each `{label, color, sublabel}`.
+- PDF: new tile-card layout on Page 3 (composite scorecard tile up top, 4×2 grid of sub-metric tiles below). Soft tinted backgrounds, color-coded borders.
+- Wizard (`ScoreInput`): hybrid — keep numeric/slider, add live band pill on the right. RSL gets max=50 and "yrs" unit.
+- Assessments list table: 4 new band columns (Asset Score™ / Condition / RSL / Cap Risk™).
+- **Brand color change**: cobalt `#1D4ED8` → `#062B67` across ALL printable materials (PDFs, emails, Excel exports). Calendar UI keeps `#1D4ED8`.
+- Tested end-to-end: 19/19 pytest backend cases + full frontend acceptance (`iteration_16.json`).
+
 ### Project Calendar (Feb 2026) — P0 SHIPPED
 - New `/calendar` page with **Month + Week** views, color-coded events:
   - 🔵 **Project bars** (cobalt, span `scheduled_start_date → scheduled_end_date`, draggable to reschedule)
