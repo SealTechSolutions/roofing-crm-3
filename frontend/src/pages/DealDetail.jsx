@@ -1068,6 +1068,8 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
   const [selectedIds, setSelectedIds] = useState([]);
   const [filterCat, setFilterCat] = useState("");
   const [sending, setSending] = useState(false);
+  const [smartMatches, setSmartMatches] = useState({ ids: new Set(), reasons: {}, tokens: [] });
+  const [smartApplied, setSmartApplied] = useState(false);
 
   const isAssessment = (dealType || "").toLowerCase() === "assessment";
   const docKind = isAssessment ? "assessment" : "scope";
@@ -1075,17 +1077,41 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
   useEffect(() => {
     api.get("/email-aliases").then((r) => {
       setAliases(r.data?.aliases || []);
-      // Prefer the per-doc-type default (scope@ or assessments@); fall back to legacy `default`
       const docDefault = (r.data?.defaults || {})[docKind];
       setFromEmail(docDefault || r.data?.default || "");
     }).catch(() => {});
     api.get("/library/taxonomy").then((r) => setTaxonomy(r.data?.taxonomy || [])).catch(() => {});
     api.get("/library/files").then((r) => setLibFiles(r.data || [])).catch(() => {});
+    // Pull smart suggestions for this deal — pre-check + sort matches to top
+    api.get(`/deals/${dealId}/scope-suggestions`).then((r) => {
+      const ids = new Set(r.data?.file_ids || []);
+      setSmartMatches({ ids, reasons: r.data?.reasons || {}, tokens: r.data?.tokens || [] });
+      setSelectedIds(Array.from(ids));
+      setSmartApplied(true);
+    }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docKind]);
+  }, [docKind, dealId]);
 
   const toggleId = (id) => setSelectedIds((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
-  const filtered = filterCat ? libFiles.filter((f) => f.category === filterCat) : libFiles;
+  const clearSmart = () => {
+    setSelectedIds((s) => s.filter((id) => !smartMatches.ids.has(id)));
+    setSmartApplied(false);
+  };
+  const reapplySmart = () => {
+    setSelectedIds((s) => Array.from(new Set([...s, ...Array.from(smartMatches.ids)])));
+    setSmartApplied(true);
+  };
+
+  const filtered = useMemo(() => {
+    const base = filterCat ? libFiles.filter((f) => f.category === filterCat) : libFiles;
+    // Sort: smart matches first, then by display_name
+    return [...base].sort((a, b) => {
+      const am = smartMatches.ids.has(a.id) ? 0 : 1;
+      const bm = smartMatches.ids.has(b.id) ? 0 : 1;
+      if (am !== bm) return am - bm;
+      return (a.display_name || "").localeCompare(b.display_name || "");
+    });
+  }, [libFiles, filterCat, smartMatches]);
 
   const send = async () => {
     if (!to.trim()) { toast.error("Recipient email required"); return; }
@@ -1160,18 +1186,40 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
                 {taxonomy.map((c) => <option key={c.category} value={c.category}>{c.category}</option>)}
               </select>
             </div>
+            {smartMatches.ids.size > 0 && (
+              <div className="mb-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-sm flex items-center justify-between gap-2 text-[11px]" data-testid="smart-pick-badge">
+                <div className="text-blue-900">
+                  <span className="font-bold">✨ Smart-picked {smartMatches.ids.size} doc{smartMatches.ids.size === 1 ? "" : "s"}</span>
+                  <span className="text-blue-700"> for {smartMatches.tokens.filter((t) => t !== "general").slice(0, 3).join(", ") || "this scope"}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={smartApplied ? clearSmart : reapplySmart}
+                  className="text-blue-700 hover:text-blue-900 font-bold uppercase tracking-wider text-[10px]"
+                  data-testid="smart-pick-toggle"
+                >
+                  {smartApplied ? "Clear" : "Re-apply"}
+                </button>
+              </div>
+            )}
             <div className="border border-zinc-200 rounded-sm max-h-72 overflow-y-auto">
               {filtered.length === 0 ? (
                 <div className="text-center text-xs text-zinc-500 py-8">No library docs match.</div>
-              ) : filtered.map((f) => (
-                <label key={f.id} className="flex items-start gap-2 px-3 py-2 border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer" data-testid={`scope-lib-${f.id}`}>
-                  <input type="checkbox" checked={selectedIds.includes(f.id)} onChange={() => toggleId(f.id)} className="mt-1" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold truncate">{f.display_name}</div>
-                    <div className="text-[10px] text-zinc-500 truncate">{f.category} / {f.subcategory}</div>
-                  </div>
-                </label>
-              ))}
+              ) : filtered.map((f) => {
+                const isSmart = smartMatches.ids.has(f.id);
+                return (
+                  <label key={f.id} className={`flex items-start gap-2 px-3 py-2 border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer ${isSmart ? "bg-blue-50/40" : ""}`} data-testid={`scope-lib-${f.id}`}>
+                    <input type="checkbox" checked={selectedIds.includes(f.id)} onChange={() => toggleId(f.id)} className="mt-1" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <div className="text-xs font-bold truncate">{f.display_name}</div>
+                        {isSmart && <span className="inline-block px-1.5 py-px text-[8px] font-bold uppercase tracking-wider bg-blue-700 text-white rounded-sm whitespace-nowrap" title={(smartMatches.reasons[f.id] || []).join(", ")}>Smart</span>}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 truncate">{f.category} / {f.subcategory}</div>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           </div>
         </div>

@@ -3809,6 +3809,20 @@ async def download_library_file(
 
 
 # ----- Email Scope (with optional Library attachments) -----
+import scope_suggestions as _scope_sugg
+
+@api_router.get("/deals/{deal_id}/scope-suggestions")
+async def get_scope_suggestions(deal_id: str, current=Depends(get_current_user)):
+    """Smart library doc picks for the Email Scope modal — based on proposed_roof_type
+    plus any user-curated smart_tags on library files. Returns the file_ids to
+    pre-check and a reasons map for the UI badge."""
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    files = await db.library_files.find({"is_deleted": {"$ne": True}}, {"_id": 0}).to_list(5000)
+    return _scope_sugg.suggest_library_files(files, deal)
+
+
 @api_router.post("/deals/{deal_id}/spec-sheet/email")
 async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=Depends(get_current_user)):
     """Email the scope PDF to the customer with optional Library file attachments.

@@ -397,6 +397,16 @@
 - Endpoints: `GET/POST/PUT/DELETE /api/assessments`, `POST /api/assessments/{id}/finalize`, `GET /api/assessments/{id}/pdf`, `POST /api/assessments/{id}/email`, `POST /api/assessments/{id}/convert-to-scope`.
 - ✅ Tested: 6/6 backend pytest (incl. 3 convert-to-scope tests) + full frontend e2e (100% pass).
 
+### Smart Library Doc Suggestions (Feb 2026) — P3a SHIPPED
+- New `/app/backend/scope_suggestions.py` — small, deterministic rule engine that maps `proposed_roof_type` → matching tokens (tpo / pvc / epdm / silicone / farm / restoration / fluid-applied / coating / modbit / metal / shingle / construction / overlay / tear-off / general). Each token has a list of (category, subcategory) matchers against Library files. Library files can also opt-in by adding a `smart_tags: []` field (user-curated wins).
+- New endpoint `GET /api/deals/{id}/scope-suggestions` → `{file_ids, reasons, tokens}` — used by the Email Scope modal.
+- Frontend `EmailScopeModal`:
+  - Auto-checks suggested docs on mount.
+  - Sorts matches to the **top** of the library list.
+  - Renders a "✨ Smart-picked N docs for token1, token2" banner with a one-click **Clear / Re-apply** toggle.
+  - Each matched doc shows a small **"Smart"** pill next to its name.
+- Verified live: FARM deal correctly pulls 6 docs (Western Colloid brochure, Property Owner Guides, etc.).
+
 ### Google Calendar Sync + Tasks (Feb 2026)
 - **Google OAuth integration** via the playbook (NOT Emergent-managed — full Google Cloud OAuth client). Credentials stored in `/app/backend/.env`. Redirect URI: `https://roofing-crm-3.preview.emergentagent.com/api/oauth/calendar/callback`.
 - New backend module `/app/backend/google_calendar.py`:
