@@ -117,3 +117,15 @@ def test_spec_sheet_email_stamps_scope_sent_fields():
     last = hist[-1]
     assert last.get("label") in {"Scope emailed", "Assessment emailed"}
     assert last.get("to") == "admin@roofingcrm.com"
+
+    # And the /activity feed must surface it as a "Scope emailed (send #N)"
+    # item with the recipient + sender visible.
+    acts = requests.get(f"{BASE_URL}/api/deals/{deal_id}/activity", headers=h, timeout=30).json()
+    scope_items = [
+        it for it in (acts.get("items") or [])
+        if "Scope emailed" in (it.get("title") or "")
+    ]
+    assert scope_items, "Activity timeline must include a 'Scope emailed' item"
+    top = scope_items[0]
+    assert "send #" in top["title"], f"title must include running count, got {top['title']!r}"
+    assert "admin@roofingcrm.com" in (top.get("subtitle") or "")

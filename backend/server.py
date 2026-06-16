@@ -1222,9 +1222,30 @@ async def deal_activity(deal_id: str, current=Depends(get_current_user)):
 
     EM_DASH = "\u2014"
     items = []
+    scope_send_running_count = 0
     if deal.get("created_at"):
         items.append({"ts": deal["created_at"], "kind": "deal_created", "title": "Project created", "color": "#71717A"})
     for entry in (deal.get("status_history") or []):
+        label = entry.get("label") or ""
+        # Scope / Assessment email-send entries: rendered with recipient + a
+        # running send-count so reps can see who got the proposal and how many
+        # times it has gone out.
+        if label in ("Scope emailed", "Assessment emailed"):
+            scope_send_running_count += 1
+            recipient = entry.get("to") or EM_DASH
+            attach = int(entry.get("attachments_count") or 0)
+            actor = entry.get("user_name") or ""
+            attach_bit = f" {EM_DASH} {attach} attachment{'s' if attach != 1 else ''}" if attach else ""
+            actor_bit = f" by {actor}" if actor else ""
+            items.append({
+                "ts": entry.get("at") or "",
+                "kind": "invoice_sent" if label.startswith("Scope") else "assessment_created",
+                "title": f"{label} (send #{scope_send_running_count})",
+                "subtitle": f"to {recipient}{attach_bit}{actor_bit}",
+                "color": "#062B67",
+            })
+            continue
+        # Default status-change entry (existing pattern: {from, to, at})
         items.append({
             "ts": entry.get("at") or "",
             "kind": "status_change",
