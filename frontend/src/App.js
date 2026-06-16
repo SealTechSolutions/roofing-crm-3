@@ -24,6 +24,7 @@ import TrashPage from "@/pages/Trash";
 import Profile from "@/pages/Profile";
 import Assessments from "@/pages/Assessments";
 import AssessmentEditor from "@/pages/AssessmentEditor";
+import Calendar from "@/pages/Calendar";
 import "@/App.css";
 
 const ProtectedRoute = ({ children }) => {
@@ -82,6 +83,7 @@ function App() {
               <Route path="/assessments" element={<Assessments />} />
               <Route path="/assessments/new" element={<AssessmentEditor />} />
               <Route path="/assessments/:id" element={<AssessmentEditor />} />
+              <Route path="/calendar" element={<Calendar />} />
               <Route path="/books" element={<BooksCOA />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/profile" element={<Profile />} />

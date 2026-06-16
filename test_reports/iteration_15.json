@@ -1,0 +1,54 @@
+{
+  "summary": "Comprehensive testing of Project Calendar feature: backend GET /api/calendar, PUT /api/deals/{id}/schedule (full+partial), DealIn schedule-field round-trip, plus full frontend e2e (login → /calendar → nav → popover → dbl-click → week view). 10/10 backend pytest cases PASS and every frontend acceptance criterion in the review_request PASSES.",
+  "tests_executed": [
+    "Backend: TestDealScheduleFields::test_post_and_get_roundtrip — POST /api/deals with scheduled_start_date/scheduled_end_date/material_order_date persists and round-trips via GET /api/deals/{id}. PASS",
+    "Backend: PUT /api/deals/{id}/schedule with full body (start+end+material) updates all 3 and GET confirms persistence. PASS",
+    "Backend: PUT /api/deals/{id}/schedule with partial body (only material_order_date) leaves start/end untouched. PASS",
+    "Backend: PUT /api/deals/{id}/schedule with partial body (only start+end) leaves material_order_date untouched. PASS",
+    "Backend: PUT /api/deals/nonexistent/schedule → 404. PASS",
+    "Backend: GET /api/calendar?start=2026-07-01&end=2026-07-31 returns list with project + material_order events containing id/kind/title/start/end/color/deal_id. PASS",
+    "Backend: GET /api/calendar window filter excludes out-of-range events (March 2026 window doesn't contain July seed_deal events). PASS",
+    "Backend: All event kinds across 2026 are in {project, material_order, maintenance, coi_expiry, invoice_due}. PASS",
+    "Backend: GET /api/calendar without start/end → 422. PASS",
+    "Backend: GET /api/calendar without auth → 401/403. PASS",
+    "Frontend: Login as admin@roofingcrm.com → navigate to /calendar → data-testid=calendar-page present, no console errors. PASS",
+    "Frontend: cal-header-label shows 'June 2026' (current month). Legend has 5 filters (project, material_order, maintenance, coi_expiry, invoice_due). View toggle (month/week) visible. PASS",
+    "Frontend: cal-prev → May 2026, cal-next → June then July 2026, cal-today returns to June 2026. PASS",
+    "Frontend: 5 project events found in current grid including seed deal 350cedf9-…; project bar spans 2026-06-22 → 2026-06-26 (blue), material order pin on 2026-06-18 (amber), maintenance on 2026-06-01 (green), invoice due on 2026-06-14 (purple). Today cell (June 16) has blue ring; adjacent-month days are greyed out. PASS",
+    "Frontend: Single-click on project event opens cal-popover with title '2278 Manatt Ct_CR', date range '2026-06-22 → 2026-06-26', amount $10,000, status Won, and 'Open in CRM' button (cal-popover-open). PASS",
+    "Frontend: Double-click on project event navigates to /deals/350cedf9-6012-42bd-9e0b-90db4adb43df. PASS",
+    "Frontend: Draggable attribute correctly set — project=true, material_order=true, maintenance=false. (Drag-and-drop dispatch not simulated per request guidance; PUT /schedule endpoint covered by backend pytest.) PASS",
+    "Frontend: View toggle to Week shows 7 day cells with same events (Invoice Due Jun 14, Materials Jun 18, Today ring on Jun 16). cal-next in week view moves header from 'June 14–20, 2026' to 'June 21–27, 2026'. PASS"
+  ],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Calendar month grid", "issues": ["Project bar continuation cells render an '↪' glyph instead of the title — works but the glyph is non-obvious; consider a thin connecting bar or hiding the text on continuation days. Cosmetic only."]},
+      {"screen": "Calendar legend", "issues": ["'+ N more' overflow label hardcodes `dayEvents.length - 5` even when in week view (limit is 30 there). Will show wrong count only if a single day has >30 events in week view — extremely unlikely; minor."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_calendar.py",
+    "/app/test_reports/pytest/calendar_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Calendar.jsx ~373 lines — within guideline. Good separation of concerns (helpers → state → handlers → render).",
+    "GET /api/calendar uses inclusive string compare on YYYY-MM-DD which works because of ISO lex ordering — correct, no timezone bugs.",
+    "PUT /deals/{id}/schedule correctly drops None values via dict-comprehension, preserving unchanged fields — verified by 2 partial-body tests.",
+    "Calendar event ID prefixing (project-/material-/maint-/coi-gl-/coi-wc-/invoice-) ensures uniqueness across kinds, good practice.",
+    "Minor: span-overflow indicator in Calendar.jsx line 319 always subtracts 5 even in week mode where the slice limit is 30. Cosmetic edge case.",
+    "Sales-role ownership check on PUT /schedule mirrors PUT /deals — consistent and correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_calendar.py (new)"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% (all acceptance criteria)"},
+  "test_credentials": "admin@roofingcrm.com / admin123",
+  "seed_data_creation": "test_calendar.py creates a TEST_-prefixed deal per session via fixture and DELETEs it on teardown. Pre-existing seed deal 350cedf9-6012-42bd-9e0b-90db4adb43df (June 22-26 2026, materials June 18) used by frontend tests is left intact.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Calendar feature is production-ready. Backend endpoints: GET /api/calendar?start=&end= returns flat list of events (NOT wrapped in {events: [...]}). PUT /api/deals/{id}/schedule accepts any subset of {scheduled_start_date, scheduled_end_date, material_order_date}. Frontend page lives at /calendar with data-testid=calendar-page; event testids follow pattern cal-event-{kind}-{event.id} where event.id is itself prefixed (e.g., cal-event-project-project-{deal_id}). Drag-and-drop uses HTML5 drag events with onDragStart/onDrop on day cells — only project and material_order kinds have draggable=true. Today is June 16, 2026, so 'today' tests work without changing cursor."
+}

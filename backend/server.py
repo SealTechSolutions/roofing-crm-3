@@ -517,6 +517,10 @@ class DealIn(BaseModel):
     maintenance_visits: List[dict] = Field(default_factory=list)
     # Material Take-Off — pull from materials catalog, drives PO PDFs and Estimated Materials cost
     material_takeoff: List[dict] = Field(default_factory=list)
+    # Project Calendar scheduling
+    scheduled_start_date: str = ""   # YYYY-MM-DD — when crews start on site
+    scheduled_end_date: str = ""     # YYYY-MM-DD — anticipated completion
+    material_order_date: str = ""    # YYYY-MM-DD — when materials should be delivered / PO needs to fire
 
 
 class Deal(DealIn):
@@ -1206,6 +1210,32 @@ async def update_deal(deal_id: str, body: DealIn, current=Depends(get_current_us
     await db.deals.update_one({"id": deal_id}, {"$set": data})
     doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
     return scrub_deal(doc, current)
+
+
+class DealScheduleIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    scheduled_start_date: Optional[str] = None
+    scheduled_end_date: Optional[str] = None
+    material_order_date: Optional[str] = None
+
+
+@api_router.put("/deals/{deal_id}/schedule", response_model=Deal)
+async def update_deal_schedule(deal_id: str, body: DealScheduleIn, current=Depends(get_current_user)):
+    """Partial update for Project Calendar reschedules — only the three date fields.
+    Used by drag-to-reschedule on the calendar grid."""
+    existing = await db.deals.find_one({"id": deal_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    if current.get("role") == "sales":
+        owns = existing.get("assigned_to_user_id") == current["id"] or existing.get("created_by_user_id") == current["id"]
+        if not owns:
+            raise HTTPException(status_code=403, detail="Not your project")
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    if patch:
+        await db.deals.update_one({"id": deal_id}, {"$set": patch})
+    doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    return scrub_deal(doc, current)
+
 
 
 @api_router.delete("/deals/{deal_id}")
@@ -4898,6 +4928,149 @@ async def materials_in_motion(current=Depends(get_current_user)):
         "projects": out_projects,
         "by_vendor": by_vendor,
     }
+
+
+@api_router.get("/calendar")
+async def calendar_events(start: str, end: str, current=Depends(get_current_user)):
+    """Unified calendar feed for the Project Calendar page.
+
+    Returns a flat list of color-coded events between `start` and `end` (inclusive,
+    YYYY-MM-DD). Event kinds:
+      - project        : scheduled_start_date → scheduled_end_date span (blue)
+      - material_order : Deal.material_order_date (amber)
+      - maintenance    : Deal.maintenance_visits[].visit_date OR next_maintenance_date (green)
+      - coi_expiry     : Vendor GL/WC COI expiry (red)
+      - invoice_due    : Invoice.due_date (purple)
+    """
+    def _in_range(d: str) -> bool:
+        return bool(d) and start <= d <= end
+
+    events = []
+
+    # --- Projects (span) + Material Orders (single day) ---
+    deals_cursor = db.deals.find(
+        {"is_deleted": {"$ne": True}},
+        {
+            "_id": 0, "id": 1, "title": 1, "status": 1, "deal_type": 1,
+            "scheduled_start_date": 1, "scheduled_end_date": 1, "material_order_date": 1,
+            "next_maintenance_date": 1, "maintenance_visits": 1, "maintenance_plan": 1,
+            "chosen_amount": 1, "property_id": 1,
+        },
+    )
+    deals = await deals_cursor.to_list(5000)
+    for d in deals:
+        s = d.get("scheduled_start_date") or ""
+        e = d.get("scheduled_end_date") or s
+        if s and (_in_range(s) or _in_range(e) or (s <= start and (e or s) >= end)):
+            events.append({
+                "id": f"project-{d['id']}",
+                "kind": "project",
+                "title": d.get("title") or "Project",
+                "start": s,
+                "end": e or s,
+                "color": "#1D4ED8",  # cobalt blue
+                "deal_id": d["id"],
+                "status": d.get("status") or "",
+                "amount": float(d.get("chosen_amount") or 0),
+            })
+        mo = d.get("material_order_date") or ""
+        if _in_range(mo):
+            events.append({
+                "id": f"material-{d['id']}",
+                "kind": "material_order",
+                "title": f"Materials: {d.get('title') or 'Project'}",
+                "start": mo,
+                "end": mo,
+                "color": "#D97706",  # amber
+                "deal_id": d["id"],
+            })
+        # Maintenance visits — each visit in window, plus next_maintenance_date as a tentative slot
+        for v in (d.get("maintenance_visits") or []):
+            vd = v.get("visit_date") or ""
+            if _in_range(vd):
+                events.append({
+                    "id": f"maint-{d['id']}-{v.get('id','')}",
+                    "kind": "maintenance",
+                    "title": f"Maintenance: {d.get('title') or 'Project'}",
+                    "start": vd,
+                    "end": vd,
+                    "color": "#16A34A",  # green
+                    "deal_id": d["id"],
+                    "amount": float(v.get("amount") or 0),
+                })
+        nm = d.get("next_maintenance_date") or ""
+        if d.get("maintenance_plan") and _in_range(nm):
+            # Avoid duplicate if there's already a visit logged that date
+            already = any(ev.get("kind") == "maintenance" and ev.get("start") == nm and ev.get("deal_id") == d["id"] for ev in events)
+            if not already:
+                events.append({
+                    "id": f"maint-next-{d['id']}",
+                    "kind": "maintenance",
+                    "title": f"Maintenance Due: {d.get('title') or 'Project'}",
+                    "start": nm,
+                    "end": nm,
+                    "color": "#16A34A",
+                    "deal_id": d["id"],
+                    "tentative": True,
+                })
+
+    # --- COI Expirations (red) ---
+    vendors_cursor = db.vendors.find(
+        {"is_deleted": {"$ne": True}},
+        {"_id": 0, "id": 1, "name": 1, "kind": 1, "gl_coi_expiry_date": 1, "wc_coi_expiry_date": 1, "gl_coi_on_file": 1, "wc_coi_on_file": 1},
+    )
+    vendors = await vendors_cursor.to_list(2000)
+    for v in vendors:
+        gl = v.get("gl_coi_expiry_date") or ""
+        if v.get("gl_coi_on_file") and _in_range(gl):
+            events.append({
+                "id": f"coi-gl-{v['id']}",
+                "kind": "coi_expiry",
+                "title": f"GL COI Expires: {v.get('name') or 'Vendor'}",
+                "start": gl,
+                "end": gl,
+                "color": "#B91C1C",  # red
+                "vendor_id": v["id"],
+                "coi_type": "GL",
+            })
+        wc = v.get("wc_coi_expiry_date") or ""
+        if v.get("wc_coi_on_file") and _in_range(wc):
+            events.append({
+                "id": f"coi-wc-{v['id']}",
+                "kind": "coi_expiry",
+                "title": f"WC COI Expires: {v.get('name') or 'Vendor'}",
+                "start": wc,
+                "end": wc,
+                "color": "#B91C1C",
+                "vendor_id": v["id"],
+                "coi_type": "WC",
+            })
+
+    # --- Invoice Due Dates (purple) — only unpaid balances ---
+    inv_cursor = db.invoices.find(
+        {"is_deleted": {"$ne": True}, "status": {"$nin": ["Paid", "Void"]}},
+        {"_id": 0, "id": 1, "invoice_number": 1, "due_date": 1, "balance_due": 1, "bill_to_name": 1, "bill_to_company": 1, "deal_id": 1},
+    )
+    invs = await inv_cursor.to_list(5000)
+    for inv in invs:
+        dd = inv.get("due_date") or ""
+        if _in_range(dd):
+            who = inv.get("bill_to_company") or inv.get("bill_to_name") or ""
+            events.append({
+                "id": f"invoice-{inv['id']}",
+                "kind": "invoice_due",
+                "title": f"Invoice Due: {inv.get('invoice_number','')} — {who}",
+                "start": dd,
+                "end": dd,
+                "color": "#7E22CE",  # purple
+                "invoice_id": inv["id"],
+                "deal_id": inv.get("deal_id"),
+                "amount": float(inv.get("balance_due") or 0),
+            })
+
+    events.sort(key=lambda x: (x["start"], x["kind"]))
+    return events
+
 
 
 @api_router.get("/dashboard/summary")

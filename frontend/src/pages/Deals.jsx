@@ -109,6 +109,9 @@ const empty = {
   warranty_25yr_add: 0,
   warranty_color: "white",
   cover_photo_file_id: "",
+  scheduled_start_date: "",
+  scheduled_end_date: "",
+  material_order_date: "",
 };
 
 export default function Deals() {
@@ -628,6 +631,25 @@ export default function Deals() {
               </div>
               <div className="text-xs text-zinc-500 mt-2">
                 Tip: After saving, open the project to add payment milestones and vendor cost line items.
+              </div>
+            </div>
+
+            {/* Schedule — drives the Project Calendar */}
+            <div className="border-t border-zinc-200 pt-4">
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">Schedule (Project Calendar)</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Field label="Scheduled Start">
+                  <Input data-testid="deal-scheduled-start" type="date" value={form.scheduled_start_date} onChange={(v) => setForm({ ...form, scheduled_start_date: v })} />
+                </Field>
+                <Field label="Scheduled End">
+                  <Input data-testid="deal-scheduled-end" type="date" value={form.scheduled_end_date} onChange={(v) => setForm({ ...form, scheduled_end_date: v })} />
+                </Field>
+                <Field label="Material Order Date">
+                  <Input data-testid="deal-material-order" type="date" value={form.material_order_date} onChange={(v) => setForm({ ...form, material_order_date: v })} />
+                </Field>
+              </div>
+              <div className="text-[11px] text-zinc-500 mt-2">
+                These dates appear on the Project Calendar — drag events to reschedule.
               </div>
             </div>
 
