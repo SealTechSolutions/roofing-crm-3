@@ -289,6 +289,14 @@ def create_router(db, get_current_user) -> APIRouter:
         doc["is_deleted"] = False
         await db.assessments.insert_one(doc.copy())
         doc.pop("_id", None)
+        # Push to Google Calendar (best-effort)
+        try:
+            import google_calendar as _gcal
+            import os
+            base = os.environ.get("PUBLIC_BASE_URL") or os.environ.get("GOOGLE_OAUTH_REDIRECT_URI", "").replace("/api/oauth/calendar/callback", "")
+            await _gcal.push_assessment(db, current.get("id"), doc, base)
+        except Exception:
+            pass
         return doc
 
     # ---------- Update ----------
@@ -302,7 +310,15 @@ def create_router(db, get_current_user) -> APIRouter:
         for k in ("id", "created_at", "created_by_user_id", "created_by_name", "is_deleted"):
             patch.pop(k, None)
         await db.assessments.update_one({"id": assessment_id}, {"$set": patch})
-        return await db.assessments.find_one({"id": assessment_id}, {"_id": 0})
+        doc = await db.assessments.find_one({"id": assessment_id}, {"_id": 0})
+        try:
+            import google_calendar as _gcal
+            import os
+            base = os.environ.get("PUBLIC_BASE_URL") or os.environ.get("GOOGLE_OAUTH_REDIRECT_URI", "").replace("/api/oauth/calendar/callback", "")
+            await _gcal.push_assessment(db, current.get("id"), doc, base)
+        except Exception:
+            pass
+        return doc
 
     # ---------- Finalize ----------
     @router.post("/{assessment_id}/finalize")

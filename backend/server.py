@@ -1264,12 +1264,14 @@ async def reschedule_maintenance(deal_id: str, body: MaintenanceRescheduleIn, cu
         owns = existing.get("assigned_to_user_id") == current["id"] or existing.get("created_by_user_id") == current["id"]
         if not owns:
             raise HTTPException(status_code=403, detail="Not your project")
+    moved_visit = None
     if body.visit_id:
         visits = list(existing.get("maintenance_visits") or [])
         found = False
         for v in visits:
             if v.get("id") == body.visit_id:
                 v["visit_date"] = body.date
+                moved_visit = v
                 found = True
                 break
         if not found:
@@ -1278,6 +1280,12 @@ async def reschedule_maintenance(deal_id: str, body: MaintenanceRescheduleIn, cu
     else:
         await db.deals.update_one({"id": deal_id}, {"$set": {"next_maintenance_date": body.date}})
     doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    # Push the reschedule to Google Calendar
+    if moved_visit:
+        try:
+            await gcal_module.push_maintenance_visit(db, current["id"], deal_id, moved_visit, doc.get("title") or "Project", _PUBLIC_BASE_URL)
+        except Exception:
+            pass
     return scrub_deal(doc, current)
 
 
@@ -1334,6 +1342,11 @@ async def add_maintenance_visit(deal_id: str, body: MaintenanceVisitIn, current=
     cleaned = normalize_deal(merged)
     await db.deals.update_one({"id": deal_id}, {"$set": cleaned})
     doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    # Push the newly added maintenance visit to Google Calendar
+    try:
+        await gcal_module.push_maintenance_visit(db, current["id"], deal_id, visit, doc.get("title") or "Project", _PUBLIC_BASE_URL)
+    except Exception:
+        pass
     return scrub_deal(doc, current)
 
 
