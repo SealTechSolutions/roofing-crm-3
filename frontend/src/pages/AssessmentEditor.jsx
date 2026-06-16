@@ -7,6 +7,7 @@ import {
   Plus, X, Trash2, Image as ImageIcon, Upload, AlertTriangle, ArrowRightCircle, ExternalLink,
 } from "lucide-react";
 import GrammarCheck from "@/components/GrammarCheck";
+import { bandFor } from "@/lib/assessmentBands";
 
 const BLANK_SCORE = { score: 0, reasoning: "" };
 const BLANK_FINDING = (component) => ({
@@ -571,12 +572,13 @@ function StepScores({ doc, updateScore, update }) {
     <div className="space-y-5" data-testid="step-scores-body">
       <SectionTitle>Roof Asset Dashboard™ — 0-100 Scores</SectionTitle>
       <div className="text-xs text-zinc-500">
-        Slide each metric (or type the number) and add a short reasoning line. These render on Pages 2-3 of the PDF.
+        Slide each metric (or type the number) — the live band pill on the right shows how it'll read in the executive PDF (e.g., 75 → <span className="font-bold">Good</span>). Remaining Service Life is measured in years (0–50). Capital Risk is inverted: higher = worse.
       </div>
       <div className="space-y-3">
         {SCORE_KEYS.map(([key, label]) => (
           <ScoreInput
             key={key}
+            metricKey={key}
             label={label}
             value={doc[key]?.score || 0}
             reasoning={doc[key]?.reasoning || ""}
@@ -1073,33 +1075,44 @@ function Checkbox({ checked, onChange, label, testId }) {
   );
 }
 
-function ScoreInput({ label, value, reasoning, onChangeScore, onChangeReasoning, testId }) {
-  const color = value >= 80 ? "#16A34A" : value >= 60 ? "#D97706" : value >= 1 ? "#B91C1C" : "#A0A0A0";
+function ScoreInput({ metricKey, label, value, reasoning, onChangeScore, onChangeReasoning, testId }) {
+  const band = bandFor(metricKey, value);
+  const isRSL = metricKey === "remaining_service_life";
+  const max = isRSL ? 50 : 100;
   return (
     <div className="border border-zinc-200 p-3" data-testid={testId}>
       <div className="flex items-center gap-3 mb-2">
         <div className="text-sm font-bold flex-1">{label}</div>
+        {/* Live band pill */}
+        <div
+          className="inline-flex items-center px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap"
+          style={{ background: band.color }}
+          data-testid={`${testId}-band`}
+          title={`Band: ${band.label}`}
+        >
+          {band.label}
+        </div>
         <input
           type="number"
           min="0"
-          max="100"
+          max={max}
           value={value}
-          onChange={(e) => onChangeScore(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+          onChange={(e) => onChangeScore(Math.min(max, Math.max(0, parseInt(e.target.value) || 0)))}
           className="w-16 text-right border border-zinc-300 px-2 py-1 text-sm font-mono font-bold"
           data-testid={`${testId}-num`}
-          style={{ color }}
+          style={{ color: band.color }}
         />
-        <span className="text-xs text-zinc-400 font-mono">/100</span>
+        <span className="text-xs text-zinc-400 font-mono">{isRSL ? "yrs" : "/100"}</span>
       </div>
       <input
         type="range"
         min="0"
-        max="100"
+        max={max}
         value={value}
         onChange={(e) => onChangeScore(parseInt(e.target.value))}
-        className="w-full accent-blue-700"
+        className="w-full"
         data-testid={`${testId}-slider`}
-        style={{ accentColor: color }}
+        style={{ accentColor: band.color }}
       />
       <input
         value={reasoning}

@@ -123,7 +123,7 @@ def _build_email_body(vendor: dict, settings: dict) -> tuple[str, str]:
 <html><body style="font-family: Arial, sans-serif; color:#222; max-width:640px; margin:0 auto; padding:24px;">
   <p>{greeting}</p>
   <p>{intro_html}{(" <em>(for " + company + ")</em>") if company else ""}</p>
-  <table cellpadding="14" cellspacing="0" style="border:2px solid #1d4ed8; background:#eff6ff; border-radius:6px; margin:18px 0; width:100%;">
+  <table cellpadding="14" cellspacing="0" style="border:2px solid #062B67; background:#eff6ff; border-radius:6px; margin:18px 0; width:100%;">
     <tr><td>
       <div style="font-size:11px; font-weight:bold; letter-spacing:0.1em; color:#1e40af; text-transform:uppercase;">Additional Insured</div>
       <div style="margin-top:8px; font-size:14px; line-height:1.55;">{ai_html}</div>

@@ -16,7 +16,7 @@ from reportlab.platypus.flowables import KeepTogether
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "sealtech-logo.png")
 
 
-BLUE = colors.HexColor("#1D4ED8")
+BLUE = colors.HexColor("#062B67")
 BRONZE = colors.HexColor("#A0703A")
 ORANGE = BRONZE  # back-compat alias — brand accent is bronze, not orange
 DARK = colors.HexColor("#0A0A0A")

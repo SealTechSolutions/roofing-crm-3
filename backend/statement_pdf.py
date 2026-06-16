@@ -20,7 +20,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "sealtech-logo.png")
 
-BLUE = colors.HexColor("#1D4ED8")
+BLUE = colors.HexColor("#062B67")
 BRONZE = colors.HexColor("#A0703A")
 DARK = colors.HexColor("#0A0A0A")
 GRAY = colors.HexColor("#52525B")
@@ -347,7 +347,7 @@ def build_statement_pdf(customer: dict, invoices: list, statement_date_iso: str,
             table_data.append([
                 "", "", "", Paragraph("<b>TOTAL DUE (incl. Late Fees)</b>", s["body_sm"]),
                 "", "",
-                Paragraph(f'<b><font color="#1D4ED8">{_currency(grand_total_with_fees)}</font></b>', s["body"]),
+                Paragraph(f'<b><font color="#062B67">{_currency(grand_total_with_fees)}</font></b>', s["body"]),
                 "", "",
             ])
             total_rows_count = 3
@@ -355,7 +355,7 @@ def build_statement_pdf(customer: dict, invoices: list, statement_date_iso: str,
             table_data.append([
                 "", "", "", Paragraph("<b>TOTAL BALANCE DUE</b>", s["body_sm"]),
                 "", "",
-                Paragraph(f'<b><font color="#1D4ED8">{_currency(grand_balance)}</font></b>', s["body"]),
+                Paragraph(f'<b><font color="#062B67">{_currency(grand_balance)}</font></b>', s["body"]),
                 "", "",
             ])
             total_rows_count = 1
@@ -391,7 +391,7 @@ def build_statement_pdf(customer: dict, invoices: list, statement_date_iso: str,
     final_due = grand_balance + grand_late_fee
     if grand_balance > 0.01:
         msg = (
-            f'<b>Please remit payment of <font color="#1D4ED8">{_currency(final_due)}</font> at your earliest convenience.</b>  '
+            f'<b>Please remit payment of <font color="#062B67">{_currency(final_due)}</font> at your earliest convenience.</b>  '
             "If you have questions about any line above, or if any of these invoices have already been paid, please reply to this email "
             "or call us at 720-715-9955 so we can reconcile your account."
         )

@@ -13,7 +13,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "sealtech-logo.png")
 
-BLUE = colors.HexColor("#1D4ED8")
+BLUE = colors.HexColor("#062B67")
 BRONZE = colors.HexColor("#A0703A")
 DARK = colors.HexColor("#0A0A0A")
 GRAY = colors.HexColor("#52525B")

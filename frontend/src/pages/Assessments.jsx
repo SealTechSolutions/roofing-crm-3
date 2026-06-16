@@ -168,6 +168,10 @@ export default function Assessments() {
                 <th className="px-4 py-3">Property</th>
                 <th className="px-4 py-3">Client</th>
                 <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3 text-center">Asset Score™</th>
+                <th className="px-4 py-3 text-center">Condition</th>
+                <th className="px-4 py-3 text-center">RSL</th>
+                <th className="px-4 py-3 text-center">Cap Risk™</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -192,6 +196,10 @@ export default function Assessments() {
                   </td>
                   <td className="px-4 py-3 text-zinc-700">{a.prepared_for || "—"}</td>
                   <td className="px-4 py-3 font-mono text-xs text-zinc-700">{a.assessment_date || "—"}</td>
+                  <td className="px-4 py-3 text-center"><BandPill band={a.bands?.roof_asset_score} testId={`band-ras-${a.id}`} /></td>
+                  <td className="px-4 py-3 text-center"><BandPill band={a.bands?.condition_rating} testId={`band-cond-${a.id}`} /></td>
+                  <td className="px-4 py-3 text-center"><BandPill band={a.bands?.remaining_service_life} testId={`band-rsl-${a.id}`} /></td>
+                  <td className="px-4 py-3 text-center"><BandPill band={a.bands?.capital_risk} testId={`band-caprisk-${a.id}`} /></td>
                   <td className="px-4 py-3">
                     <span className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-sm ${STATUS_COLORS[a.status] || "bg-zinc-100 text-zinc-700 border-zinc-300"}`}>
                       {a.status || "Draft"}
@@ -241,5 +249,19 @@ function KpiCard({ label, value, accent, testId }) {
       <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-2">{label}</div>
       <div className={`text-3xl font-black tracking-tighter ${accent || "text-zinc-950"}`}>{value}</div>
     </div>
+  );
+}
+
+function BandPill({ band, testId }) {
+  if (!band) return <span className="text-xs text-zinc-400">—</span>;
+  return (
+    <span
+      className="inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white rounded-sm whitespace-nowrap"
+      style={{ background: band.color }}
+      title={band.sublabel}
+      data-testid={testId}
+    >
+      {band.label}
+    </span>
   );
 }

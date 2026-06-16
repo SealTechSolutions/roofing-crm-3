@@ -55,7 +55,7 @@ def to_excel(sections: list) -> bytes:
     wb = Workbook()
     wb.remove(wb.active)
     header_font = Font(bold=True, color="FFFFFF", size=11)
-    header_fill = PatternFill("solid", fgColor="1D4ED8")
+    header_fill = PatternFill("solid", fgColor="062B67")
     for key, records in sections:
         cfg = CATEGORIES[key]
         ws = wb.create_sheet(cfg["title"])
@@ -85,7 +85,7 @@ def to_pdf(sections: list) -> bytes:
     doc = SimpleDocTemplate(buf, pagesize=landscape(letter), leftMargin=0.4 * inch, rightMargin=0.4 * inch, topMargin=0.5 * inch, bottomMargin=0.5 * inch)
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("title", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, textColor=colors.HexColor("#0A0A0A"))
-    eyebrow = ParagraphStyle("eyebrow", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, textColor=colors.HexColor("#1D4ED8"), leading=10, letterSpacing=1)
+    eyebrow = ParagraphStyle("eyebrow", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, textColor=colors.HexColor("#062B67"), leading=10, letterSpacing=1)
     body = ParagraphStyle("body", parent=styles["Normal"], fontName="Helvetica", fontSize=8, textColor=colors.HexColor("#27272A"))
 
     story = []
@@ -105,7 +105,7 @@ def to_pdf(sections: list) -> bytes:
         else:
             tbl = Table(data, repeatRows=1)
             tbl.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1D4ED8")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#062B67")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTSIZE", (0, 0), (-1, 0), 8),

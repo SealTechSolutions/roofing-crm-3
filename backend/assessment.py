@@ -37,6 +37,8 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from assessment_bands import all_bands
+
 
 # ---------- Sub-models ----------
 
@@ -245,12 +247,15 @@ def create_router(db, get_current_user) -> APIRouter:
                 deal_titles[d["id"]] = d.get("title") or ""
         for r in rows:
             r["deal_title"] = deal_titles.get(r.get("deal_id"), "")
+            r["bands"] = all_bands(r)
         return rows
 
     # ---------- Get ----------
     @router.get("/{assessment_id}")
     async def get_assessment(assessment_id: str, _=Depends(get_current_user)):
-        return await _ensure(assessment_id)
+        doc = await _ensure(assessment_id)
+        doc["bands"] = all_bands(doc)
+        return doc
 
     # ---------- Create ----------
     @router.post("")

@@ -12,7 +12,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 
-_BLUE = colors.HexColor("#1d4ed8")
+_BLUE = colors.HexColor("#062B67")
 _INK = colors.HexColor("#0c0a09")
 _MUTED = colors.HexColor("#71717a")
 _LIGHT = colors.HexColor("#f4f4f5")

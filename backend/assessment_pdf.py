@@ -26,11 +26,12 @@ from reportlab.platypus import (
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
 
 from storage import get_object
+from assessment_bands import band_for, COLOR_GRAY
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "sealtech-logo.png")
 
 # Brand palette
-BLUE   = colors.HexColor("#1D4ED8")
+BLUE   = colors.HexColor("#062B67")
 BRONZE = colors.HexColor("#A0703A")
 DARK   = colors.HexColor("#0A0A0A")
 GRAY   = colors.HexColor("#52525B")
@@ -395,41 +396,71 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     # PAGE 3 — Roof Asset Dashboard™
     # ============================================================
     _section_header("Roof Asset Dashboard™", story, s)
-    dash = [
-        ("Roof Asset Score™",        a.get("roof_asset_score", {})),
-        ("Remaining Service Life",   a.get("remaining_service_life", {})),
-        ("Condition Rating",         a.get("condition_rating", {})),
-        ("Maintenance Status",       a.get("maintenance_status", {})),
-        ("Hail Resilience™",         a.get("hail_resilience", {})),
-        ("Warranty Status",          a.get("warranty_status", {})),
-        ("Capital Risk™",            a.get("capital_risk", {})),
-        ("Restoration Suitability™", a.get("restoration_suitability", {})),
-    ]
-    # Two-column grid
-    rows = []
-    for i in range(0, len(dash), 2):
-        left = dash[i]
-        right = dash[i + 1] if i + 1 < len(dash) else ("", {})
-        rows.append([
-            Paragraph(left[0], s["h3"]),
-            _score_pill(left[1]),
-            Paragraph(right[0], s["h3"]) if right[0] else "",
-            _score_pill(right[1]) if right[0] else "",
-        ])
-    dash_t = Table(rows, colWidths=[2.1 * inch, 1.55 * inch, 2.1 * inch, 1.55 * inch])
-    dash_t.hAlign = "LEFT"
-    dash_t.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-        ("LEFTPADDING", (0, 0), (-1, -1), 12),
-    ]))
-    story.append(dash_t)
+    story.append(Paragraph(
+        '<font color="#52525B" size="8"><i>Executive-friendly summary: categorical bands let stakeholders compare at a glance. Numeric scores remain below each tile for analytical reference.</i></font>',
+        s["body_sm"],
+    ))
+    story.append(Spacer(1, 6))
 
-    # Executive Findings
-    story.append(Spacer(1, 14))
+    # Roof Asset Score™ is the headline composite — give it its own large tile spanning 4 columns
+    composite_band = band_for("roof_asset_score", (a.get("roof_asset_score") or {}).get("score"))
+    composite_color = colors.HexColor(composite_band["color"])
+    composite_tile = Table([
+        [Paragraph("ROOF ASSET SCORE™", ParagraphStyle("ck_eyebrow", fontName="Helvetica-Bold", fontSize=8, textColor=GRAY, leading=10, alignment=TA_CENTER))],
+        [Paragraph(
+            f'<font color="{composite_band["color"]}" size="32"><b>{composite_band["label"]}</b></font>'
+            f'<font color="#A0A0A0" size="14"><b>/100</b></font>',
+            ParagraphStyle("ck_n", fontName="Helvetica-Bold", fontSize=32, leading=36, alignment=TA_CENTER),
+        )],
+        [Paragraph(
+            f'<font color="{composite_band["color"]}" size="11"><b>{composite_band["sublabel"]}</b></font>',
+            ParagraphStyle("ck_s", fontName="Helvetica-Bold", fontSize=11, leading=14, alignment=TA_CENTER),
+        )],
+    ], colWidths=[7.3 * inch], rowHeights=[0.24 * inch, 0.55 * inch, 0.26 * inch])
+    composite_tile.setStyle(TableStyle([
+        ("BACKGROUND",   (0, 0), (-1, -1), _tint_bg(composite_band["color"])),
+        ("BOX",          (0, 0), (-1, -1), 1.0, composite_color),
+        ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING",   (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 3),
+    ]))
+    story.append(composite_tile)
+    story.append(Spacer(1, 10))
+
+    # 7 sub-metrics in a 4-col × 2-row grid (last row has 3 tiles + 1 empty cell)
+    submetrics = [
+        ("Condition Rating",          "condition_rating"),
+        ("Remaining Service Life",    "remaining_service_life"),
+        ("Restoration Suitability™",  "restoration_suitability"),
+        ("Maintenance Status",        "maintenance_status"),
+        ("Hail Resilience™",          "hail_resilience"),
+        ("Warranty Status",           "warranty_status"),
+        ("Capital Risk™",             "capital_risk"),
+    ]
+    tile_w = 1.75 * inch
+    grid_rows = []
+    for i in range(0, len(submetrics), 4):
+        row_cells = []
+        for j in range(4):
+            if i + j < len(submetrics):
+                lbl, key = submetrics[i + j]
+                row_cells.append(_band_tile(lbl, key, a.get(key, {}), width=tile_w))
+            else:
+                # Empty filler cell
+                row_cells.append("")
+        grid_rows.append(row_cells)
+    grid = Table(grid_rows, colWidths=[tile_w] * 4, hAlign="LEFT")
+    grid.setStyle(TableStyle([
+        ("VALIGN",       (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING",   (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
+    ]))
+    story.append(grid)
+
+    # Executive Findings (push to next page so the dashboard breathes)
+    story.append(PageBreak())
     _section_header("Executive Findings", story, s)
     story.append(Paragraph("<b>Primary Concerns</b>", s["h3"]))
     story.append(_finding_box(a.get("primary_concerns", []), num_slots=3, row_height=0.26 * inch))
@@ -850,6 +881,70 @@ def _score_pill(sc: dict) -> Paragraph:
         f'<font color="#A0A0A0" size="8"><b>/100</b></font>',
         ParagraphStyle("sp", fontName="Helvetica-Bold", fontSize=12, leading=15, alignment=TA_LEFT),
     )
+
+
+def _band_tile(label: str, metric_key: str, sc: dict, width: float = 1.75 * inch, height: float = 1.05 * inch) -> Table:
+    """Executive tile card for a single Roof Asset Dashboard™ metric.
+    Layout (top → bottom):
+        metric label  (eyebrow, 7pt, grey, uppercase)
+        BAND HEADLINE (bold, 18pt, band color)
+        sublabel      (8pt, grey: "82/100" or "Remaining" for RSL)
+    Background is a tinted color matching the band, with a thin border.
+    """
+    if not isinstance(sc, dict):
+        sc = {}
+    band = band_for(metric_key, sc.get("score"))
+    band_color = colors.HexColor(band["color"])
+    # Soft tinted background — alpha is approximated by using a lighter shade
+    tint = _tint_bg(band["color"])
+
+    label_style = ParagraphStyle(
+        "tile_label", fontName="Helvetica-Bold", fontSize=7, textColor=GRAY,
+        leading=9, alignment=TA_CENTER, spaceAfter=0,
+    )
+    headline_style = ParagraphStyle(
+        "tile_head", fontName="Helvetica-Bold", fontSize=16, textColor=band_color,
+        leading=19, alignment=TA_CENTER, spaceAfter=0, spaceBefore=2,
+    )
+    sub_style = ParagraphStyle(
+        "tile_sub", fontName="Helvetica-Bold", fontSize=8, textColor=GRAY,
+        leading=10, alignment=TA_CENTER,
+    )
+    # Shorter headline font for "X Years Remaining" if too wide
+    headline_text = band["label"]
+    if len(headline_text) > 9 and metric_key != "remaining_service_life":
+        headline_style = ParagraphStyle(
+            "tile_head_sm", fontName="Helvetica-Bold", fontSize=13, textColor=band_color,
+            leading=16, alignment=TA_CENTER, spaceBefore=2,
+        )
+
+    tile = Table([
+        [Paragraph(label.upper(), label_style)],
+        [Paragraph(headline_text, headline_style)],
+        [Paragraph(band["sublabel"] or "", sub_style)],
+    ], colWidths=[width], rowHeights=[0.22 * inch, 0.45 * inch, 0.22 * inch])
+    tile.setStyle(TableStyle([
+        ("BACKGROUND",   (0, 0), (-1, -1), tint),
+        ("BOX",          (0, 0), (-1, -1), 0.75, band_color),
+        ("LINEBELOW",    (0, 0), (-1, 0), 0.5, BORDER),
+        ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING",   (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 2),
+    ]))
+    return tile
+
+
+def _tint_bg(hex_color: str) -> colors.Color:
+    """Return a very light tint (~12% opacity over white) of a hex color."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    # 12% color blended with 88% white
+    rr = int(0.12 * r + 0.88 * 255)
+    gg = int(0.12 * g + 0.88 * 255)
+    bb = int(0.12 * b + 0.88 * 255)
+    return colors.Color(rr / 255.0, gg / 255.0, bb / 255.0)
 
 
 async def _render_finding(db, story: list, s: dict, idx: int, finding: dict, photo_size: float = None):

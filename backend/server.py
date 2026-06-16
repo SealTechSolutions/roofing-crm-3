@@ -2419,7 +2419,7 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
       <p style="margin: 0 0 16px;">Please find attached <b>Invoice {inv_num}</b> for {bill_to}.</p>
       <table style="border-collapse: collapse; margin: 16px 0;">
         <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Total</td><td style="padding: 4px 0; font-weight: bold; font-family: monospace;">${total:,.2f}</td></tr>
-        <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Balance Due</td><td style="padding: 4px 0; font-weight: bold; font-family: monospace; color: #1D4ED8;">${balance:,.2f}</td></tr>
+        <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Balance Due</td><td style="padding: 4px 0; font-weight: bold; font-family: monospace; color: #062B67;">${balance:,.2f}</td></tr>
         <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Due Date</td><td style="padding: 4px 0; font-family: monospace;">{due_date}</td></tr>
         <tr><td style="padding: 4px 16px 4px 0; color: #52525B; font-size: 13px;">Terms</td><td style="padding: 4px 0;">{inv.get('terms', 'Due Upon Receipt')}</td></tr>
       </table>
@@ -2656,7 +2656,7 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
             f'<tr><td style="padding: 4px 16px 4px 0; color: #B45309; font-size: 13px;">Late Fees ({rate_pct_str}%/mo)</td>'
             f'<td style="padding: 4px 0; font-weight: bold; font-family: monospace; color: #B45309;">{fees_str}</td></tr>'
             f'<tr><td style="padding: 8px 16px 4px 0; color: #0A0A0A; font-size: 13px; font-weight: bold; border-top: 1px solid #0A0A0A;">TOTAL DUE</td>'
-            f'<td style="padding: 8px 0 4px; font-weight: bold; font-family: monospace; color: #1D4ED8; font-size: 15px; border-top: 1px solid #0A0A0A;">{grand_with_fees_str}</td></tr>'
+            f'<td style="padding: 8px 0 4px; font-weight: bold; font-family: monospace; color: #062B67; font-size: 15px; border-top: 1px solid #0A0A0A;">{grand_with_fees_str}</td></tr>'
         )
 
     body_html = f"""
@@ -3448,7 +3448,7 @@ def _render_payables_email_html(report: dict) -> str:
         return f'<table style="width:100%; border-collapse:collapse; margin:8px 0;"><thead><tr style="border-bottom:1px solid #E4E4E7;"><th style="text-align:left; padding:6px 12px; font-size:10px; color:#52525B; text-transform:uppercase; letter-spacing:1px;">Bill #</th><th style="text-align:left; padding:6px 12px; font-size:10px; color:#52525B; text-transform:uppercase; letter-spacing:1px;">Date</th><th style="text-align:left; padding:6px 12px; font-size:10px; color:#52525B; text-transform:uppercase; letter-spacing:1px;">Due</th><th style="text-align:right; padding:6px 12px; font-size:10px; color:#52525B; text-transform:uppercase; letter-spacing:1px;">Balance</th></tr></thead><tbody>{"".join(rows)}</tbody></table>'
 
     return f"""<html><body style="font-family: Arial, Helvetica, sans-serif; color:#0A0A0A; max-width:720px; margin:0 auto; padding:20px;">
-<div style="border-bottom:3px solid #1D4ED8; padding-bottom:12px; margin-bottom:20px;">
+<div style="border-bottom:3px solid #062B67; padding-bottom:12px; margin-bottom:20px;">
   <div style="font-size:10px; font-weight:bold; letter-spacing:3px; color:#A0703A; text-transform:uppercase;">Weekly Payables</div>
   <h1 style="font-size:24px; margin:4px 0 0;">Bills to Pay — {report['today']}</h1>
 </div>
@@ -4467,7 +4467,7 @@ async def export_maintenance(fmt: str, current=Depends(get_current_user)):
         ws.append(headers)
         for cell in ws[1]:
             cell.font = Font(bold=True, color="FFFFFF", size=11)
-            cell.fill = PatternFill("solid", fgColor="1D4ED8")
+            cell.fill = PatternFill("solid", fgColor="062B67")
             cell.alignment = Alignment(horizontal="left", vertical="center")
         for row in data_rows:
             ws.append(row)
@@ -4495,7 +4495,7 @@ async def export_maintenance(fmt: str, current=Depends(get_current_user)):
         doc = SimpleDocTemplate(buf, pagesize=landscape(rl_letter), leftMargin=0.4 * rl_inch, rightMargin=0.4 * rl_inch, topMargin=0.5 * rl_inch, bottomMargin=0.5 * rl_inch)
         styles = getSampleStyleSheet()
         title_style = RLPS("title", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, textColor=rl_colors.HexColor("#0A0A0A"))
-        eyebrow = RLPS("eyebrow", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, textColor=rl_colors.HexColor("#1D4ED8"), leading=10)
+        eyebrow = RLPS("eyebrow", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, textColor=rl_colors.HexColor("#062B67"), leading=10)
         body = RLPS("body", parent=styles["Normal"], fontName="Helvetica", fontSize=8, textColor=rl_colors.HexColor("#27272A"))
         story = [
             RLP("SEALTECH CRM EXPORT", eyebrow),
@@ -4516,7 +4516,7 @@ async def export_maintenance(fmt: str, current=Depends(get_current_user)):
         else:
             tbl = RLTable(table_data, repeatRows=1)
             tbl.setStyle(RLTableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#1D4ED8")),
+                ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#062B67")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.white),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTSIZE", (0, 0), (-1, 0), 8),
@@ -4834,7 +4834,7 @@ async def export_materials(current=Depends(get_current_user)):
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF", size=11)
-        cell.fill = PatternFill("solid", fgColor="1D4ED8")
+        cell.fill = PatternFill("solid", fgColor="062B67")
         cell.alignment = Alignment(horizontal="left")
     for m in items:
         price = float(m.get("default_price") or 0)
