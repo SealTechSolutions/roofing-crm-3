@@ -397,6 +397,18 @@
 - Endpoints: `GET/POST/PUT/DELETE /api/assessments`, `POST /api/assessments/{id}/finalize`, `GET /api/assessments/{id}/pdf`, `POST /api/assessments/{id}/email`, `POST /api/assessments/{id}/convert-to-scope`.
 - ✅ Tested: 6/6 backend pytest (incl. 3 convert-to-scope tests) + full frontend e2e (100% pass).
 
+### PWA Polish + Camera-Direct Upload (Feb 2026) — P2 SHIPPED
+- **Web App Manifest** (`/manifest.json`): name "SealTech CRM" / short "SealTech", theme `#062B67`, standalone display, 3 icons (192/512/maskable-512), auto-generated from `/sealtech-logo.png` by Python+PIL.
+- **Service Worker** (`/sw.js`): pre-caches app shell; **cache-first** for `/static/*` + hashed assets; **network-first** for `/api/*` with a JSON `{offline:true}` fallback when disconnected; `skipWaiting`+`clients.claim` so the update toast can promote a new build instantly.
+- **PWAControls** component: listens for `sw:update-ready` → toast "New version available · Reload"; `online/offline` → toast; `beforeinstallprompt` → captures the deferred event and renders a small floating **"📲 Install App"** button (auto-hides once installed/standalone).
+- **CameraCaptureButton** reusable component (`<label>+<input type=file accept="image/*" capture="environment" multiple>`) added to **4 surfaces**:
+  - Project Photos
+  - Assessment Editor (photo picker)
+  - Library upload modal
+  - Vendor / Subcontractor COI section (uploads via existing `/api/library` with `category=Insurance/subcategory=COI`)
+- index.html: linked manifest, theme color, apple-touch-icon, `viewport-fit=cover`, mobile-web-app meta tags, retained cache-busting headers.
+- Tested end-to-end on preview URL: 14/14 acceptance criteria PASS (iteration_17.json).
+
 ### Roof Asset Dashboard™ — Bands + Brand Color (Feb 2026)
 - Replaced raw 0-100 percentages with **executive-friendly categorical bands** across PDF, wizard, and list view.
   - **Condition**: Excellent / Good / Serviceable / At Risk / Critical
