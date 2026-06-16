@@ -1209,6 +1209,11 @@ async def update_deal(deal_id: str, body: DealIn, current=Depends(get_current_us
     data = normalize_deal(body.model_dump())
     await db.deals.update_one({"id": deal_id}, {"$set": data})
     doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    # Fire-and-forget push to Google Calendar
+    try:
+        await gcal_module.push_deal(db, current["id"], doc, _PUBLIC_BASE_URL)
+    except Exception:
+        pass
     return scrub_deal(doc, current)
 
 
@@ -1234,6 +1239,10 @@ async def update_deal_schedule(deal_id: str, body: DealScheduleIn, current=Depen
     if patch:
         await db.deals.update_one({"id": deal_id}, {"$set": patch})
     doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    try:
+        await gcal_module.push_deal(db, current["id"], doc, _PUBLIC_BASE_URL)
+    except Exception:
+        pass
     return scrub_deal(doc, current)
 
 
@@ -5435,6 +5444,14 @@ api_router.include_router(project_photos.create_router(db, get_current_user))
 api_router.include_router(project_photos.create_public_router(db))
 api_router.include_router(trash.create_router(db, require_admin))
 api_router.include_router(assessment_module.create_router(db, get_current_user))
+
+# Google Calendar integration + Tasks (sync target)
+import google_calendar as gcal_module
+import tasks as tasks_module
+_PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL") or os.environ.get("GOOGLE_OAUTH_REDIRECT_URI", "").replace("/api/oauth/calendar/callback", "")
+api_router.include_router(gcal_module.make_google_calendar_router(db, get_current_user, _PUBLIC_BASE_URL))
+api_router.include_router(gcal_module.make_google_oauth_callback_router(db))
+api_router.include_router(tasks_module.make_tasks_router(db, get_current_user, push_task_fn=gcal_module.push_task, public_base_url=_PUBLIC_BASE_URL))
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

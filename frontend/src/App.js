@@ -25,6 +25,8 @@ import Profile from "@/pages/Profile";
 import Assessments from "@/pages/Assessments";
 import AssessmentEditor from "@/pages/AssessmentEditor";
 import Calendar from "@/pages/Calendar";
+import Tasks from "@/pages/Tasks";
+import Integrations from "@/pages/Integrations";
 import PWAControls from "@/components/PWAControls";
 import "@/App.css";
 
@@ -86,6 +88,8 @@ function App() {
               <Route path="/assessments/new" element={<AssessmentEditor />} />
               <Route path="/assessments/:id" element={<AssessmentEditor />} />
               <Route path="/calendar" element={<Calendar />} />
+              <Route path="/tasks" element={<Tasks />} />
+              <Route path="/settings/integrations" element={<Integrations />} />
               <Route path="/books" element={<BooksCOA />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/profile" element={<Profile />} />

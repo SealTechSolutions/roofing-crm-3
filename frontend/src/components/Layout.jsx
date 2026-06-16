@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const ALL_NAV = [
@@ -9,6 +9,7 @@ const ALL_NAV = [
   { to: "/properties", label: "Properties", icon: Building2, testId: "nav-properties" },
   { to: "/projects", label: "Deals", icon: FileSpreadsheet, testId: "nav-projects" },
   { to: "/calendar", label: "Calendar", icon: CalIcon, testId: "nav-calendar" },
+  { to: "/tasks", label: "Tasks", icon: CheckSquare, testId: "nav-tasks" },
   { to: "/assessments", label: "Assessments", icon: ClipboardCheck, testId: "nav-assessments" },
   { to: "/maintenance", label: "Maintenance", icon: Wrench, testId: "nav-maintenance" },
   { to: "/invoices", label: "Invoices", icon: Receipt, testId: "nav-invoices" },
@@ -19,6 +20,7 @@ const ALL_NAV = [
   { to: "/vendors", label: "Vendors", icon: Truck, testId: "nav-vendors" },
   { to: "/subcontractors", label: "Subcontractors", icon: HardHat, testId: "nav-subcontractors" },
   { to: "/users", label: "Users", icon: UserCog, testId: "nav-users", adminOnly: true },
+  { to: "/settings/integrations", label: "Integrations", icon: Plug, testId: "nav-integrations", adminOnly: true },
   { to: "/trash", label: "Trash", icon: Trash2, testId: "nav-trash", adminOnly: true },
 ];
 

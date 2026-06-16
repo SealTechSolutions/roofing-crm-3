@@ -397,6 +397,28 @@
 - Endpoints: `GET/POST/PUT/DELETE /api/assessments`, `POST /api/assessments/{id}/finalize`, `GET /api/assessments/{id}/pdf`, `POST /api/assessments/{id}/email`, `POST /api/assessments/{id}/convert-to-scope`.
 - ✅ Tested: 6/6 backend pytest (incl. 3 convert-to-scope tests) + full frontend e2e (100% pass).
 
+### Google Calendar Sync + Tasks (Feb 2026)
+- **Google OAuth integration** via the playbook (NOT Emergent-managed — full Google Cloud OAuth client). Credentials stored in `/app/backend/.env`. Redirect URI: `https://roofing-crm-3.preview.emergentagent.com/api/oauth/calendar/callback`.
+- New backend module `/app/backend/google_calendar.py`:
+  - `POST /api/integrations/google/connect` → returns OAuth URL
+  - `GET /api/oauth/calendar/callback` → token exchange + refresh-token storage on User
+  - `GET /api/integrations/google/status` → connection state + saved mapping
+  - `GET /api/integrations/google/calendars` → list user's calendars + auto-suggest IDs for "Projects" / "Maintenance" / primary
+  - `PUT /api/integrations/google/settings` → save mapping (3 calendar IDs + enabled toggle)
+  - `POST /api/integrations/google/sync` → manual full re-sync button
+  - `push_deal`, `push_assessment`, `push_maintenance_visit`, `push_task` push helpers (idempotent upsert by stored `google_event_id`)
+- **Event routing**:
+  - 📅 main calendar ← Scheduled Assessments + Lead/Quoted/Negotiating follow-ups + Tasks
+  - 🛠 "Projects" calendar ← Project bars (won deals w/ scheduled dates) + Material orders
+  - 🟢 "Maintenance" calendar ← Maintenance visits
+- New backend module `/app/backend/tasks.py` (CRUD + toggle-done + soft-delete). DealIn unchanged; Tasks store `google_event_id` for re-sync.
+- Deal `PUT` and schedule `PUT` endpoints now auto-push to Google Calendar after save (best-effort, fire-and-forget).
+- Frontend:
+  - **`/settings/integrations`** page — Connect/Disconnect button, sync toggle, 3 dropdowns for calendar mapping (auto-populated with detected names), "Sync now" with task count toast.
+  - **`/tasks`** page — grouped by Overdue / Today / This Week / Later / Completed. Modal for create/edit. Inline toggle-done. Optional link to a deal. Synced badge if event ID exists.
+  - Sidebar nav: **Tasks** + **Integrations** entries added.
+- Tested end-to-end (curl): `/connect` returns proper Google OAuth URL with `access_type=offline&prompt=consent`; `/status`, `/tasks` endpoints respond correctly.
+
 ### PWA Polish + Camera-Direct Upload (Feb 2026) — P2 SHIPPED
 - **Web App Manifest** (`/manifest.json`): name "SealTech CRM" / short "SealTech", theme `#062B67`, standalone display, 3 icons (192/512/maskable-512), auto-generated from `/sealtech-logo.png` by Python+PIL.
 - **Service Worker** (`/sw.js`): pre-caches app shell; **cache-first** for `/static/*` + hashed assets; **network-first** for `/api/*` with a JSON `{offline:true}` fallback when disconnected; `skipWaiting`+`clients.claim` so the update toast can promote a new build instantly.
