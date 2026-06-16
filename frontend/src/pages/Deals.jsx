@@ -8,6 +8,7 @@ import { StatusPill } from "@/pages/Dashboard";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import GrammarCheck from "@/components/GrammarCheck";
+import MiniPipeline from "@/components/MiniPipeline";
 
 
 /** Live preview chip that shows which spec-sheet template will render
@@ -118,6 +119,7 @@ export default function Deals() {
   const [items, setItems] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [properties, setProperties] = useState([]);
+  const [dealInvoicesMap, setDealInvoicesMap] = useState({});
   const [users, setUsers] = useState([]);
   const [options, setOptions] = useState({ lead_sources: [], project_types: [], roof_types: [], current_roof_types: [], deal_statuses: [] });
   const [open, setOpen] = useState(false);
@@ -134,6 +136,14 @@ export default function Deals() {
     load();
     api.get("/contacts").then((r) => setContacts(r.data));
     api.get("/properties").then((r) => setProperties(r.data));
+    api.get("/invoices").then((r) => {
+      const map = {};
+      for (const inv of (r.data || [])) {
+        if (!inv.deal_id) continue;
+        (map[inv.deal_id] ||= []).push(inv);
+      }
+      setDealInvoicesMap(map);
+    }).catch(() => setDealInvoicesMap({}));
     api.get("/options").then((r) => setOptions(r.data));
   }, []);
 
@@ -261,7 +271,7 @@ export default function Deals() {
           <table className="w-full text-sm" data-testid="deals-table">
             <thead>
               <tr className="border-b-2 border-zinc-950 text-left">
-                <Th>Title</Th><Th>Type</Th><Th>Status</Th><Th>Lead Source</Th><Th>Project</Th><Th>Current → Proposed</Th><Th>Chosen</Th><Th>Profit</Th><Th>Actions</Th>
+                <Th>Title</Th><Th>Type</Th><Th>Status</Th><Th>Pipeline</Th><Th>Lead Source</Th><Th>Project</Th><Th>Current → Proposed</Th><Th>Chosen</Th><Th>Profit</Th><Th>Actions</Th>
               </tr>
             </thead>
             <tbody>
@@ -278,6 +288,7 @@ export default function Deals() {
                     </td>
                     <td className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-700">{d.deal_type || "Scope"}</td>
                     <td className="px-6 py-3"><StatusPill status={d.status} /></td>
+                    <td className="px-6 py-3"><MiniPipeline deal={d} invoices={dealInvoicesMap[d.id] || []} testId={`mini-pipeline-${d.id}`} /></td>
                     <td className="px-6 py-3 text-zinc-600 text-xs">
                       <div>{d.lead_source}</div>
                       {d.lead_source === "Referral" && d.referral_source && (
@@ -333,7 +344,24 @@ export default function Deals() {
                 <Select data-testid="deal-contact" value={form.contact_id || ""} onChange={(v) => setForm({ ...form, contact_id: v })} options={contactOpts} />
               </Field>
               <Field label="Property">
-                <Select data-testid="deal-property" value={form.property_id || ""} onChange={(v) => setForm({ ...form, property_id: v })} options={propertyOpts} />
+                <Select
+                  data-testid="deal-property"
+                  value={form.property_id || ""}
+                  onChange={(v) => {
+                    // Auto-hydrate Contact + Title from the selected property — only fill blanks.
+                    const patch = { property_id: v };
+                    if (v) {
+                      const p = properties.find((x) => x.id === v);
+                      if (p) {
+                        if (!form.title && p.property_name) patch.title = p.property_name;
+                        if (!form.contact_id && p.property_contact_id) patch.contact_id = p.property_contact_id;
+                        if (!form.owner_contact_id && p.property_contact_id) patch.owner_contact_id = p.property_contact_id;
+                      }
+                    }
+                    setForm({ ...form, ...patch });
+                  }}
+                  options={propertyOpts}
+                />
               </Field>
             </Grid2>
 
