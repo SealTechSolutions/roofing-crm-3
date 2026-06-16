@@ -620,6 +620,34 @@ function StepCover({ doc, update, contacts, deals, properties, linkedDeal }) {
         </Field>
       </div>
 
+      {/* Restoration Eligibility — drives the cover-page stamp on the PDF */}
+      <div
+        className="bg-amber-50 border-2 border-amber-300 rounded-sm p-4 mt-2"
+        data-testid="restoration-eligibility-block"
+      >
+        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-800 mb-2">
+          Restoration Eligibility
+        </div>
+        <div className="text-xs text-zinc-700 mb-3 leading-relaxed">
+          Restoration is the recommended pathway unless one of these disqualifiers is confirmed.
+          Checking either flips the PDF cover stamp to <b>Replacement Required</b>.
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Checkbox
+            testId="insulation-saturated"
+            checked={!!doc.insulation_saturated}
+            onChange={(v) => update({ insulation_saturated: v })}
+            label="Insulation is saturated (wet)"
+          />
+          <Checkbox
+            testId="structural-deck-damaged"
+            checked={!!doc.structural_deck_damaged}
+            onChange={(v) => update({ structural_deck_damaged: v })}
+            label="Structural deck is damaged"
+          />
+        </div>
+      </div>
+
       <SectionTitle>Assessment Scope Included</SectionTitle>
       <div className="grid grid-cols-2 gap-3">
         {[

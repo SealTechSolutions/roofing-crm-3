@@ -11,6 +11,7 @@ import { formatPhoneDisplay } from "@/lib/format";
 import ProjectPhotos from "@/components/ProjectPhotos";
 import GrammarCheck from "@/components/GrammarCheck";
 import { DealStagePipeline, NextStepCard, DealActivityTimeline, DealQuickActions } from "@/components/DealWorkflow";
+import { InvoiceEditor } from "@/pages/Invoices";
 
 export default function DealDetail() {
   const { id } = useParams();
@@ -25,6 +26,8 @@ export default function DealDetail() {
   const [emailScopeOpen, setEmailScopeOpen] = useState(false);
   const [dealInvoices, setDealInvoices] = useState([]);
   const [dealAssessments, setDealAssessments] = useState([]);
+  // One-click + Invoice / Record Payment quick-action modals (live on the Deal page itself)
+  const [invoiceEditor, setInvoiceEditor] = useState(null); // null | invoice object (new or existing)
 
   const reload = async () => {
     const r = await api.get(`/deals/${id}`);
@@ -360,8 +363,64 @@ export default function DealDetail() {
           <DealQuickActions
             deal={deal}
             onEmailScope={() => setEmailScopeOpen(true)}
-            onCreateInvoice={() => nav("/invoices")}
-            onRecordPayment={() => nav("/invoices")}
+            onCreateInvoice={() => {
+              // Prefill from deal + linked contact + property
+              const contractTotal = Number(deal.chosen_amount || 0);
+              const desc = deal.title ? `${deal.title} — Contract` : "Project Invoice";
+              const fullAddr = [property?.address, property?.city, property?.state, property?.zip]
+                .filter(Boolean)
+                .join(", ");
+              setInvoiceEditor({
+                deal_id: deal.id,
+                customer_contact_id: deal.contact_id || "",
+                invoice_type: "Project Amount",
+                bill_to_company: property?.name || contact?.company || "",
+                bill_to_name: contact?.name || "",
+                bill_to_address: property?.address || contact?.address || "",
+                bill_to_city: property?.city || contact?.city || "",
+                bill_to_state: property?.state || contact?.state || "",
+                bill_to_zip: property?.zip || contact?.zip || "",
+                bill_to_email: contact?.email || "",
+                invoice_date: new Date().toISOString().slice(0, 10),
+                terms: "Due Upon Receipt",
+                project_title: deal.title || "",
+                project_address: fullAddr,
+                project_total: contractTotal,
+                line_items: contractTotal > 0
+                  ? [{ description: desc, quantity: 1, unit_price: contractTotal, amount: contractTotal }]
+                  : [{ description: desc, quantity: 1, unit_price: 0, amount: 0 }],
+                status: "Draft",
+              });
+            }}
+            onRecordPayment={async () => {
+              // Find an open invoice on this deal; if none, prompt user to create one first
+              const unpaid = (dealInvoices || []).filter(
+                (inv) => !["Paid", "Void"].includes(inv.status) &&
+                  Number(inv.balance_due || 0) > 0.005
+              );
+              if (unpaid.length === 0) {
+                toast.info(
+                  "No open invoices on this project yet. Click + Invoice first, save it, then come back to record a payment."
+                );
+                return;
+              }
+              // Pick the oldest unpaid (FIFO collection) and open the editor
+              const target = [...unpaid].sort((a, b) =>
+                String(a.invoice_date || a.created_at || "").localeCompare(
+                  String(b.invoice_date || b.created_at || "")
+                )
+              )[0];
+              try {
+                const full = await api.get(`/invoices/${target.id}`);
+                setInvoiceEditor({
+                  ...full.data,
+                  // Default the payment date to today so the form is one click away from save
+                  payment_date: full.data.payment_date || new Date().toISOString().slice(0, 10),
+                });
+              } catch (e) {
+                toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+              }
+            }}
           />
         </div>
       </div>
@@ -1072,6 +1131,24 @@ export default function DealDetail() {
           dealType={deal.deal_type}
           primaryContactEmail={contact?.email || ""}
           onClose={() => setEmailScopeOpen(false)}
+        />
+      )}
+
+      {invoiceEditor && (
+        <InvoiceEditor
+          invoice={invoiceEditor}
+          deals={[deal]}
+          onClose={() => setInvoiceEditor(null)}
+          onSaved={() => {
+            setInvoiceEditor(null);
+            // Refresh the deal's invoice list so the next "Record Payment"
+            // click sees the new one immediately.
+            api
+              .get(`/invoices?deal_id=${id}`)
+              .then((r) => setDealInvoices(r.data || []))
+              .catch(() => {});
+            toast.success("Invoice saved");
+          }}
         />
       )}
     </div>

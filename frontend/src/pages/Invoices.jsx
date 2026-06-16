@@ -307,7 +307,7 @@ function IcQuickPicker({ entities, defaultFromId, onApply, onCancel }) {
 }
 
 
-function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
+export function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
   const isNew = !invoice?.id;
   const [existingInvoices, setExistingInvoices] = useState([]); // for the linked deal
   const [changeOrders, setChangeOrders] = useState([]); // approved change orders on the linked deal

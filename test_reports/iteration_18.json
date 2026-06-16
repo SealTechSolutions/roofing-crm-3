@@ -1,0 +1,41 @@
+{
+  "summary": "Frontend-only review of 4 scenarios on https://roofing-crm-3.preview.emergentagent.com. Used admin@roofingcrm.com/admin123. Sc4 (no-invoice Record Payment toast) PASS. Sc1a/1b/1c (Assessment Restoration Eligibility block visible, both checkboxes toggle, persist across Next->Previous in-step nav) PASS. Sc1d reload-persistence FAIL: after toggling both checkboxes ON and reloading, both checkboxes returned to OFF — values are not persisted to backend until user clicks SAVE. Sc2 (+ Invoice modal) and Sc3 (Record Payment with existing invoice) could not be fully verified end-to-end in the run that completed: in the first end-to-end run the +Invoice click did not surface the modal within 8s (possible transient post-toast pointer-event issue or backdrop-onClick closing the modal); in the follow-up retest run, login intermittently failed. Both scenarios are still likely working since Sc4 (which uses the same DealQuickActions component) and the API path are wired correctly, but they need a quick re-verification.",
+  "tests_executed": [
+    "Sc4 PASS - Open /projects/<deal_with_no_invoices> -> click [data-testid=quick-record-payment] -> info toast 'No open invoices on this project yet...' shown; [data-testid=invoice-editor] NOT mounted",
+    "Sc1a PASS - /assessments/<id> first step shows [data-testid=restoration-eligibility-block] (amber callout in Property Information section)",
+    "Sc1b PASS - Clicking [data-testid=insulation-saturated] and [data-testid=structural-deck-damaged] toggles each from unchecked -> checked (verified via DOM checked property)",
+    "Sc1c PASS - After toggling ON, clicking Next then Previous: both checkboxes still checked (React in-memory state preserved)",
+    "Sc1d FAIL - After toggling ON, page.reload() resets BOTH checkboxes to unchecked. Backend assessment doc never received the new values because no debounced/auto save fires on checkbox toggle and no save fires on step navigation. User must click the top-right SAVE button for persistence. Spec says reload should preserve them.",
+    "Sc2 INCONCLUSIVE - First chained run: click [data-testid=quick-new-invoice] did not surface [data-testid=invoice-editor] within 8s timeout (after Sc4 in the same session). Retest run failed at login step (script-block side effect) before reaching Sc2. Source review confirms wiring is correct: DealDetail.jsx ~lines 363-393 sets invoiceEditor state with prefill {project_total: chosen_amount, project_title, project_address, bill_to_email from contact, line_items[0].description = '<deal.title> — Contract'}; Invoices.jsx line 310 exports InvoiceEditor and line 569 renders modal with data-testid=invoice-editor.",
+    "Sc3 INCONCLUSIVE - Depends on Sc2. Code path verified: onRecordPayment picks oldest unpaid invoice via FIFO of dealInvoices, GET /api/invoices/<id> for full record, opens InvoiceEditor with payment_date defaulted to today. Logic looks correct; only the end-to-end click sequence needs UI re-verification."
+  ],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AssessmentEditor restoration-eligibility checkboxes", "issue": "Toggling Insulation Saturated / Structural Deck Damaged does NOT persist after a page reload (both reset to false). Persistence only occurs if the user clicks the top-right SAVE button. Per the spec the change should auto-save (or at least save on step navigation).", "selector": "[data-testid=insulation-saturated], [data-testid=structural-deck-damaged]", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Quick + Invoice on Deal Detail (Sc2)", "issue": "Could not consistently observe [data-testid=invoice-editor] open after clicking [data-testid=quick-new-invoice] in the end-to-end chained run. Code wiring looks correct — needs a clean re-verification (e.g., the modal root's onClick={onClose} backdrop handler may swallow the initial pointer event if a previous toast is dismissed in the same tick).", "affected_selectors": ["[data-testid=quick-new-invoice]", "[data-testid=invoice-editor]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix Sc1d: persist insulation_saturated / structural_deck_damaged on toggle (e.g., debounced PATCH /api/assessments/<id>) OR auto-save on Next-step transition. Currently a user can tick the boxes, click 'Generate PDF' from the header without explicit SAVE, and the cover stamp will fall back to RESTORATION even though the user intended REPLACEMENT.",
+    "Re-verify Sc2/Sc3 manually: open any deal with chosen_amount > 0 (e.g., 1fab3a5c Acme Office $62,000), click + Invoice — confirm InvoiceEditor mounts in-place, Save toasts 'Invoice saved', then click Record Payment — confirm modal reopens preloaded with that invoice.",
+    "Consider stopping backdrop onClick={onClose} from firing on the InvoiceEditor root <div> (Invoices.jsx:569). Move onClose to an explicit Close button or check e.target===e.currentTarget so a stray pointer event from the underlying page (or an outgoing toast) cannot accidentally dismiss the modal."
+  ],
+  "critical_code_review_comments": [
+    "Invoices.jsx:569 - <div ... onClick={onClose} data-testid=\"invoice-editor\"> backdrop closes the modal on ANY click that bubbles to the root. Should guard with `if (e.target === e.currentTarget) onClose()` to avoid closing when descendant elements re-emit pointer events. This may explain the inconsistent Sc2 modal-open behavior.",
+    "AssessmentEditor.jsx ~620-650 - The two new checkboxes update `doc.insulation_saturated` / `doc.structural_deck_damaged` via `update({...})` but appear not to call save() on change. Combined with no save-on-Next, a reload loses the values. Backend PDF stamp logic (verified in assessment_pdf.py:358-387) will therefore receive stale false/false unless user explicitly clicks SAVE.",
+    "DealDetail.jsx:1137-1153 - InvoiceEditor mounted inline with onSaved refetch via api.get(/invoices?deal_id=...). Good. Consider also refreshing the parent deal (for chosen_amount-driven KPIs) after a payment is recorded."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only)", "frontend": "4 of 7 sub-tests PASS, 1 FAIL (Sc1d reload persistence), 2 INCONCLUSIVE (Sc2/Sc3)"},
+  "test_credentials": "admin@roofingcrm.com / admin123",
+  "seed_data_creation": "Created one invoice on deal 1fab3a5c (Acme Office) during one of the runs; cleanup attempted via DELETE /api/invoices/<id>. Main agent should verify that deal still has 0 invoices before re-testing Sc4.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Use deal 1fab3a5c-6760-47d4-a1b9-cf2287e17a15 (Acme Office, chosen_amount=62000, 0 invoices) for Sc4 first, then Sc2 (+Invoice), then Sc3 (Record Payment). Use assessment f96cf959-4e6b-4073-a21d-cb46ac71ad95 for the Restoration Eligibility test. Note: PostHog session-recording wraps window.fetch in this preview env and breaks direct page.evaluate(fetch(...)) calls; block 'posthog' and 'emergent-main.js' routes via page.route() when scripting tests. Login intermittently fails when those scripts are blocked — fallback is to set token directly via the visible SIGN IN button (defaults are already filled). For the Sc1d persistence bug, root cause is no auto-save on checkbox toggle; either add debounced PATCH or save-on-Next. The Sc2 modal-open intermittence is most likely due to Invoices.jsx:569 backdrop onClick={onClose} closing the modal on bubbled clicks — recommend the e.target===e.currentTarget guard.",
+  "rca of the issue": "Sc1d: AssessmentEditor checkbox state is only kept in component React state (`doc`) until the user manually clicks the SAVE button. There is no debounced save on toggle and no save on Next-step transition. Reloading the page re-fetches the backend document which still has insulation_saturated=null/false. Mitigation: add a debounced save (e.g., 800ms after the last `update(...)` call) or call save() inside the Next button handler. Sc2 intermittence: backdrop onClick on the modal root in Invoices.jsx:569 will close the modal on any bubbled pointer event; add `if (e.target===e.currentTarget) onClose()` guard."
+}
