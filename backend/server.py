@@ -5355,6 +5355,103 @@ async def _payables_summary(current) -> dict:
     }
 
 
+async def _compute_stale_deals(days: int = 14, won_grace_days: int = 30, owner_user_id: Optional[str] = None):
+    """Shared engine for the Stale-Deals dashboard widget AND the weekly
+    digest emailer. `owner_user_id` (optional) restricts to deals
+    assigned_to / created_by that user — used both for the role=sales scope
+    and for per-owner digest filtering.
+    """
+    days = max(1, int(days or 14))
+    won_grace_days = max(1, int(won_grace_days or 30))
+
+    query: dict = {"is_deleted": {"$ne": True}}
+    if owner_user_id:
+        query["$or"] = [
+            {"assigned_to_user_id": owner_user_id},
+            {"created_by_user_id": owner_user_id},
+        ]
+
+    deals = await db.deals.find(
+        query,
+        {
+            "_id": 0, "id": 1, "title": 1, "status": 1, "status_history": 1,
+            "created_at": 1, "chosen_amount": 1, "project_type": 1,
+            "assigned_to_user_id": 1, "created_by_user_id": 1,
+            "primary_contact_name": 1, "property_address": 1,
+            "payment_milestones": 1,
+        },
+    ).to_list(5000)
+
+    now = datetime.now(timezone.utc)
+    stale_threshold = now - timedelta(days=days)
+    won_threshold = now - timedelta(days=won_grace_days)
+
+    def _parse_iso(s):
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    invoice_paid_deals = set()
+    async for inv in db.invoices.find(
+        {"is_deleted": {"$ne": True}, "amount_paid": {"$gt": 0}},
+        {"_id": 0, "deal_id": 1},
+    ):
+        if inv.get("deal_id"):
+            invoice_paid_deals.add(inv["deal_id"])
+
+    deposit_received_deals = set()
+    for d in deals:
+        for m in (d.get("payment_milestones") or []):
+            if (m.get("status") == "Paid") or float(m.get("amount_received") or 0) > 0:
+                deposit_received_deals.add(d["id"])
+                break
+
+    results = []
+    for d in deals:
+        status_v = d.get("status") or "Lead"
+        history = d.get("status_history") or []
+        last_change_iso = history[-1].get("at") if history else None
+        last_change = _parse_iso(last_change_iso) or _parse_iso(d.get("created_at"))
+        if not last_change:
+            continue
+        days_in_stage = int((now - last_change).total_seconds() // 86400)
+        reason = None
+        priority = 0
+        if status_v == "Won":
+            has_money = d["id"] in invoice_paid_deals or d["id"] in deposit_received_deals
+            if not has_money and last_change <= won_threshold:
+                reason = "no_deposit"
+                priority = 100 + days_in_stage
+        elif status_v in ("Lost", "Past Lead"):
+            pass
+        else:
+            if last_change <= stale_threshold:
+                reason = "stuck"
+                priority = days_in_stage
+        if not reason:
+            continue
+        results.append({
+            "id": d["id"],
+            "title": d.get("title") or "Untitled project",
+            "status": status_v,
+            "project_type": d.get("project_type") or "",
+            "chosen_amount": float(d.get("chosen_amount") or 0),
+            "primary_contact_name": d.get("primary_contact_name") or "",
+            "property_address": d.get("property_address") or "",
+            "days_in_stage": days_in_stage,
+            "last_change_at": last_change.isoformat(),
+            "reason": reason,
+            "priority": priority,
+            "owner_user_id": d.get("assigned_to_user_id") or d.get("created_by_user_id") or "",
+        })
+
+    results.sort(key=lambda r: r["priority"], reverse=True)
+    return results
+
+
 @api_router.get("/dashboard/stale-deals")
 async def dashboard_stale_deals(
     days: int = 14,
@@ -5370,124 +5467,156 @@ async def dashboard_stale_deals(
       • "no_deposit" — deal flipped to Won `won_grace_days`+ ago and still has
                        zero collected from invoices (no deposit / payment).
     """
-    days = max(1, int(days or 14))
-    won_grace_days = max(1, int(won_grace_days or 30))
-
-    query = {"is_deleted": {"$ne": True}}
-    if current.get("role") == "sales":
-        query["$or"] = [
-            {"assigned_to_user_id": current["id"]},
-            {"created_by_user_id": current["id"]},
-        ]
-
-    deals = await db.deals.find(
-        query,
-        {
-            "_id": 0,
-            "id": 1,
-            "title": 1,
-            "status": 1,
-            "status_history": 1,
-            "created_at": 1,
-            "chosen_amount": 1,
-            "project_type": 1,
-            "assigned_to_user_id": 1,
-            "primary_contact_name": 1,
-            "property_address": 1,
-            "payment_milestones": 1,
-        },
-    ).to_list(5000)
-
-    now = datetime.now(timezone.utc)
-    stale_threshold = now - timedelta(days=days)
-    won_threshold = now - timedelta(days=won_grace_days)
-
-    def _parse_iso(s: str):
-        if not s:
-            return None
-        try:
-            return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
-        except Exception:
-            return None
-
-    # Pre-fetch invoice payments per deal so we can flag Won-without-deposit
-    invoice_paid_deals = set()
-    async for inv in db.invoices.find(
-        {"is_deleted": {"$ne": True}, "amount_paid": {"$gt": 0}},
-        {"_id": 0, "deal_id": 1, "amount_paid": 1},
-    ):
-        if inv.get("deal_id"):
-            invoice_paid_deals.add(inv["deal_id"])
-
-    # Also count Paid embedded payment_milestones as "deposit received" so we
-    # don't bug owners for projects that took a cash deposit outside invoicing.
-    deposit_received_deals = set()
-    for d in deals:
-        for m in (d.get("payment_milestones") or []):
-            if (m.get("status") == "Paid") or float(m.get("amount_received") or 0) > 0:
-                deposit_received_deals.add(d["id"])
-                break
-
-    results = []
-    for d in deals:
-        status_v = d.get("status") or "Lead"
-
-        # Determine when the deal last changed stage (or was created)
-        history = d.get("status_history") or []
-        last_change_iso = None
-        if history:
-            last_change_iso = history[-1].get("at")
-        last_change = _parse_iso(last_change_iso) or _parse_iso(d.get("created_at"))
-        if not last_change:
-            continue
-
-        days_in_stage = int((now - last_change).total_seconds() // 86400)
-        reason = None
-        priority = 0  # higher = more urgent
-
-        if status_v == "Won":
-            has_money = (
-                d["id"] in invoice_paid_deals or d["id"] in deposit_received_deals
-            )
-            if not has_money and last_change <= won_threshold:
-                reason = "no_deposit"
-                priority = 100 + days_in_stage  # Won-no-deposit bubbles to top
-        elif status_v in ("Lost", "Past Lead"):
-            # Closed-lost / parked. Don't flag.
-            pass
-        else:
-            if last_change <= stale_threshold:
-                reason = "stuck"
-                priority = days_in_stage
-
-        if not reason:
-            continue
-
-        results.append({
-            "id": d["id"],
-            "title": d.get("title") or "Untitled project",
-            "status": status_v,
-            "project_type": d.get("project_type") or "",
-            "chosen_amount": float(d.get("chosen_amount") or 0),
-            "primary_contact_name": d.get("primary_contact_name") or "",
-            "property_address": d.get("property_address") or "",
-            "days_in_stage": days_in_stage,
-            "last_change_at": last_change.isoformat(),
-            "reason": reason,
-            "priority": priority,
-        })
-
-    results.sort(key=lambda r: r["priority"], reverse=True)
-
+    owner = current["id"] if current.get("role") == "sales" else None
+    results = await _compute_stale_deals(days, won_grace_days, owner_user_id=owner)
     counts = {
         "stuck": sum(1 for r in results if r["reason"] == "stuck"),
         "no_deposit": sum(1 for r in results if r["reason"] == "no_deposit"),
     }
     return {
-        "threshold_days": days,
-        "won_grace_days": won_grace_days,
+        "threshold_days": max(1, int(days or 14)),
+        "won_grace_days": max(1, int(won_grace_days or 30)),
         "counts": counts,
         "deals": results[:50],
+    }
+
+
+@api_router.post("/dashboard/stale-deals/digest")
+async def send_stale_deals_digest(
+    days: int = 14,
+    won_grace_days: int = 30,
+    dry_run: bool = False,
+    cc_admin: bool = True,
+    current=Depends(get_current_user),
+):
+    """Send each deal-owner a digest of their stuck deals + Won-without-deposit alerts.
+
+    Admin-only. Intended to be fired weekly (e.g., Monday morning via cron),
+    but can also be triggered on-demand from the dashboard.
+    Pass `dry_run=true` to preview the recipient list + counts without sending.
+    """
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Admins only")
+
+    rows = await _compute_stale_deals(days, won_grace_days)
+    # Group by owner_user_id (drop unassigned rows for the digest — they have no recipient)
+    by_owner: dict[str, list[dict]] = {}
+    for r in rows:
+        owner_id = r.get("owner_user_id") or ""
+        if not owner_id:
+            continue
+        by_owner.setdefault(owner_id, []).append(r)
+
+    # Resolve owner email/name in one round-trip
+    owner_ids = list(by_owner.keys())
+    users = await db.users.find(
+        {"id": {"$in": owner_ids}},
+        {"_id": 0, "id": 1, "email": 1, "name": 1, "role": 1},
+    ).to_list(500) if owner_ids else []
+    user_map = {u["id"]: u for u in users}
+
+    admin_email = (current.get("email") or "").strip()
+    digests: list[dict] = []
+    sent = 0
+    skipped: list[dict] = []
+
+    for owner_id, deals_for_owner in by_owner.items():
+        user = user_map.get(owner_id)
+        if not user or not user.get("email"):
+            skipped.append({"owner_user_id": owner_id, "reason": "no_email_on_file", "count": len(deals_for_owner)})
+            continue
+        # Build per-owner email
+        owner_name = (user.get("name") or "there").split(" ")[0]
+        stuck = [d for d in deals_for_owner if d["reason"] == "stuck"]
+        no_deposit = [d for d in deals_for_owner if d["reason"] == "no_deposit"]
+
+        def _row_line(d):
+            amt = f"${d['chosen_amount']:,.0f}" if d.get("chosen_amount") else "—"
+            return f"  • [{d['status']}] {d['title']} — {d['days_in_stage']}d at this stage · {amt}"
+
+        text_parts = [
+            f"Hi {owner_name},",
+            "",
+            f"Here is your weekly Stale-Deals digest from SealTech CRM ({len(deals_for_owner)} item"
+            f"{'s' if len(deals_for_owner) != 1 else ''} need your attention):",
+            "",
+        ]
+        if stuck:
+            text_parts.append(f"Stuck > {days} days at the same stage ({len(stuck)}):")
+            text_parts.extend(_row_line(d) for d in stuck)
+            text_parts.append("")
+        if no_deposit:
+            text_parts.append(f"Won {won_grace_days}+ days ago with no deposit recorded ({len(no_deposit)}):")
+            text_parts.extend(_row_line(d) for d in no_deposit)
+            text_parts.append("")
+        text_parts.extend([
+            "Open the dashboard to take action: /dashboard",
+            "",
+            "— SealTech CRM",
+        ])
+        body_text = "\n".join(text_parts)
+
+        def _html_row(d):
+            amt = f"${d['chosen_amount']:,.0f}" if d.get("chosen_amount") else "&mdash;"
+            return (
+                f'<li><b>[{d["status"]}]</b> {d["title"]} '
+                f'<span style="color:#71717A">&mdash; {d["days_in_stage"]}d at this stage &middot; {amt}</span></li>'
+            )
+
+        html_sections = []
+        if stuck:
+            html_sections.append(
+                f"<h4 style=\"color:#B45309;margin:16px 0 6px\">Stuck &gt; {days} days at the same stage ({len(stuck)})</h4>"
+                f"<ul>{''.join(_html_row(d) for d in stuck)}</ul>"
+            )
+        if no_deposit:
+            html_sections.append(
+                f"<h4 style=\"color:#BE123C;margin:16px 0 6px\">Won {won_grace_days}+ days ago with no deposit ({len(no_deposit)})</h4>"
+                f"<ul>{''.join(_html_row(d) for d in no_deposit)}</ul>"
+            )
+        body_html = (
+            f"<p>Hi {owner_name},</p>"
+            f"<p>Here is your weekly Stale-Deals digest from SealTech CRM "
+            f"(<b>{len(deals_for_owner)}</b> item{'s' if len(deals_for_owner) != 1 else ''} need your attention):</p>"
+            + "".join(html_sections)
+            + '<p><a href="/dashboard" style="background:#062B67;color:white;padding:8px 14px;text-decoration:none;'
+              'font-weight:bold;letter-spacing:1px;font-size:11px;text-transform:uppercase;border-radius:2px">Open Dashboard</a></p>'
+            + "<p style=\"color:#71717A;font-size:11px\">&mdash; SealTech CRM</p>"
+        )
+
+        subject = f"Stale Deals Digest — {len(deals_for_owner)} need your attention"
+        digest_entry = {
+            "owner_user_id": owner_id,
+            "owner_email": user["email"],
+            "owner_name": user.get("name", ""),
+            "stuck_count": len(stuck),
+            "no_deposit_count": len(no_deposit),
+            "subject": subject,
+        }
+
+        if not dry_run:
+            try:
+                from email_sender import send_email
+                cc = admin_email if (cc_admin and admin_email and admin_email != user["email"]) else None
+                send_email(
+                    to=user["email"], subject=subject,
+                    body_text=body_text, body_html=body_html, cc=cc,
+                )
+                digest_entry["sent"] = True
+                sent += 1
+            except Exception as e:
+                digest_entry["sent"] = False
+                digest_entry["error"] = str(e)
+        digests.append(digest_entry)
+
+    return {
+        "dry_run": dry_run,
+        "threshold_days": max(1, int(days or 14)),
+        "won_grace_days": max(1, int(won_grace_days or 30)),
+        "owners_eligible": len(by_owner),
+        "sent": sent,
+        "skipped": skipped,
+        "digests": digests,
     }
 
 

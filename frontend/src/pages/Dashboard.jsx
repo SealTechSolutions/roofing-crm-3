@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { Link } from "react-router-dom";
-import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail, AlarmClock, Flame } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail, AlarmClock, Flame, Send } from "lucide-react";
 import { ExportButtons } from "@/components/ExportImport";
 import { toast } from "sonner";
 
@@ -599,6 +599,7 @@ function StaleDeals() {
   const [data, setData] = useState(null);
   const [threshold, setThreshold] = useState(14);
   const [filter, setFilter] = useState("all"); // all | stuck | no_deposit
+  const [sendingDigest, setSendingDigest] = useState(false);
 
   useEffect(() => {
     api
@@ -606,6 +607,46 @@ function StaleDeals() {
       .then((r) => setData(r.data))
       .catch(() => setData({ deals: [], counts: { stuck: 0, no_deposit: 0 } }));
   }, [threshold]);
+
+  const sendDigest = async () => {
+    // Preview first via dry_run so admin sees who will be emailed
+    try {
+      const preview = await api.post(
+        `/dashboard/stale-deals/digest?days=${threshold}&won_grace_days=30&dry_run=true`
+      );
+      const p = preview.data || {};
+      if ((p.owners_eligible || 0) === 0) {
+        toast.info("No owners would receive a digest right now.");
+        return;
+      }
+      const recipientList = (p.digests || [])
+        .map((d) => `${d.owner_name} <${d.owner_email}> — ${d.stuck_count + d.no_deposit_count} item${
+          d.stuck_count + d.no_deposit_count === 1 ? "" : "s"
+        }`)
+        .join("\n");
+      const ok = window.confirm(
+        `Send the Stale-Deals digest to ${p.owners_eligible} owner${
+          p.owners_eligible === 1 ? "" : "s"
+        }?\n\n${recipientList}\n\nYou will be CC'd on each email.`
+      );
+      if (!ok) return;
+      setSendingDigest(true);
+      const r = await api.post(
+        `/dashboard/stale-deals/digest?days=${threshold}&won_grace_days=30&cc_admin=true`
+      );
+      const sent = r.data?.sent || 0;
+      const failed = (r.data?.digests || []).filter((d) => d.sent === false).length;
+      toast.success(
+        failed > 0
+          ? `Sent ${sent} digest${sent === 1 ? "" : "s"} — ${failed} failed (check email config)`
+          : `Sent ${sent} digest${sent === 1 ? "" : "s"} — owners CC'd to you`
+      );
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSendingDigest(false);
+    }
+  };
 
   if (!data) {
     return (
@@ -704,6 +745,16 @@ function StaleDeals() {
               </button>
             ))}
           </div>
+          <button
+            data-testid="send-stale-digest"
+            onClick={sendDigest}
+            disabled={sendingDigest || total === 0}
+            title={total === 0 ? "No stale deals to send" : "Email each owner their stale-deals list"}
+            className="inline-flex items-center gap-1.5 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-sm transition-colors"
+          >
+            <Send className="w-3 h-3" />
+            {sendingDigest ? "Sending…" : "Send Digest"}
+          </button>
         </div>
       </div>
 

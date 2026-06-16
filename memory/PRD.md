@@ -500,6 +500,26 @@
 - Frontend: new `StaleDeals` card on the Dashboard (between Materials In Motion and COI Roster) with filter chips (All / Stuck / No Deposit), a 7d / 14d / 30d threshold toggle, and a per-row "Open" link to the deal. Renders a green "Pipeline is moving — no stale deals" hero when empty.
 - Tested: 3 backend pytest cases (`tests/test_stale_deals.py`) — shape, populated short threshold, high-threshold empty.
 
+### Stale Deal Weekly Digest Emailer (Feb 2026)
+- New admin-only `POST /api/dashboard/stale-deals/digest?days=14&won_grace_days=30&dry_run=true|false&cc_admin=true|false` endpoint.
+- Groups every flagged deal by `assigned_to_user_id || created_by_user_id`. For each owner with at least one stale deal, composes a personalized text+HTML email with two sections: "Stuck > N days" and "Won + days with no deposit". The calling admin is BCC'd on each owner email by default.
+- `dry_run=true` returns the recipient preview (owner name, email, stuck/no-deposit counts, subject) without sending — used by the Dashboard "Send Digest" button to show a confirm dialog before firing.
+- Refactored the core scan into a shared `_compute_stale_deals()` so the GET widget and the digest emailer use identical logic.
+- Frontend: new "Send Digest" button (data-testid=`send-stale-digest`) in the StaleDeals card toolbar — admins click it, get a preview confirm, and the digest fires.
+- Tested: 4 pytest cases (`tests/test_stale_digest.py`) — dry-run shape, per-owner grouping, high-threshold empty, sales-role 403.
+- **Scheduling note**: this endpoint is fire-on-demand. To run it every Monday morning, add a cron / cloud scheduler hitting `POST /api/dashboard/stale-deals/digest?cc_admin=true` with the admin's bearer token. The app does not include its own scheduler.
+
+### Assessment Cover Stamp + Restoration-Eligibility Checkboxes (Feb 2026)
+- New `restoration-eligibility-block` callout in Step 1 of `AssessmentEditor.jsx` (Property Information). Two `Checkbox` controls bound to `insulation_saturated` and `structural_deck_damaged`.
+- **Auto-save on toggle**: these two checkboxes call `updateAndSave({...})` which fires an immediate `PUT /api/assessments/{id}`. Closes the footgun where a user could click "Generate PDF" without clicking SAVE first and get the wrong cover stamp.
+- Backend `assessment_pdf.py` already drives the cover stamp: **REPLACEMENT REQUIRED** (red box, lists triggered disqualifiers) vs **RESTORATION PATH RECOMMENDED** (green box). Tested: 3 pytest cases (`tests/test_assessment_cover_stamp.py`).
+
+### One-Click Invoice & Record-Payment Modals on Deal Detail (Feb 2026)
+- Exported `InvoiceEditor` from `Invoices.jsx` for reuse outside the Invoices page.
+- DealDetail `+ Invoice` quick action (data-testid=`quick-new-invoice`) now opens the InvoiceEditor inline, prefilled with: deal title, project_total = chosen_amount, bill-to address from linked property, bill_to_email from linked contact, one line item = "<deal.title> — Contract".
+- DealDetail `Record Payment` quick action (data-testid=`quick-record-payment`) finds the oldest unpaid invoice on this deal (FIFO), opens InvoiceEditor with `payment_date` defaulted to today, and shows an informational toast when no unpaid invoices exist.
+- Hardened InvoiceEditor backdrop: `onClick` now uses `e.target === e.currentTarget` so bubbled clicks from descendant elements don't accidentally close the modal.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

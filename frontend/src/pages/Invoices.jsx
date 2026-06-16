@@ -566,7 +566,11 @@ export function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-zinc-950/60 flex items-start justify-center p-4 overflow-y-auto" onClick={onClose} data-testid="invoice-editor">
+    <div
+      className="fixed inset-0 z-50 bg-zinc-950/60 flex items-start justify-center p-4 overflow-y-auto"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      data-testid="invoice-editor"
+    >
       <div className="bg-white w-full max-w-4xl rounded-sm shadow-xl my-8" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-zinc-200 flex items-center justify-between">
           <div>

@@ -184,6 +184,20 @@ export default function AssessmentEditor() {
   const updateFinding = (key, patch) => setDoc((d) => ({ ...d, [key]: { ...d[key], ...patch } }));
   const updateOption = (key, patch) => setDoc((d) => ({ ...d, [key]: { ...d[key], ...patch } }));
 
+  // Immediate persistence for high-stakes fields (e.g., Restoration Eligibility
+  // checkboxes whose value drives the PDF cover stamp). Only kicks in for
+  // existing assessments; for a brand-new doc we just update local state since
+  // there is no backend id yet.
+  const updateAndSave = async (patch) => {
+    setDoc((d) => ({ ...d, ...patch }));
+    if (!id) return;
+    try {
+      await api.put(`/assessments/${id}`, { ...doc, ...patch });
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    }
+  };
+
   const save = async (afterSave) => {
     setSaving(true);
     try {
@@ -377,7 +391,7 @@ export default function AssessmentEditor() {
 
       {/* Step content */}
       <div className="bg-white border border-zinc-200 p-6">
-        {step === 0 && <StepCover doc={doc} update={update} contacts={contacts} deals={deals} properties={properties} linkedDeal={linkedDeal} />}
+        {step === 0 && <StepCover doc={doc} update={update} updateAndSave={updateAndSave} contacts={contacts} deals={deals} properties={properties} linkedDeal={linkedDeal} />}
         {step === 1 && <StepScores doc={doc} updateScore={updateScore} update={update} />}
         {step === 2 && (
           <StepFindings
@@ -453,7 +467,7 @@ export default function AssessmentEditor() {
 // =====================================================================
 // Step 1 — Cover & Property
 // =====================================================================
-function StepCover({ doc, update, contacts, deals, properties, linkedDeal }) {
+function StepCover({ doc, update, updateAndSave, contacts, deals, properties, linkedDeal }) {
   // Property selection auto-fills address + chains contact info from the linked record
   const onPropertyPick = (propertyId) => {
     if (!propertyId) {
@@ -636,13 +650,13 @@ function StepCover({ doc, update, contacts, deals, properties, linkedDeal }) {
           <Checkbox
             testId="insulation-saturated"
             checked={!!doc.insulation_saturated}
-            onChange={(v) => update({ insulation_saturated: v })}
+            onChange={(v) => updateAndSave({ insulation_saturated: v })}
             label="Insulation is saturated (wet)"
           />
           <Checkbox
             testId="structural-deck-damaged"
             checked={!!doc.structural_deck_damaged}
-            onChange={(v) => update({ structural_deck_damaged: v })}
+            onChange={(v) => updateAndSave({ structural_deck_damaged: v })}
             label="Structural deck is damaged"
           />
         </div>
