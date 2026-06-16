@@ -8,6 +8,7 @@ const ALL_NAV = [
   { to: "/contacts", label: "Contacts", icon: Users, testId: "nav-contacts" },
   { to: "/properties", label: "Properties", icon: Building2, testId: "nav-properties" },
   { to: "/projects", label: "Deals", icon: FileSpreadsheet, testId: "nav-projects" },
+  { to: "/calendar", label: "Calendar", icon: CalIcon, testId: "nav-calendar" },
   { to: "/assessments", label: "Assessments", icon: ClipboardCheck, testId: "nav-assessments" },
   { to: "/maintenance", label: "Maintenance", icon: Wrench, testId: "nav-maintenance" },
   { to: "/invoices", label: "Invoices", icon: Receipt, testId: "nav-invoices" },
