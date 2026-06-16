@@ -114,6 +114,9 @@ class AssessmentIn(BaseModel):
     # ---- Property Information (14 fields matching original report) ----
     building_type: str = ""
     year_built: Optional[Union[int, str]] = None  # "Year Constructed" — int year OR "Unknown"
+    # Restoration eligibility — drives the cover stamp on the PDF
+    insulation_saturated: bool = False
+    structural_deck_damaged: bool = False
     occupancy_type: str = ""
     roof_type: str = ""
     manufacturer: str = ""

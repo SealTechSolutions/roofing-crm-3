@@ -354,6 +354,38 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         ("RIGHTPADDING", (0, 0), (-1, -1), 14),
     ]))
     story.append(cover_t)
+
+    # Restoration eligibility stamp on the cover — driven by inspector's two
+    # disqualifier checkboxes. Only Replacement when either is true.
+    insulation_sat = bool(a.get("insulation_saturated"))
+    deck_damaged = bool(a.get("structural_deck_damaged"))
+    if insulation_sat or deck_damaged:
+        stamp_color = colors.HexColor("#B91C1C")
+        stamp_label = "REPLACEMENT REQUIRED"
+        stamp_sub = []
+        if insulation_sat: stamp_sub.append("Insulation Saturated")
+        if deck_damaged: stamp_sub.append("Structural Deck Damaged")
+        stamp_subline = " &nbsp;\u2022&nbsp; ".join(stamp_sub)
+    else:
+        stamp_color = colors.HexColor("#15803D")
+        stamp_label = "RESTORATION PATH RECOMMENDED"
+        stamp_subline = "Insulation dry &nbsp;\u2022&nbsp; Structural deck sound"
+
+    story.append(Spacer(1, 12))
+    stamp_tbl = Table([[
+        Paragraph(
+            f'<font color="{stamp_color.hexval()}" size="12"><b>{stamp_label}</b></font><br/>'
+            f'<font color="#52525B" size="8">{stamp_subline}</font>',
+            ParagraphStyle("stamp", fontName="Helvetica-Bold", fontSize=12, leading=16, alignment=TA_CENTER),
+        )
+    ]], colWidths=[7.3 * inch], rowHeights=[0.7 * inch])
+    stamp_tbl.setStyle(TableStyle([
+        ("BACKGROUND",   (0, 0), (-1, -1), colors.HexColor("#FAFAFA")),
+        ("BOX",          (0, 0), (-1, -1), 1.2, stamp_color),
+        ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    story.append(stamp_tbl)
+
     story.append(PageBreak())
 
     # ============================================================

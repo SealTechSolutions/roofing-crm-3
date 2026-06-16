@@ -54,6 +54,8 @@ const BLANK_ASSESSMENT = {
   // Property (14 fields matching original report)
   building_type: "",
   year_built: null,
+  insulation_saturated: false,
+  structural_deck_damaged: false,
   occupancy_type: "",
   roof_type: "",
   manufacturer: "",

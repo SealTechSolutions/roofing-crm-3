@@ -492,6 +492,14 @@
 - Confirmed per Emergent Object Storage playbook: **no permanent-delete API exists**; the platform allocates 5 GB per app.
 - Our Admin Trash "Permanently Delete" workflow already does the right thing — purges the MongoDB record and gracefully swallows the storage 405. No code change required.
 
+### Stale Deal Dashboard Widget (Feb 2026)
+- New `GET /api/dashboard/stale-deals?days=14&won_grace_days=30` endpoint surfaces deals that haven't moved in a while:
+  - **Stuck**: any open deal (status not Won / Lost / Past Lead) whose latest `status_history` entry (or `created_at` if no history) is older than `days`.
+  - **No Deposit**: deals that flipped to Won `won_grace_days`+ ago but still have zero collected (no invoice payment AND no Paid embedded payment milestone).
+- Response shape: `{ threshold_days, won_grace_days, counts: {stuck, no_deposit}, deals: [...] }`.
+- Frontend: new `StaleDeals` card on the Dashboard (between Materials In Motion and COI Roster) with filter chips (All / Stuck / No Deposit), a 7d / 14d / 30d threshold toggle, and a per-row "Open" link to the deal. Renders a green "Pipeline is moving — no stale deals" hero when empty.
+- Tested: 3 backend pytest cases (`tests/test_stale_deals.py`) — shape, populated short threshold, high-threshold empty.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

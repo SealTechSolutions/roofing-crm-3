@@ -5355,6 +5355,142 @@ async def _payables_summary(current) -> dict:
     }
 
 
+@api_router.get("/dashboard/stale-deals")
+async def dashboard_stale_deals(
+    days: int = 14,
+    won_grace_days: int = 30,
+    current=Depends(get_current_user),
+):
+    """Surface deals that haven't moved in a while.
+
+    Two reasons can flag a deal:
+      • "stuck"   — open deal (not Won/Lost/Past Lead) that hasn't changed status
+                    in `days` days. The age clock starts from the last
+                    status_history entry, or created_at when no history exists.
+      • "no_deposit" — deal flipped to Won `won_grace_days`+ ago and still has
+                       zero collected from invoices (no deposit / payment).
+    """
+    days = max(1, int(days or 14))
+    won_grace_days = max(1, int(won_grace_days or 30))
+
+    query = {"is_deleted": {"$ne": True}}
+    if current.get("role") == "sales":
+        query["$or"] = [
+            {"assigned_to_user_id": current["id"]},
+            {"created_by_user_id": current["id"]},
+        ]
+
+    deals = await db.deals.find(
+        query,
+        {
+            "_id": 0,
+            "id": 1,
+            "title": 1,
+            "status": 1,
+            "status_history": 1,
+            "created_at": 1,
+            "chosen_amount": 1,
+            "project_type": 1,
+            "assigned_to_user_id": 1,
+            "primary_contact_name": 1,
+            "property_address": 1,
+            "payment_milestones": 1,
+        },
+    ).to_list(5000)
+
+    now = datetime.now(timezone.utc)
+    stale_threshold = now - timedelta(days=days)
+    won_threshold = now - timedelta(days=won_grace_days)
+
+    def _parse_iso(s: str):
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    # Pre-fetch invoice payments per deal so we can flag Won-without-deposit
+    invoice_paid_deals = set()
+    async for inv in db.invoices.find(
+        {"is_deleted": {"$ne": True}, "amount_paid": {"$gt": 0}},
+        {"_id": 0, "deal_id": 1, "amount_paid": 1},
+    ):
+        if inv.get("deal_id"):
+            invoice_paid_deals.add(inv["deal_id"])
+
+    # Also count Paid embedded payment_milestones as "deposit received" so we
+    # don't bug owners for projects that took a cash deposit outside invoicing.
+    deposit_received_deals = set()
+    for d in deals:
+        for m in (d.get("payment_milestones") or []):
+            if (m.get("status") == "Paid") or float(m.get("amount_received") or 0) > 0:
+                deposit_received_deals.add(d["id"])
+                break
+
+    results = []
+    for d in deals:
+        status_v = d.get("status") or "Lead"
+
+        # Determine when the deal last changed stage (or was created)
+        history = d.get("status_history") or []
+        last_change_iso = None
+        if history:
+            last_change_iso = history[-1].get("at")
+        last_change = _parse_iso(last_change_iso) or _parse_iso(d.get("created_at"))
+        if not last_change:
+            continue
+
+        days_in_stage = int((now - last_change).total_seconds() // 86400)
+        reason = None
+        priority = 0  # higher = more urgent
+
+        if status_v == "Won":
+            has_money = (
+                d["id"] in invoice_paid_deals or d["id"] in deposit_received_deals
+            )
+            if not has_money and last_change <= won_threshold:
+                reason = "no_deposit"
+                priority = 100 + days_in_stage  # Won-no-deposit bubbles to top
+        elif status_v in ("Lost", "Past Lead"):
+            # Closed-lost / parked. Don't flag.
+            pass
+        else:
+            if last_change <= stale_threshold:
+                reason = "stuck"
+                priority = days_in_stage
+
+        if not reason:
+            continue
+
+        results.append({
+            "id": d["id"],
+            "title": d.get("title") or "Untitled project",
+            "status": status_v,
+            "project_type": d.get("project_type") or "",
+            "chosen_amount": float(d.get("chosen_amount") or 0),
+            "primary_contact_name": d.get("primary_contact_name") or "",
+            "property_address": d.get("property_address") or "",
+            "days_in_stage": days_in_stage,
+            "last_change_at": last_change.isoformat(),
+            "reason": reason,
+            "priority": priority,
+        })
+
+    results.sort(key=lambda r: r["priority"], reverse=True)
+
+    counts = {
+        "stuck": sum(1 for r in results if r["reason"] == "stuck"),
+        "no_deposit": sum(1 for r in results if r["reason"] == "no_deposit"),
+    }
+    return {
+        "threshold_days": days,
+        "won_grace_days": won_grace_days,
+        "counts": counts,
+        "deals": results[:50],
+    }
+
+
 @api_router.get("/dashboard/revenue-by-type")
 async def revenue_by_type(window: str = "ytd", current=Depends(get_current_user)):
     """Booked + Received revenue grouped by project_type.

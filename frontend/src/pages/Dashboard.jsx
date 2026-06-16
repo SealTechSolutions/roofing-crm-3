@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { Link } from "react-router-dom";
-import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail, AlarmClock, Flame } from "lucide-react";
 import { ExportButtons } from "@/components/ExportImport";
 import { toast } from "sonner";
 
@@ -108,6 +108,9 @@ export default function Dashboard() {
 
       {/* Materials In Motion */}
       <MaterialsInMotion motion={motion} />
+
+      {/* Stale Deals — deals stuck at the same stage for >14 days */}
+      <StaleDeals />
 
       {/* COI Roster — Subcontractors with expired/expiring/missing insurance */}
       <CoiRoster />
@@ -579,6 +582,198 @@ function CoiRoster() {
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
+
+// =========================================================
+// Stale Deals — surfaces deals stuck at the same stage for >N days
+// (and Won deals with no deposit/payment after the grace window)
+// =========================================================
+function StaleDeals() {
+  const [data, setData] = useState(null);
+  const [threshold, setThreshold] = useState(14);
+  const [filter, setFilter] = useState("all"); // all | stuck | no_deposit
+
+  useEffect(() => {
+    api
+      .get(`/dashboard/stale-deals?days=${threshold}&won_grace_days=30`)
+      .then((r) => setData(r.data))
+      .catch(() => setData({ deals: [], counts: { stuck: 0, no_deposit: 0 } }));
+  }, [threshold]);
+
+  if (!data) {
+    return (
+      <div className="mb-12 text-xs uppercase tracking-[0.2em] text-zinc-500" data-testid="stale-deals-loading">
+        Loading stale deals…
+      </div>
+    );
+  }
+
+  const total = (data.counts?.stuck || 0) + (data.counts?.no_deposit || 0);
+
+  if (total === 0) {
+    return (
+      <div
+        className="mb-12 bg-emerald-50 border border-emerald-200 p-6 rounded-sm flex items-center gap-3"
+        data-testid="stale-deals-empty"
+      >
+        <AlarmClock className="w-5 h-5 text-emerald-700" />
+        <div>
+          <div className="font-heading text-base font-bold text-emerald-900">
+            Pipeline is moving — no stale deals.
+          </div>
+          <div className="text-xs text-emerald-800 mt-0.5">
+            No open deals have been sitting at the same stage for more than {threshold} days, and every Won deal has a deposit recorded.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const filtered =
+    filter === "all" ? data.deals : data.deals.filter((d) => d.reason === filter);
+
+  return (
+    <div className="mb-12" data-testid="stale-deals">
+      <div className="flex items-end justify-between mb-4 gap-3 flex-wrap">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700 mb-1 flex items-center gap-1.5">
+            <Flame className="w-3 h-3" /> Needs Attention
+          </div>
+          <h2 className="font-heading text-2xl font-black tracking-tight">Stale Deals</h2>
+          <div className="text-xs text-zinc-600 mt-1">
+            {data.counts.stuck > 0 && (
+              <span className="mr-3">
+                <b className="text-amber-700">{data.counts.stuck}</b> stuck &gt; {threshold} days at the same stage
+              </span>
+            )}
+            {data.counts.no_deposit > 0 && (
+              <span className="mr-3">
+                <b className="text-rose-700">{data.counts.no_deposit}</b> Won with no deposit after {data.won_grace_days}+ days
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex border border-zinc-300 rounded-sm overflow-hidden" data-testid="stale-deals-filter">
+            <button
+              data-testid="stale-filter-all"
+              onClick={() => setFilter("all")}
+              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                filter === "all" ? "bg-zinc-950 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"
+              }`}
+            >
+              All ({total})
+            </button>
+            <button
+              data-testid="stale-filter-stuck"
+              onClick={() => setFilter("stuck")}
+              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors border-l border-zinc-300 ${
+                filter === "stuck" ? "bg-amber-600 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"
+              }`}
+            >
+              Stuck ({data.counts.stuck})
+            </button>
+            <button
+              data-testid="stale-filter-no-deposit"
+              onClick={() => setFilter("no_deposit")}
+              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors border-l border-zinc-300 ${
+                filter === "no_deposit" ? "bg-rose-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"
+              }`}
+            >
+              No Deposit ({data.counts.no_deposit})
+            </button>
+          </div>
+          <div className="inline-flex border border-zinc-300 rounded-sm overflow-hidden" data-testid="stale-threshold-toggle">
+            {[7, 14, 30].map((d) => (
+              <button
+                key={d}
+                data-testid={`stale-threshold-${d}`}
+                onClick={() => setThreshold(d)}
+                className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                  d !== 7 ? "border-l border-zinc-300" : ""
+                } ${threshold === d ? "bg-blue-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-sm overflow-x-auto">
+        <table className="w-full text-xs" data-testid="stale-deals-table">
+          <thead>
+            <tr className="border-b-2 border-zinc-950 text-left">
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Deal</th>
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Stage</th>
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Reason</th>
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500 text-right">Days</th>
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500 text-right">Chosen Amount</th>
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((d) => {
+              const isDeposit = d.reason === "no_deposit";
+              return (
+                <tr
+                  key={d.id}
+                  className={`border-b border-zinc-100 hover:bg-zinc-50 ${isDeposit ? "bg-rose-50/40" : ""}`}
+                  data-testid={`stale-deal-row-${d.id}`}
+                >
+                  <td className="px-4 py-3">
+                    <Link to={`/projects/${d.id}`} className="font-bold text-zinc-950 hover:text-blue-700">
+                      {d.title}
+                    </Link>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">
+                      {d.project_type}
+                      {d.primary_contact_name ? ` · ${d.primary_contact_name}` : ""}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusPill status={d.status} />
+                  </td>
+                  <td className="px-4 py-3">
+                    {isDeposit ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-rose-700">
+                        <Wallet className="w-3 h-3" /> No deposit recorded
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                        <AlarmClock className="w-3 h-3" /> Stuck at {d.status}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono font-bold text-zinc-900">{d.days_in_stage}d</td>
+                  <td className="px-4 py-3 text-right font-mono text-zinc-700">
+                    {formatCurrency(d.chosen_amount || 0)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Link
+                      to={`/projects/${d.id}`}
+                      className="inline-flex items-center gap-1 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm transition-colors"
+                      data-testid={`stale-open-${d.id}`}
+                    >
+                      Open <ChevronRight className="w-3 h-3" />
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-xs text-zinc-500">
+                  Nothing matches this filter.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
