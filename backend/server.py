@@ -1237,6 +1237,41 @@ async def update_deal_schedule(deal_id: str, body: DealScheduleIn, current=Depen
     return scrub_deal(doc, current)
 
 
+class MaintenanceRescheduleIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    visit_id: Optional[str] = None   # if provided → reschedule that logged visit
+    date: str                         # new YYYY-MM-DD
+
+
+@api_router.put("/deals/{deal_id}/maintenance-reschedule", response_model=Deal)
+async def reschedule_maintenance(deal_id: str, body: MaintenanceRescheduleIn, current=Depends(get_current_user)):
+    """Drag-to-reschedule for maintenance events on the Project Calendar.
+       - If visit_id is provided, updates that specific entry in maintenance_visits[].
+       - Otherwise (tentative slot), updates the deal's next_maintenance_date."""
+    existing = await db.deals.find_one({"id": deal_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    if current.get("role") == "sales":
+        owns = existing.get("assigned_to_user_id") == current["id"] or existing.get("created_by_user_id") == current["id"]
+        if not owns:
+            raise HTTPException(status_code=403, detail="Not your project")
+    if body.visit_id:
+        visits = list(existing.get("maintenance_visits") or [])
+        found = False
+        for v in visits:
+            if v.get("id") == body.visit_id:
+                v["visit_date"] = body.date
+                found = True
+                break
+        if not found:
+            raise HTTPException(status_code=404, detail="Maintenance visit not found")
+        await db.deals.update_one({"id": deal_id}, {"$set": {"maintenance_visits": visits}})
+    else:
+        await db.deals.update_one({"id": deal_id}, {"$set": {"next_maintenance_date": body.date}})
+    doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    return scrub_deal(doc, current)
+
+
 
 @api_router.delete("/deals/{deal_id}")
 async def delete_deal(deal_id: str, current=Depends(get_current_user)):
@@ -4996,6 +5031,7 @@ async def calendar_events(start: str, end: str, current=Depends(get_current_user
                     "end": vd,
                     "color": "#16A34A",  # green
                     "deal_id": d["id"],
+                    "visit_id": v.get("id", ""),
                     "amount": float(v.get("amount") or 0),
                 })
         nm = d.get("next_maintenance_date") or ""

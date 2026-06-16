@@ -130,7 +130,7 @@ export default function Calendar() {
   // ---------- Drag-to-reschedule ----------
   const draggingRef = useRef(null);
   const onDragStart = (e, ev) => {
-    if (ev.kind !== "project" && ev.kind !== "material_order") {
+    if (ev.kind !== "project" && ev.kind !== "material_order" && ev.kind !== "maintenance") {
       e.preventDefault();
       return;
     }
@@ -148,7 +148,7 @@ export default function Calendar() {
     const ev = draggingRef.current;
     draggingRef.current = null;
     if (!ev) return;
-    if (ev.start === targetISO && ev.kind === "material_order") return;
+    if (ev.start === targetISO && ev.kind !== "project") return;
     try {
       if (ev.kind === "material_order") {
         await api.put(`/deals/${ev.deal_id}/schedule`, { material_order_date: targetISO });
@@ -161,6 +161,9 @@ export default function Calendar() {
         const newEnd = ev.end ? addDays(ev.end, delta) : targetISO;
         await api.put(`/deals/${ev.deal_id}/schedule`, { scheduled_start_date: newStart, scheduled_end_date: newEnd });
         toast.success(`Project rescheduled to ${newStart} → ${newEnd}`);
+      } else if (ev.kind === "maintenance") {
+        await api.put(`/deals/${ev.deal_id}/maintenance-reschedule`, { visit_id: ev.visit_id || null, date: targetISO });
+        toast.success(`Maintenance moved to ${targetISO}`);
       }
       await fetchEvents();
     } catch (err) {
@@ -298,7 +301,7 @@ export default function Calendar() {
                     const isBar = ev.kind === "project";
                     const radiusL = isBar && !ev._isStart ? "rounded-l-none" : "";
                     const radiusR = isBar && !ev._isEnd ? "rounded-r-none" : "";
-                    const draggable = ev.kind === "project" || ev.kind === "material_order";
+                    const draggable = ev.kind === "project" || ev.kind === "material_order" || ev.kind === "maintenance";
                     return (
                       <div
                         key={`${ev.id}-${i}`}
@@ -365,7 +368,7 @@ export default function Calendar() {
       )}
 
       <div className="mt-4 text-[11px] text-zinc-500">
-        Tip: drag a <span className="font-bold" style={{ color: "#1D4ED8" }}>project bar</span> or <span className="font-bold" style={{ color: "#D97706" }}>material order</span> onto a new day to reschedule. Double-click any event to open it.
+        Tip: drag a <span className="font-bold" style={{ color: "#1D4ED8" }}>project bar</span>, <span className="font-bold" style={{ color: "#D97706" }}>material order</span>, or <span className="font-bold" style={{ color: "#16A34A" }}>maintenance visit</span> onto a new day to reschedule. Double-click any event to open it.
       </div>
     </div>
   );
