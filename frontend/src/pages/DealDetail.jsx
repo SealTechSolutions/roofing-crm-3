@@ -9,6 +9,7 @@ import MaterialTakeoff from "@/components/MaterialTakeoff";
 import { ScopePreview } from "@/pages/Deals";
 import { formatPhoneDisplay } from "@/lib/format";
 import ProjectPhotos from "@/components/ProjectPhotos";
+import GrammarCheck from "@/components/GrammarCheck";
 
 export default function DealDetail() {
   const { id } = useParams();
@@ -1142,7 +1143,10 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
               <input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="(optional)" className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm" data-testid="scope-cc-email" />
             </div>
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Custom Message (optional)</label>
+              <div className="flex items-center justify-between mb-1 gap-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600">Custom Message (optional)</label>
+                <GrammarCheck text={message || ""} onChange={setMessage} label="Check Grammar" />
+              </div>
               <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} placeholder="Override the default email body. Leave blank for the standard proposal blurb." className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-sm" data-testid="scope-message" />
             </div>
           </div>

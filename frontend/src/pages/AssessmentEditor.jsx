@@ -6,6 +6,7 @@ import {
   ClipboardCheck, ChevronLeft, ChevronRight, Save, FileText, Mail, CheckCircle2,
   Plus, X, Trash2, Image as ImageIcon, Upload, AlertTriangle, ArrowRightCircle, ExternalLink,
 } from "lucide-react";
+import GrammarCheck from "@/components/GrammarCheck";
 
 const BLANK_SCORE = { score: 0, reasoning: "" };
 const BLANK_FINDING = (component) => ({
@@ -587,13 +588,13 @@ function StepScores({ doc, updateScore, update }) {
       </div>
 
       <SectionTitle>Executive Summary Narrative</SectionTitle>
-      <Field label="Purpose of Assessment">
+      <Field label="Purpose of Assessment" grammar={{ text: doc.purpose, onChange: (v) => update({ purpose: v }) }}>
         <textarea rows={3} value={doc.purpose} onChange={(e) => update({ purpose: e.target.value })} className={inputCls} data-testid="purpose" />
       </Field>
-      <Field label="Executive Conclusion">
+      <Field label="Executive Conclusion" grammar={{ text: doc.executive_conclusion, onChange: (v) => update({ executive_conclusion: v }) }}>
         <textarea rows={4} value={doc.executive_conclusion} onChange={(e) => update({ executive_conclusion: e.target.value })} className={inputCls} data-testid="exec-conclusion" />
       </Field>
-      <Field label="Overall Recommendation">
+      <Field label="Overall Recommendation" grammar={{ text: doc.overall_recommendation, onChange: (v) => update({ overall_recommendation: v }) }}>
         <textarea rows={2} value={doc.overall_recommendation} onChange={(e) => update({ overall_recommendation: e.target.value })} className={inputCls} data-testid="overall-rec" />
       </Field>
 
@@ -828,10 +829,10 @@ function StepPlan({ doc, update }) {
   return (
     <div className="space-y-5" data-testid="step-plan-body">
       <SectionTitle>Recommended Strategy</SectionTitle>
-      <Field label="Recommended Strategy">
+      <Field label="Recommended Strategy" grammar={{ text: doc.recommended_strategy, onChange: (v) => update({ recommended_strategy: v }) }}>
         <textarea rows={4} value={doc.recommended_strategy} onChange={(e) => update({ recommended_strategy: e.target.value })} className={inputCls} data-testid="rec-strategy" />
       </Field>
-      <Field label="Capital Planning Impact">
+      <Field label="Capital Planning Impact" grammar={{ text: doc.capital_planning_impact, onChange: (v) => update({ capital_planning_impact: v }) }}>
         <textarea rows={4} value={doc.capital_planning_impact} onChange={(e) => update({ capital_planning_impact: e.target.value })} className={inputCls} data-testid="capital-impact" />
       </Field>
       <Field label="Immediate Action Items (one per line)">
@@ -912,7 +913,7 @@ function StepPlan({ doc, update }) {
           );
         })}
       </div>
-      <Field label="Supporting Comments">
+      <Field label="Supporting Comments" grammar={{ text: doc.supporting_comments, onChange: (v) => update({ supporting_comments: v }) }}>
         <textarea rows={6} value={doc.supporting_comments} onChange={(e) => update({ supporting_comments: e.target.value })} className={inputCls} data-testid="supporting-comments" />
       </Field>
 
@@ -920,7 +921,7 @@ function StepPlan({ doc, update }) {
       <ListInput value={doc.expected_outcomes} onChange={(v) => update({ expected_outcomes: v })} testId="expected-outcomes" />
 
       <SectionTitle>Conclusion</SectionTitle>
-      <Field label="Conclusion (final paragraph)">
+      <Field label="Conclusion (final paragraph)" grammar={{ text: doc.conclusion, onChange: (v) => update({ conclusion: v }) }}>
         <textarea rows={3} value={doc.conclusion} onChange={(e) => update({ conclusion: e.target.value })} className={inputCls} data-testid="conclusion" />
       </Field>
     </div>
@@ -1049,10 +1050,15 @@ function SectionTitle({ children }) {
   );
 }
 
-function Field({ label, children, full }) {
+function Field({ label, children, full, grammar }) {
   return (
     <div className={full ? "col-span-2" : ""}>
-      <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5">{label}</label>
+      <div className="flex items-end justify-between gap-2 mb-1.5">
+        <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500">{label}</label>
+        {grammar && (
+          <GrammarCheck text={grammar.text || ""} onChange={grammar.onChange} label="Check" />
+        )}
+      </div>
       {children}
     </div>
   );

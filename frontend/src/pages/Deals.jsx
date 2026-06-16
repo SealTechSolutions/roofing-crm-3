@@ -7,6 +7,7 @@ import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { StatusPill } from "@/pages/Dashboard";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import GrammarCheck from "@/components/GrammarCheck";
 
 
 /** Live preview chip that shows which spec-sheet template will render
@@ -631,6 +632,9 @@ export default function Deals() {
             </div>
 
             <Field label="Notes">
+              <div className="flex justify-end mb-1">
+                <GrammarCheck text={form.notes || ""} onChange={(v) => setForm({ ...form, notes: v })} label="Check Grammar" />
+              </div>
               <textarea
                 data-testid="deal-notes"
                 value={form.notes}

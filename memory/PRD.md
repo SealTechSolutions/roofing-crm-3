@@ -397,6 +397,14 @@
 - Endpoints: `GET/POST/PUT/DELETE /api/assessments`, `POST /api/assessments/{id}/finalize`, `GET /api/assessments/{id}/pdf`, `POST /api/assessments/{id}/email`, `POST /api/assessments/{id}/convert-to-scope`.
 - ✅ Tested: 6/6 backend pytest (incl. 3 convert-to-scope tests) + full frontend e2e (100% pass).
 
+### Cache-Busting + Grammar Check (Feb 2026)
+- Added `Cache-Control: no-cache, no-store, must-revalidate`, `Pragma: no-cache`, `Expires: 0` meta tags to `/app/frontend/public/index.html` so browsers always re-validate the HTML and pull the latest CRA-hashed JS bundles after deploys.
+- Wired the existing `GrammarCheck` component (LanguageTool free API) into:
+  - **AssessmentEditor**: Purpose, Executive Conclusion, Overall Recommendation, Recommended Strategy, Capital Planning Impact, Supporting Comments, Conclusion (via the shared `Field` component which now accepts a `grammar={{ text, onChange }}` prop).
+  - **Deals → New/Edit modal → Notes** textarea.
+  - **DealDetail → Email Scope modal → Custom Message** textarea.
+- Verified live on preview URL: meta tags present in served HTML, "CHECK GRAMMAR" button visible on Deal Notes.
+
 ### Assessment PDF Page-2 Polish (Feb 2026)
 - "Purpose of Assessment" body text replaced with the official two-paragraph language; `Commercial Roof Assessment Report™` includes the TM mark.
 - Roof Asset Score™ rows: compact score boxes (0.85" × auto, 13pt number) restructured to a single non-nested Table so the blue box left-edge sits flush with the Executive Conclusion / Overall Recommendation text boxes (verified at X=81 px in the rendered PDF — perfect alignment).
