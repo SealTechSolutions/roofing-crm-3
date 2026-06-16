@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus, ClipboardCheck } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus, ClipboardCheck, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
@@ -10,6 +10,7 @@ import { ScopePreview } from "@/pages/Deals";
 import { formatPhoneDisplay } from "@/lib/format";
 import ProjectPhotos from "@/components/ProjectPhotos";
 import GrammarCheck from "@/components/GrammarCheck";
+import { DealStagePipeline, NextStepCard, DealActivityTimeline, DealQuickActions } from "@/components/DealWorkflow";
 
 export default function DealDetail() {
   const { id } = useParams();
@@ -22,6 +23,8 @@ export default function DealDetail() {
   const [saving, setSaving] = useState(false);
   const [vendorBills, setVendorBills] = useState([]);  // actual bills linked to this project
   const [emailScopeOpen, setEmailScopeOpen] = useState(false);
+  const [dealInvoices, setDealInvoices] = useState([]);
+  const [dealAssessments, setDealAssessments] = useState([]);
 
   const reload = async () => {
     const r = await api.get(`/deals/${id}`);
@@ -39,6 +42,8 @@ export default function DealDetail() {
     api.get("/vendors").then((r) => setVendors(r.data));
     api.get("/options").then((r) => setOptions(r.data));
     api.get(`/vendor-bills?project_id=${id}`).then((r) => setVendorBills(r.data)).catch(() => setVendorBills([]));
+    api.get(`/invoices?deal_id=${id}`).then((r) => setDealInvoices(r.data || [])).catch(() => setDealInvoices([]));
+    api.get(`/assessments?deal_id=${id}`).then((r) => setDealAssessments(r.data || [])).catch(() => setDealAssessments([]));
   }, [id]);
 
   const totals = useMemo(() => {
@@ -352,8 +357,90 @@ export default function DealDetail() {
           >
             <ClipboardCheck className="w-4 h-4" /> New Assessment
           </button>
+          <DealQuickActions
+            deal={deal}
+            onEmailScope={() => setEmailScopeOpen(true)}
+            onCreateInvoice={() => nav("/invoices")}
+            onRecordPayment={() => nav("/invoices")}
+          />
         </div>
       </div>
+
+      <DealStagePipeline
+        deal={deal}
+        invoices={dealInvoices}
+        assessments={dealAssessments}
+        onTabChange={(tab) => {
+          // Scroll to the area associated with that tab
+          const sel = `[data-section="${tab}"]`;
+          const el = document.querySelector(sel);
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+        onAdvance={async (stageKey, becomingDone) => {
+          // Manual mark-as-done — limited to status-driven stages
+          const map = { won: "Won", in_progress: "In Progress", closed: "Complete" };
+          const newStatus = map[stageKey];
+          if (!newStatus) {
+            toast.info(`"${stageKey}" advances automatically when the underlying data is set.`);
+            return;
+          }
+          if (!becomingDone && deal.status === newStatus) {
+            toast.info("Already at this stage.");
+            return;
+          }
+          try {
+            await api.put(`/deals/${id}`, { ...deal, status: newStatus });
+            toast.success(`Marked ${newStatus}`);
+            reload();
+          } catch (e) {
+            toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+          }
+        }}
+      />
+
+      <NextStepCard
+        deal={deal}
+        invoices={dealInvoices}
+        assessments={dealAssessments}
+        onAction={async (step) => {
+          if (step.target?.route) {
+            nav(step.target.route);
+            return;
+          }
+          if (step.target?.tab) {
+            const el = document.querySelector(`[data-section="${step.target.tab}"]`);
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+            return;
+          }
+          if (step.action === "email-scope") {
+            setEmailScopeOpen(true);
+            return;
+          }
+          if (step.action === "mark-won") {
+            try {
+              await api.put(`/deals/${id}`, { ...deal, status: "Won" });
+              toast.success("Marked Won");
+              reload();
+            } catch (e) { toast.error(e.message); }
+            return;
+          }
+          if (step.action === "mark-complete") {
+            try {
+              await api.put(`/deals/${id}`, { ...deal, status: "Complete" });
+              toast.success("Project completed");
+              reload();
+            } catch (e) { toast.error(e.message); }
+            return;
+          }
+          if (step.action === "set-material-order" || step.action === "set-schedule") {
+            const el = document.querySelector(`[data-section="schedule"]`);
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+            else toast.info("Open the project edit modal to set these dates.");
+            return;
+          }
+          toast.info("Action coming soon");
+        }}
+      />
 
       {/* Financials KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -424,7 +511,7 @@ export default function DealDetail() {
       </div>
 
       {/* Milestones */}
-      <Card title="Payment Milestones" right={
+      <Card title="Payment Milestones" data-section="milestones" right={
         <div className="flex flex-wrap items-center gap-2">
           {Object.keys(options.milestone_templates || {}).map((k) => (
             <button key={k} data-testid={`milestone-template-${k.replace(/\//g, "-")}`} onClick={() => applyTemplate(k)} className="px-3 h-8 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 rounded-sm">
@@ -665,6 +752,19 @@ export default function DealDetail() {
 
       {/* Material Take-Off */}
       <MaterialTakeoff deal={deal} reload={reload} />
+
+      {/* Activity Timeline */}
+      <Card
+        title={
+          <span className="inline-flex items-center gap-2">
+            <Clock className="w-3.5 h-3.5 text-blue-700" /> Recent Activity
+          </span>
+        }
+      >
+        <div className="px-4 py-3 max-h-96 overflow-y-auto">
+          <DealActivityTimeline dealId={id} />
+        </div>
+      </Card>
 
       {/* Maintenance Plan */}
       <Card
@@ -978,8 +1078,8 @@ export default function DealDetail() {
   );
 }
 
-const Card = ({ title, right, children }) => (
-  <div className="bg-white border border-zinc-200 rounded-sm p-6 mb-6">
+const Card = ({ title, right, children, ...rest }) => (
+  <div className="bg-white border border-zinc-200 rounded-sm p-6 mb-6" {...rest}>
     <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-100 gap-3 flex-wrap">
       <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">{title}</div>
       {right}

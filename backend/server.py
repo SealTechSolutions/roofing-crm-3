@@ -1197,6 +1197,96 @@ async def get_deal(deal_id: str, current=Depends(get_current_user)):
     return scrub_deal(doc, current)
 
 
+@api_router.get("/deals/{deal_id}/activity")
+async def deal_activity(deal_id: str, current=Depends(get_current_user)):
+    """Reconstructed activity timeline for a deal — derived from existing
+    collections so we don't need a dedicated audit trail. Returns most-recent first."""
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    if current.get("role") == "sales":
+        owns = deal.get("assigned_to_user_id") == current["id"] or deal.get("created_by_user_id") == current["id"]
+        if not owns:
+            raise HTTPException(status_code=403, detail="Not your project")
+
+    EM_DASH = "\u2014"
+    items = []
+    if deal.get("created_at"):
+        items.append({"ts": deal["created_at"], "kind": "deal_created", "title": "Project created", "color": "#71717A"})
+    for entry in (deal.get("status_history") or []):
+        items.append({
+            "ts": entry.get("at") or "",
+            "kind": "status_change",
+            "title": f"Status \u2192 {entry.get('to') or '?'}",
+            "subtitle": (f"From {entry.get('from')}" if entry.get("from") else ""),
+            "color": "#062B67",
+        })
+
+    async for inv in db.invoices.find({"deal_id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0}):
+        if inv.get("created_at"):
+            items.append({
+                "ts": inv["created_at"],
+                "kind": "invoice_created",
+                "title": f"Invoice {inv.get('invoice_number','')} drafted",
+                "subtitle": f"${float(inv.get('total') or 0):,.2f}",
+                "color": "#7E22CE",
+            })
+        if inv.get("last_sent_at"):
+            email_to = inv.get("bill_to_email") or EM_DASH
+            items.append({
+                "ts": inv["last_sent_at"],
+                "kind": "invoice_sent",
+                "title": f"Invoice {inv.get('invoice_number','')} emailed",
+                "subtitle": f"to {email_to}",
+                "color": "#7E22CE",
+            })
+        if float(inv.get("amount_paid") or 0) > 0 and inv.get("paid_at"):
+            paid_amt = float(inv['amount_paid'])
+            items.append({
+                "ts": inv["paid_at"],
+                "kind": "payment_received",
+                "title": f"Payment received {EM_DASH} ${paid_amt:,.2f}",
+                "subtitle": f"Invoice {inv.get('invoice_number','')}",
+                "color": "#16A34A",
+            })
+
+    for v in (deal.get("maintenance_visits") or []):
+        if v.get("visit_date"):
+            items.append({
+                "ts": v["visit_date"],
+                "kind": "maintenance_visit",
+                "title": "Maintenance visit",
+                "subtitle": (v.get("notes") or "")[:140],
+                "color": "#16A34A",
+            })
+
+    async for ph in db.project_photos.find({"deal_id": deal_id}, {"_id": 0, "uploaded_at": 1, "label": 1}):
+        if ph.get("uploaded_at"):
+            items.append({
+                "ts": ph["uploaded_at"],
+                "kind": "photo_uploaded",
+                "title": "Photo uploaded",
+                "subtitle": ph.get("label") or "",
+                "color": "#0EA5E9",
+            })
+
+    async for a in db.assessments.find({"deal_id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0}):
+        if a.get("created_at"):
+            items.append({
+                "ts": a["created_at"],
+                "kind": "assessment_created",
+                "title": "Assessment started",
+                "subtitle": a.get("property_address") or a.get("property_name") or "",
+                "color": "#D97706",
+            })
+
+    items = [i for i in items if i.get("ts")]
+    items.sort(key=lambda x: str(x["ts"]), reverse=True)
+    return {"items": items[:200]}
+
+
+
+
 @api_router.put("/deals/{deal_id}", response_model=Deal)
 async def update_deal(deal_id: str, body: DealIn, current=Depends(get_current_user)):
     existing = await db.deals.find_one({"id": deal_id})
@@ -1207,6 +1297,18 @@ async def update_deal(deal_id: str, body: DealIn, current=Depends(get_current_us
         if not owns:
             raise HTTPException(status_code=403, detail="Not your project")
     data = normalize_deal(body.model_dump())
+    # Track status changes for the activity timeline
+    prev_status = (existing or {}).get("status")
+    new_status = data.get("status")
+    if new_status and prev_status and new_status != prev_status:
+        history = list((existing or {}).get("status_history") or [])
+        history.append({
+            "from": prev_status,
+            "to": new_status,
+            "at": datetime.now(timezone.utc).isoformat(),
+            "user_id": current["id"],
+        })
+        data["status_history"] = history
     await db.deals.update_one({"id": deal_id}, {"$set": data})
     doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
     # Fire-and-forget push to Google Calendar
