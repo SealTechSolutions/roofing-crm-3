@@ -127,6 +127,7 @@ export default function Deals() {
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("All");
+  const [stageFilter, setStageFilter] = useState("all");
   const [confirmTarget, setConfirmTarget] = useState(null);
   const [archiveTarget, setArchiveTarget] = useState(null);
 
@@ -225,9 +226,50 @@ export default function Deals() {
   // Hide Past Lead from default filter chips; show via dedicated toggle in "All"
   const VISIBLE_FILTERS = ["All", "Lead", "Sent", "Won", "Lost", "Past Lead"];
   const FILTERS = VISIBLE_FILTERS.filter((f) => f === "All" || (options.deal_statuses || []).includes(f));
-  const filtered = filter === "All"
+  const baseFiltered = filter === "All"
     ? items.filter((d) => d.status !== "Past Lead")
     : items.filter((d) => d.status === filter);
+
+  // Pipeline-stage filter — overlay on top of status filter
+  const STAGE_OPTS = [
+    { key: "all", label: "All Stages" },
+    { key: "assessment", label: "Assessment" },
+    { key: "scope", label: "Scope Sent" },
+    { key: "won", label: "Won/Signed" },
+    { key: "deposit", label: "Deposit Paid" },
+    { key: "materials", label: "Materials" },
+    { key: "scheduled", label: "Scheduled" },
+    { key: "in_progress", label: "In Progress" },
+    { key: "final_inspection", label: "Final Inspection" },
+    { key: "closed", label: "Closed" },
+  ];
+  const filtered = stageFilter === "all"
+    ? baseFiltered
+    : baseFiltered.filter((d) => {
+        const inv = dealInvoicesMap[d.id] || [];
+        const ms = d.payment_milestones || [];
+        const status = (d.status || "").toLowerCase();
+        const today = new Date().toISOString().slice(0, 10);
+        const stages = {
+          assessment: !!d.last_scope_sent_at || !!d.last_assessment_id,
+          scope: !!d.last_scope_sent_at || !!d.custom_scope || !!d.scope_signed_at,
+          won: ["won","in progress","complete","closed"].includes(status),
+          deposit: (ms[0] && ms[0].status === "Paid") || inv.some((i) => (i.status||"").toLowerCase()==="paid"),
+          materials: !!d.material_order_date,
+          scheduled: !!d.scheduled_start_date,
+          in_progress: status === "in progress" || (!!d.scheduled_start_date && d.scheduled_start_date <= today),
+          final_inspection: (!!d.scheduled_end_date && d.scheduled_end_date <= today) || ["complete","closed"].includes(status),
+          closed: ["complete","closed"].includes(status) || (ms.length>0 && ms.every((m)=>m.status==="Paid")),
+        };
+        // Determine current stage (lastTrue + 1) — match deals whose CURRENT stage equals this filter
+        const order = ["assessment","scope","won","deposit","materials","scheduled","in_progress","final_inspection","closed"];
+        let lastTrue = -1;
+        order.forEach((s, i) => { if (stages[s]) lastTrue = i; });
+        const currentKey = stages[stageFilter] && lastTrue === order.indexOf(stageFilter)
+          ? stageFilter
+          : order[Math.min(order.length - 1, lastTrue + 1)];
+        return currentKey === stageFilter;
+      });
 
   return (
     <div className="p-6 sm:p-8 animate-in fade-in duration-500" data-testid="deals-page">
@@ -249,7 +291,7 @@ export default function Deals() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-3">
         {FILTERS.map((f) => (
           <button
             key={f}
@@ -262,6 +304,51 @@ export default function Deals() {
             {f === "Past Lead" ? "Past Leads" : f}
           </button>
         ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 mb-6" data-testid="stage-filters">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mr-1">Stage:</span>
+        {STAGE_OPTS.map((s) => {
+          const count = s.key === "all"
+            ? baseFiltered.length
+            : baseFiltered.filter((d) => {
+                const inv = dealInvoicesMap[d.id] || [];
+                const ms = d.payment_milestones || [];
+                const status = (d.status || "").toLowerCase();
+                const today = new Date().toISOString().slice(0, 10);
+                const stages = {
+                  assessment: !!d.last_scope_sent_at || !!d.last_assessment_id,
+                  scope: !!d.last_scope_sent_at || !!d.custom_scope || !!d.scope_signed_at,
+                  won: ["won","in progress","complete","closed"].includes(status),
+                  deposit: (ms[0] && ms[0].status === "Paid") || inv.some((i) => (i.status||"").toLowerCase()==="paid"),
+                  materials: !!d.material_order_date,
+                  scheduled: !!d.scheduled_start_date,
+                  in_progress: status === "in progress" || (!!d.scheduled_start_date && d.scheduled_start_date <= today),
+                  final_inspection: (!!d.scheduled_end_date && d.scheduled_end_date <= today) || ["complete","closed"].includes(status),
+                  closed: ["complete","closed"].includes(status) || (ms.length>0 && ms.every((m)=>m.status==="Paid")),
+                };
+                const order = ["assessment","scope","won","deposit","materials","scheduled","in_progress","final_inspection","closed"];
+                let lastTrue = -1;
+                order.forEach((x, i) => { if (stages[x]) lastTrue = i; });
+                const currentKey = stages[s.key] && lastTrue === order.indexOf(s.key)
+                  ? s.key
+                  : order[Math.min(order.length - 1, lastTrue + 1)];
+                return currentKey === s.key;
+              }).length;
+          return (
+            <button
+              key={s.key}
+              onClick={() => setStageFilter(s.key)}
+              className={`inline-flex items-center gap-1.5 px-2.5 h-7 text-[10px] font-bold uppercase tracking-wider border rounded-sm transition-colors ${
+                stageFilter === s.key ? "bg-blue-700 text-white border-blue-700" : "bg-white text-zinc-700 border-zinc-300 hover:border-blue-700"
+              }`}
+              data-testid={`stage-filter-${s.key}`}
+            >
+              {s.label}
+              <span className={`text-[9px] font-mono px-1 rounded-sm ${stageFilter === s.key ? "bg-blue-900" : "bg-zinc-100"}`}>{count}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="bg-white border border-zinc-200 rounded-sm overflow-x-auto">
