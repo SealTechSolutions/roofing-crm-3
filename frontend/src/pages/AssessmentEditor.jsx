@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import GrammarCheck from "@/components/GrammarCheck";
 import CameraCaptureButton from "@/components/CameraCaptureButton";
+import AutocompleteInput from "@/components/AutocompleteInput";
 import { bandFor } from "@/lib/assessmentBands";
 
 const BLANK_SCORE = { score: 0, reasoning: "" };
@@ -545,19 +546,47 @@ function StepCover({ doc, update, contacts, deals, properties, linkedDeal }) {
       <SectionTitle>Property Information</SectionTitle>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Building Type">
-          <input value={doc.building_type} onChange={(e) => update({ building_type: e.target.value })} className={inputCls} placeholder="Warehouse, Office, Retail..." data-testid="building-type" />
+          <AutocompleteInput
+            value={doc.building_type}
+            onChange={(v) => update({ building_type: v })}
+            options={["Warehouse", "Office", "Retail", "Industrial", "Manufacturing", "Healthcare", "Educational", "Multi-family", "Garage Condos", "Self-Storage", "Religious", "Government", "Mixed-Use"]}
+            className={inputCls}
+            placeholder="Type to filter…  Warehouse, Office, Retail..."
+            testId="building-type"
+          />
         </Field>
         <Field label="Year Constructed">
           <YearOrUnknown value={doc.year_built} onChange={(v) => update({ year_built: v })} testId="year-built" />
         </Field>
         <Field label="Occupancy Type">
-          <input value={doc.occupancy_type} onChange={(e) => update({ occupancy_type: e.target.value })} className={inputCls} placeholder="Owner-occupied, Tenant, Mixed..." data-testid="occupancy-type" />
+          <AutocompleteInput
+            value={doc.occupancy_type}
+            onChange={(v) => update({ occupancy_type: v })}
+            options={["Owner-occupied", "Tenant", "Mixed", "Vacant"]}
+            className={inputCls}
+            placeholder="Type to filter…  Owner-occupied, Tenant..."
+            testId="occupancy-type"
+          />
         </Field>
         <Field label="Roof Type">
-          <input value={doc.roof_type} onChange={(e) => update({ roof_type: e.target.value })} className={inputCls} placeholder="TPO, EPDM, BUR, Mod Bit..." data-testid="roof-type" />
+          <AutocompleteInput
+            value={doc.roof_type}
+            onChange={(v) => update({ roof_type: v })}
+            options={["TPO", "EPDM", "PVC", "Modified Bitumen", "BUR (Built-Up)", "Metal", "Asphalt Shingle", "Tile", "Silicone Coating", "FARM (Fluid Applied)", "Spray Polyurethane Foam (SPF)", "Ballasted EPDM"]}
+            className={inputCls}
+            placeholder="Type to filter…  TPO, EPDM, BUR…"
+            testId="roof-type"
+          />
         </Field>
         <Field label="Manufacturer">
-          <input value={doc.manufacturer} onChange={(e) => update({ manufacturer: e.target.value })} className={inputCls} placeholder="Carlisle, GAF, Firestone..." data-testid="manufacturer" />
+          <AutocompleteInput
+            value={doc.manufacturer}
+            onChange={(v) => update({ manufacturer: v })}
+            options={["Carlisle", "GAF", "Firestone", "Versico", "Sika Sarnafil", "Mule-Hide", "Johns Manville", "Holcim Elevate", "IB Roof Systems", "Duro-Last", "Western Colloid", "Everest Systems", "Henry Company", "Tropical Roofing", "Unknown"]}
+            className={inputCls}
+            placeholder="Type to filter…  Carlisle, GAF…"
+            testId="manufacturer"
+          />
         </Field>
         <Field label="Installation Date">
           <DateOrUnknown value={doc.installation_date} onChange={(v) => update({ installation_date: v })} testId="installation-date" />
@@ -566,7 +595,14 @@ function StepCover({ doc, update, contacts, deals, properties, linkedDeal }) {
           <input type="number" step="0.5" value={doc.roof_age_years ?? ""} onChange={(e) => update({ roof_age_years: e.target.value === "" ? null : parseFloat(e.target.value) })} className={inputCls} data-testid="roof-age" />
         </Field>
         <Field label="Warranty Status">
-          <input value={doc.warranty_status_text} onChange={(e) => update({ warranty_status_text: e.target.value })} className={inputCls} placeholder="Expired, 5 years remaining, NDL 15-year..." data-testid="warranty-status" />
+          <AutocompleteInput
+            value={doc.warranty_status_text}
+            onChange={(v) => update({ warranty_status_text: v })}
+            options={["Active", "Active — NDL 15-year", "Active — NDL 20-year", "Active — NDL 25-year", "Active — Material-Only 10-year", "Limited", "Expiring within 12 months", "Expired", "Unknown", "None"]}
+            className={inputCls}
+            placeholder="Type to filter…  E → Expired"
+            testId="warranty-status"
+          />
         </Field>
         <Field label="Approximate Roof Area (sq ft)">
           <input type="number" value={doc.square_footage ?? ""} onChange={(e) => update({ square_footage: e.target.value === "" ? null : parseFloat(e.target.value) })} className={inputCls} data-testid="sqft" />
