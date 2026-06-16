@@ -311,12 +311,12 @@ export default function Calendar() {
                         style={{ background: ev.color, opacity: ev.tentative ? 0.55 : 1 }}
                         data-testid={`cal-event-${ev.kind}-${ev.id}`}
                       >
-                        {isBar ? (ev._isStart ? ev.title : "↪") : ev.title}
+                        {isBar && !ev._isStart ? "\u00A0" : ev.title}
                       </div>
                     );
                   })}
                   {dayEvents.length > (view === "week" ? 30 : 5) && (
-                    <div className="text-[9px] text-zinc-500 font-medium pl-1">+ {dayEvents.length - 5} more</div>
+                    <div className="text-[9px] text-zinc-500 font-medium pl-1">+ {dayEvents.length - (view === "week" ? 30 : 5)} more</div>
                   )}
                 </div>
               </div>

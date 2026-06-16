@@ -397,6 +397,23 @@
 - Endpoints: `GET/POST/PUT/DELETE /api/assessments`, `POST /api/assessments/{id}/finalize`, `GET /api/assessments/{id}/pdf`, `POST /api/assessments/{id}/email`, `POST /api/assessments/{id}/convert-to-scope`.
 - ✅ Tested: 6/6 backend pytest (incl. 3 convert-to-scope tests) + full frontend e2e (100% pass).
 
+### Project Calendar (Feb 2026) — P0 SHIPPED
+- New `/calendar` page with **Month + Week** views, color-coded events:
+  - 🔵 **Project bars** (cobalt, span `scheduled_start_date → scheduled_end_date`, draggable to reschedule)
+  - 🟠 **Material Order** pins (amber, `material_order_date`, draggable)
+  - 🟢 **Maintenance** visits (green, from `maintenance_visits[]` + tentative `next_maintenance_date`)
+  - 🔴 **COI Expirations** (red, vendor `gl_coi_expiry_date` / `wc_coi_expiry_date`)
+  - 🟣 **Invoice Due** dates (purple, unpaid invoices only)
+- Single-click event → popover with details + "Open in CRM"; double-click → navigates to record.
+- Drag-to-reschedule for project bars (preserves duration) and material order pins.
+- Filter checkboxes per kind in the header legend; "Today" cell has blue ring.
+- Backend:
+  - `DealIn` now has `scheduled_start_date`, `scheduled_end_date`, `material_order_date`.
+  - New `GET /api/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD` returns a unified, flat event feed.
+  - New `PUT /api/deals/{id}/schedule` for partial schedule updates (used by drag-and-drop).
+- Wired into sidebar nav + Deal create/edit modal (3 date inputs under "Schedule (Project Calendar)").
+- Tested: 10/10 backend pytest cases + full frontend acceptance flow (iteration_15.json).
+
 ### Cache-Busting + Grammar Check (Feb 2026)
 - Added `Cache-Control: no-cache, no-store, must-revalidate`, `Pragma: no-cache`, `Expires: 0` meta tags to `/app/frontend/public/index.html` so browsers always re-validate the HTML and pull the latest CRA-hashed JS bundles after deploys.
 - Wired the existing `GrammarCheck` component (LanguageTool free API) into:
