@@ -2136,12 +2136,15 @@ def _recalc_invoice(inv: dict) -> dict:
     # Status auto-rules
     today_iso = datetime.now(timezone.utc).date().isoformat()
     status = inv.get("status", "Draft")
-    if status not in ("Void", "Draft"):
-        if inv["balance_due"] <= 0.01:
+    # Always recompute from money flow when payment has been recorded, even on
+    # Draft invoices — recording a payment is itself the "send" gesture, so a
+    # paid-in-full Draft should never sit at Draft.
+    if status != "Void":
+        if paid > 0 and inv["balance_due"] <= 0.01:
             status = "Paid"
         elif paid > 0:
             status = "Partial"
-        elif inv.get("due_date") and inv["due_date"] < today_iso:
+        elif status != "Draft" and inv.get("due_date") and inv["due_date"] < today_iso:
             status = "Overdue"
     inv["status"] = status
     return inv

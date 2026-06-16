@@ -519,6 +519,7 @@
 - DealDetail `+ Invoice` quick action (data-testid=`quick-new-invoice`) now opens the InvoiceEditor inline, prefilled with: deal title, project_total = chosen_amount, bill-to address from linked property, bill_to_email from linked contact, one line item = "<deal.title> — Contract".
 - DealDetail `Record Payment` quick action (data-testid=`quick-record-payment`) finds the oldest unpaid invoice on this deal (FIFO), opens InvoiceEditor with `payment_date` defaulted to today, and shows an informational toast when no unpaid invoices exist.
 - Hardened InvoiceEditor backdrop: `onClick` now uses `e.target === e.currentTarget` so bubbled clicks from descendant elements don't accidentally close the modal.
+- **Fix (Feb 2026 — iteration_19)**: `_recalc_invoice()` now auto-promotes Draft invoices to `Partial` (paid > 0) or `Paid` (balance_due ≤ 0.01) whenever payment is recorded. Previously a Draft invoice paid in full via the Record-Payment modal would stay stuck at "Draft" while the cash was correctly stored. 4 new pytest cases in `tests/test_invoice_status.py` cover all four transitions (Draft→Paid, Draft→Partial, Draft+$0 stays Draft, Void never flips).
 
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
