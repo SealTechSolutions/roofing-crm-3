@@ -426,6 +426,76 @@ BUR_NEW_CONSTRUCTION_TEMPLATE = {
     ],
 }
 
+METAL_NEW_CONSTRUCTION_TEMPLATE = {
+    "title": "METAL NEW CONSTRUCTION SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
+    "scope_1": [
+        "Verify structural framing, purlin spacing, and slope meet manufacturer's design loads and code minimums.",
+        "Inspect and repair/replace any damaged framing, sub-purlins, or wood blocking.",
+        "Clean substrate of construction debris, dust, and contaminants.",
+        "Confirm placement of curbs, skylights, vents, gutters, and penetrations per plan.",
+        "Remove and properly dispose of all debris from the property.",
+    ],
+    "scope_2_title": "Metal Roof System Installation",
+    "scope_2": [
+        "Install high-temperature self-adhered underlayment (peel-and-stick ice & water shield) over the entire deck or purlin substrate, lapped per manufacturer.",
+        "Install rigid insulation between purlins or above deck where specified to meet R-value requirements.",
+        "Install architectural standing-seam metal panels (24-gauge G-90 galvanized or Galvalume, Kynar 500® finish) — concealed-fastener clip system, hand-crimped or seamed per manufacturer.",
+        "Install matching pre-formed eave, ridge, hip, valley, gable, sidewall, and headwall flashings; bend or factory-form to manufacturer's profiles.",
+        "Install pre-formed pipe boots, curb flashings, and snow retention systems where specified.",
+        "Seal all penetrations and exposed fasteners with manufacturer-approved high-grade polyurethane sealant.",
+        "Install new gutters, downspouts, and conductor heads sized per drainage calculation.",
+        "Final walk-through, water-test, panel-engagement check, and quality inspection with the owner.",
+    ],
+}
+
+SHINGLE_NEW_CONSTRUCTION_TEMPLATE = {
+    "title": "ASPHALT SHINGLE NEW CONSTRUCTION SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
+    "scope_1": [
+        "Verify decking thickness (½\" or 5/8\" plywood / OSB minimum), nailing pattern, and slope meet code (≥ 2:12 minimum, ≥ 4:12 preferred).",
+        "Inspect and replace any damaged or improperly fastened decking; secure all loose panels with ring-shank nails or screws.",
+        "Clean deck of construction debris, dust, and contaminants.",
+        "Confirm placement of plumbing vents, exhaust caps, valley centerlines, and skylights per plan.",
+        "Remove and properly dispose of all debris from the property.",
+    ],
+    "scope_2_title": "Shingle System Installation",
+    "scope_2": [
+        "Install code-required ice & water shield self-adhered membrane at eaves (24\" past warm wall), valleys, and around all penetrations.",
+        "Install synthetic underlayment over remaining field of roof, lapped 4\" horizontally and 6\" vertically, fastened per manufacturer.",
+        "Install pre-finished aluminum drip edge at all eaves and rakes (under underlayment at eaves, over at rakes).",
+        "Install starter strip course at eaves with sealant strip oriented down.",
+        "Install architectural-grade laminated asphalt shingles (240 lb. or heavier) using six (6) nails per shingle per high-wind code; stagger-bond per manufacturer.",
+        "Install pre-formed open-metal or closed-cut valley flashing per manufacturer; weave only where approved.",
+        "Install step-flashing at sidewalls, kick-out flashing at eave-to-wall transitions, and counter-flashing terminations.",
+        "Install ridge vent and matching ridge-cap shingles; ensure balanced intake-ventilation at soffits or eaves.",
+        "Final walk-through, perimeter inspection, debris cleanup, and magnetic sweep of grounds.",
+    ],
+}
+
+TILE_NEW_CONSTRUCTION_TEMPLATE = {
+    "title": "TILE NEW CONSTRUCTION SYSTEM SCOPE",
+    "scope_1_title": "Inspection and Prep",
+    "scope_1": [
+        "Verify framing is engineered for tile dead-load (≥ 10 lbs/SF for concrete; ≥ 7 lbs/SF for clay) and slope meets manufacturer minimum (typically ≥ 4:12).",
+        "Inspect and repair/replace damaged decking; secure all loose panels per code nailing schedule.",
+        "Clean deck of construction debris, dust, and contaminants.",
+        "Confirm placement of plumbing vents, valleys, hips, ridges, and penetrations per plan.",
+        "Remove and properly dispose of all debris from the property.",
+    ],
+    "scope_2_title": "Tile System Installation",
+    "scope_2": [
+        "Install two (2) layers of 40-lb. organic felt or one layer of high-temperature self-adhered underlayment per code and manufacturer.",
+        "Install pre-finished metal eave riser, anti-ponding flashing, and pre-bent valley metal (W-profile preferred) with hemmed edges.",
+        "Install nailed or battened lath system per slope and wind-uplift requirements; pressure-treated battens fastened to structural members.",
+        "Install concrete or clay tile field, fastened with copper or stainless screws / clips per manufacturer's wind-zone schedule (one fastener per tile minimum, two in field on steep slopes).",
+        "Install pre-formed pipe-jack flashings, hood vents, and B-vent flashings sealed with high-grade polyurethane.",
+        "Install hip-and-ridge tile set in mortar or with mechanical hip/ridge attachment system; cap with weather-blocked closures.",
+        "Replace any cracked or chipped tiles; ensure side-laps and head-laps meet manufacturer specifications.",
+        "Final walk-through, water-test valleys, perimeter inspection, and magnetic sweep of grounds.",
+    ],
+}
+
 # Kept as the generic fallback when "TPO" alone is selected (no over-lay / replacement distinction yet)
 TPO_TEMPLATE = TPO_OVERLAY_TEMPLATE
 
@@ -701,6 +771,14 @@ NEW_CONSTRUCTION_MAP = {
     "bur": BUR_NEW_CONSTRUCTION_TEMPLATE,
     "burbuiltup": BUR_NEW_CONSTRUCTION_TEMPLATE,
     "builtup": BUR_NEW_CONSTRUCTION_TEMPLATE,
+    "metal": METAL_NEW_CONSTRUCTION_TEMPLATE,
+    "shingle": SHINGLE_NEW_CONSTRUCTION_TEMPLATE,
+    "shingles": SHINGLE_NEW_CONSTRUCTION_TEMPLATE,
+    "asphaltshingle": SHINGLE_NEW_CONSTRUCTION_TEMPLATE,
+    "asphaltshingles": SHINGLE_NEW_CONSTRUCTION_TEMPLATE,
+    "tile": TILE_NEW_CONSTRUCTION_TEMPLATE,
+    "claytile": TILE_NEW_CONSTRUCTION_TEMPLATE,
+    "concretetile": TILE_NEW_CONSTRUCTION_TEMPLATE,
 }
 
 
