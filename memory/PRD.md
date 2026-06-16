@@ -506,6 +506,7 @@
 - `dry_run=true` returns the recipient preview (owner name, email, stuck/no-deposit counts, subject) without sending — used by the Dashboard "Send Digest" button to show a confirm dialog before firing.
 - Refactored the core scan into a shared `_compute_stale_deals()` so the GET widget and the digest emailer use identical logic.
 - Frontend: new "Send Digest" button (data-testid=`send-stale-digest`) in the StaleDeals card toolbar — admins click it, get a preview confirm, and the digest fires.
+- **Threshold toggle on empty state (Feb 2026 — iteration_19 follow-up)**: added `3d` to the threshold options (now 3/7/14/30) and rendered the toolbar (threshold toggle + Send Digest button, disabled) in the empty-state card too. Previously admins couldn't lower the threshold once the default 14d showed zero stuck deals — now they always have a way to tighten the radar.
 - Tested: 4 pytest cases (`tests/test_stale_digest.py`) — dry-run shape, per-owner grouping, high-threshold empty, sales-role 403.
 - **Scheduling note**: this endpoint is fire-on-demand. To run it every Monday morning, add a cron / cloud scheduler hitting `POST /api/dashboard/stale-deals/digest?cc_admin=true` with the admin's bearer token. The app does not include its own scheduler.
 

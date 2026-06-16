@@ -658,19 +658,87 @@ function StaleDeals() {
 
   const total = (data.counts?.stuck || 0) + (data.counts?.no_deposit || 0);
 
+  // Threshold toggle + Send-Digest button — rendered in both empty + populated states.
+  // Inline JSX (not a nested component) to avoid React's nested-component remount on every render.
+  const toolbarRight = (
+    <div className="flex items-center gap-2 flex-wrap">
+      {total > 0 && (
+        <div className="inline-flex border border-zinc-300 rounded-sm overflow-hidden" data-testid="stale-deals-filter">
+          <button
+            data-testid="stale-filter-all"
+            onClick={() => setFilter("all")}
+            className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+              filter === "all" ? "bg-zinc-950 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"
+            }`}
+          >
+            All ({total})
+          </button>
+          <button
+            data-testid="stale-filter-stuck"
+            onClick={() => setFilter("stuck")}
+            className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors border-l border-zinc-300 ${
+              filter === "stuck" ? "bg-amber-600 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"
+            }`}
+          >
+            Stuck ({data.counts.stuck})
+          </button>
+          <button
+            data-testid="stale-filter-no-deposit"
+            onClick={() => setFilter("no_deposit")}
+            className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors border-l border-zinc-300 ${
+              filter === "no_deposit" ? "bg-rose-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"
+            }`}
+          >
+            No Deposit ({data.counts.no_deposit})
+          </button>
+        </div>
+      )}
+      <div className="inline-flex border border-zinc-300 rounded-sm overflow-hidden" data-testid="stale-threshold-toggle">
+        {[3, 7, 14, 30].map((d) => (
+          <button
+            key={d}
+            data-testid={`stale-threshold-${d}`}
+            onClick={() => setThreshold(d)}
+            className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+              d !== 3 ? "border-l border-zinc-300" : ""
+            } ${threshold === d ? "bg-blue-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
+          >
+            {d}d
+          </button>
+        ))}
+      </div>
+      <button
+        data-testid="send-stale-digest"
+        onClick={sendDigest}
+        disabled={sendingDigest || total === 0}
+        title={total === 0 ? "No stale deals to send" : "Email each owner their stale-deals list"}
+        className="inline-flex items-center gap-1.5 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-sm transition-colors"
+      >
+        <Send className="w-3 h-3" />
+        {sendingDigest ? "Sending…" : "Send Digest"}
+      </button>
+    </div>
+  );
+
   if (total === 0) {
     return (
-      <div
-        className="mb-12 bg-emerald-50 border border-emerald-200 p-6 rounded-sm flex items-center gap-3"
-        data-testid="stale-deals-empty"
-      >
-        <AlarmClock className="w-5 h-5 text-emerald-700" />
-        <div>
-          <div className="font-heading text-base font-bold text-emerald-900">
-            Pipeline is moving — no stale deals.
+      <div className="mb-12" data-testid="stale-deals-empty">
+        <div className="flex items-end justify-between mb-4 gap-3 flex-wrap">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700 mb-1 flex items-center gap-1.5">
+              <AlarmClock className="w-3 h-3" /> Pipeline Health
+            </div>
+            <h2 className="font-heading text-2xl font-black tracking-tight">Stale Deals</h2>
+            <div className="text-xs text-emerald-800 mt-1">
+              No open deals stuck more than {threshold} days, and every Won deal has a deposit recorded.
+            </div>
           </div>
-          <div className="text-xs text-emerald-800 mt-0.5">
-            No open deals have been sitting at the same stage for more than {threshold} days, and every Won deal has a deposit recorded.
+          {toolbarRight}
+        </div>
+        <div className="bg-emerald-50 border border-emerald-200 p-6 rounded-sm flex items-center gap-3">
+          <AlarmClock className="w-5 h-5 text-emerald-700" />
+          <div className="text-xs text-emerald-800">
+            <b>Pipeline is moving.</b> Lower the threshold above (e.g., 3 days) if you want a tighter early-warning radar.
           </div>
         </div>
       </div>
@@ -701,61 +769,7 @@ function StaleDeals() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="inline-flex border border-zinc-300 rounded-sm overflow-hidden" data-testid="stale-deals-filter">
-            <button
-              data-testid="stale-filter-all"
-              onClick={() => setFilter("all")}
-              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                filter === "all" ? "bg-zinc-950 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"
-              }`}
-            >
-              All ({total})
-            </button>
-            <button
-              data-testid="stale-filter-stuck"
-              onClick={() => setFilter("stuck")}
-              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors border-l border-zinc-300 ${
-                filter === "stuck" ? "bg-amber-600 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"
-              }`}
-            >
-              Stuck ({data.counts.stuck})
-            </button>
-            <button
-              data-testid="stale-filter-no-deposit"
-              onClick={() => setFilter("no_deposit")}
-              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors border-l border-zinc-300 ${
-                filter === "no_deposit" ? "bg-rose-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"
-              }`}
-            >
-              No Deposit ({data.counts.no_deposit})
-            </button>
-          </div>
-          <div className="inline-flex border border-zinc-300 rounded-sm overflow-hidden" data-testid="stale-threshold-toggle">
-            {[7, 14, 30].map((d) => (
-              <button
-                key={d}
-                data-testid={`stale-threshold-${d}`}
-                onClick={() => setThreshold(d)}
-                className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                  d !== 7 ? "border-l border-zinc-300" : ""
-                } ${threshold === d ? "bg-blue-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
-              >
-                {d}d
-              </button>
-            ))}
-          </div>
-          <button
-            data-testid="send-stale-digest"
-            onClick={sendDigest}
-            disabled={sendingDigest || total === 0}
-            title={total === 0 ? "No stale deals to send" : "Email each owner their stale-deals list"}
-            className="inline-flex items-center gap-1.5 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-sm transition-colors"
-          >
-            <Send className="w-3 h-3" />
-            {sendingDigest ? "Sending…" : "Send Digest"}
-          </button>
-        </div>
+        {toolbarRight}
       </div>
 
       <div className="bg-white border border-zinc-200 rounded-sm overflow-x-auto">
