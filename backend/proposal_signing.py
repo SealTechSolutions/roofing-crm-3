@@ -56,13 +56,18 @@ async def ensure_proposal_token(db, deal_id: str) -> str:
     return token
 
 
-def create_public_router(db, get_current_user, compute_scope_data):
+def create_public_router(db, get_current_user, compute_scope_data, auto_create_deposit_invoice=None):
     """Public + authed routers for the proposal signing flow.
 
     `compute_scope_data` is injected from server.py so we don't reimport the
     monolith (circular). It receives a deal_id and returns the same data dict
     that `build_spec_sheet` consumes — we slice out the scope bullets, totals,
     addresses for the public viewer.
+
+    `auto_create_deposit_invoice(deal_id, percentage)` is an optional callable
+    invoked AFTER a successful sign that spawns a Draft deposit invoice. When
+    omitted (or it returns None) the sign flow still succeeds — the invoice
+    side-effect is purely additive.
     """
     router = APIRouter(prefix="/public/proposal", tags=["Public Proposal Signing"])
 
@@ -213,6 +218,18 @@ def create_public_router(db, get_current_user, compute_scope_data):
             },
         )
 
+        # Hands-free cash collection: auto-spawn a Draft deposit invoice
+        # (default 50%) so the project owner just opens, reviews, and sends.
+        auto_invoice: Optional[dict] = None
+        if auto_create_deposit_invoice is not None:
+            try:
+                deposit_pct = float(body.get("deposit_pct") or 50)
+                if deposit_pct > 0:
+                    auto_invoice = await auto_create_deposit_invoice(deal["id"], deposit_pct)
+            except Exception:
+                # Sign must succeed even if invoice creation fails.
+                auto_invoice = None
+
         return {
             "ok": True,
             "already_signed": False,
@@ -221,6 +238,8 @@ def create_public_router(db, get_current_user, compute_scope_data):
             "deal_id": deal["id"],
             "status": "Won",
             "signature_file_id": signature_file_id,
+            "deposit_invoice_id": (auto_invoice or {}).get("id", ""),
+            "deposit_invoice_number": (auto_invoice or {}).get("invoice_number", ""),
         }
 
     @router.get("/{token}/signature")

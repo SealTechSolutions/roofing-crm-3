@@ -218,7 +218,12 @@ export default function ProposalSign() {
                     <p className="text-sm text-emerald-800 mt-1">
                       Signed by <b>{success?.signed_by_name || data.signed?.signed_by_name || "—"}</b> on {tsDisplay}.
                     </p>
-                    {justSigned && (
+                    {justSigned && success?.deposit_invoice_number && (
+                      <p className="text-xs text-emerald-700 mt-3" data-testid="proposal-deposit-receipt">
+                        Your deposit invoice (<b>{success.deposit_invoice_number}</b>) is queued and the SealTech team will send it shortly. No further action needed on your end.
+                      </p>
+                    )}
+                    {justSigned && !success?.deposit_invoice_number && (
                       <p className="text-xs text-emerald-700 mt-3">
                         Thank you. Your SealTech project team will be in touch shortly to coordinate the deposit and schedule.
                       </p>

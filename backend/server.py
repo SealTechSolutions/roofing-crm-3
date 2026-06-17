@@ -6202,7 +6202,121 @@ async def _compute_scope_for_signing(deal_id: str) -> dict:
     }
 
 
-api_router.include_router(_proposal_signing.create_public_router(db, get_current_user, _compute_scope_for_signing))
+async def _auto_create_deposit_invoice(deal_id: str, percentage: float = 50.0) -> dict | None:
+    """Auto-spawn a Draft deposit invoice when the proposal is signed.
+
+    Returns the created invoice dict, or None when there is no sensible amount
+    to invoice (project total <= 0) OR when a Deposit invoice already exists on
+    this deal (idempotent — re-signing won't double up).
+
+    Mirrors the side-effects of POST /invoices: auto-numbering, GL hooks,
+    bill-to prefill from contact + property.
+    """
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if deal is None:
+        return None
+
+    # Idempotency: skip if a Draft/Sent/Partial Deposit invoice already exists
+    existing = await db.invoices.find_one(
+        {
+            "deal_id": deal_id,
+            "invoice_type": "Deposit",
+            "is_deleted": {"$ne": True},
+            "status": {"$nin": ["Void"]},
+        },
+        {"_id": 0, "id": 1, "invoice_number": 1, "status": 1, "amount_paid": 1},
+    )
+    if existing is not None:
+        return existing
+
+    # Resolve the contract total — prefer chosen_amount, else MID proposal option.
+    contract_total = float(deal.get("chosen_amount") or 0)
+    if contract_total <= 0:
+        contract_total = proposal_mid_amount(deal)
+    if contract_total <= 0:
+        return None  # nothing to invoice
+
+    deposit_amount = round(contract_total * (percentage / 100.0), 2)
+    if deposit_amount <= 0:
+        return None
+
+    invoice_today = datetime.now(timezone.utc).date().isoformat()
+    bill_to: dict = {}
+    customer_id = deal.get("customer_contact_id") or deal.get("contact_id")
+    if customer_id:
+        bill_to = await _build_bill_to_from_contact(customer_id) or {}
+
+    # Resolve a project address from the linked property
+    project_address = ""
+    if deal.get("property_id"):
+        prop = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
+        if prop:
+            addr1 = " ".join(
+                [p for p in [prop.get("property_address", ""), prop.get("property_address_line2", "")] if p]
+            ).strip()
+            line2 = ", ".join(
+                [p for p in [prop.get("property_city", ""), prop.get("property_state", "")] if p]
+            )
+            if prop.get("property_zip"):
+                line2 = f"{line2} {prop.get('property_zip')}".strip()
+            project_address = "  ·  ".join([p for p in [addr1, line2] if p])
+
+    title = deal.get("title") or "Project"
+    pct_label = f"{int(percentage)}%" if float(percentage).is_integer() else f"{percentage:g}%"
+    description = f"{title} — {pct_label} Deposit (signed by customer)"
+
+    data = {
+        "id": str(uuid.uuid4()),
+        "deal_id": deal_id,
+        "customer_contact_id": customer_id or None,
+        "invoice_type": "Deposit",
+        "bill_to_company": bill_to.get("bill_to_company") or "",
+        "bill_to_name": bill_to.get("bill_to_name") or "",
+        "bill_to_address": bill_to.get("bill_to_address") or "",
+        "bill_to_address_line2": bill_to.get("bill_to_address_line2") or "",
+        "bill_to_city": bill_to.get("bill_to_city") or "",
+        "bill_to_state": bill_to.get("bill_to_state") or "",
+        "bill_to_zip": bill_to.get("bill_to_zip") or "",
+        "bill_to_email": bill_to.get("bill_to_email") or "",
+        "cc_email": "",
+        "invoice_date": invoice_today,
+        "due_date": invoice_today,
+        "terms": "Due Upon Receipt",
+        "project_title": title,
+        "project_address": project_address,
+        "project_total": contract_total,
+        "notes": f"Auto-generated on proposal acceptance. Edit any field before sending.",
+        "line_items": [
+            {
+                "description": description,
+                "quantity": 1,
+                "unit_price": deposit_amount,
+                "amount": deposit_amount,
+            }
+        ],
+        "status": "Draft",
+        "amount_paid": 0.0,
+        "payment_date": "",
+        "payment_method": "",
+        "payment_reference": "",
+        "source_type": "proposal_signing",
+        "source_id": deal_id,
+        "created_at": now_iso(),
+        "created_by_user_id": "public-sign",
+        "is_deleted": False,
+        "invoice_number": await _next_invoice_number(),
+    }
+    data = _recalc_invoice(data)
+    await db.invoices.insert_one(data.copy())
+    # Books auto-journal — best effort, never block the sign flow
+    try:
+        await gl.post_invoice_issue(db, data, posted_by_user_id="public-sign")
+    except Exception as e:
+        logger.warning(f"GL post (auto-deposit invoice) failed: {type(e).__name__}: {e}")
+    return strip_id(data)
+
+
+api_router.include_router(_proposal_signing.create_public_router(db, get_current_user, _compute_scope_for_signing, _auto_create_deposit_invoice))
 
 app.include_router(api_router)
 app.add_middleware(

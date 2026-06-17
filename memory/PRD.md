@@ -571,6 +571,16 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Frontend: new `/sign/:token` route (no auth) rendering `<ProposalSign>` — branded SealTech header, project summary card, scope bullets card (renders sections 1+2 + key advantages), inline e-signature canvas (mouse + touch), acceptance checkbox, "Accept & Sign Proposal" CTA. On success swaps to a green "Proposal Accepted" card. The existing Next-Step card on DealDetail automatically pivots to "Create deposit invoice" because the deal is now Won.
 - **Tested**: 6 new pytest cases (`tests/test_proposal_signing.py`) — token mint via email send, public viewer no-auth, sign flips deal to Won with audit, idempotent re-sign, name+acceptance validation, unknown-token 404. End-to-end browser test confirms: deal starts Lead → recipient lands on `/sign/{token}` → fills name + draws signature + accepts → POSTs → page shows "Proposal Accepted" → backend shows `status=Won, scope_signed_by_name=Jane Customer, signature_file_id=...`.
 
+### Auto-Created Draft Deposit Invoice on Sign (Feb 2026 — iteration_25)
+- The moment a proposal is signed via `/sign/{token}`, the backend auto-spawns a Draft Deposit invoice on the deal. The owner just opens it, eyeballs, and clicks Send — a forgettable step removed from the cash-collection cycle.
+- Defaults to 50% of `deal.chosen_amount` (or `proposal_mid_amount(deal)` as fallback). Configurable per-sign by passing `deposit_pct` in the sign body (e.g. `deposit_pct: 25`).
+- Auto-numbered via `_next_invoice_number()`, line item: `"<title> — 50% Deposit (signed by customer)"`, `source_type: "proposal_signing"`, `source_id: deal_id`, `created_by_user_id: "public-sign"`. Bill-to and project address pre-filled from the linked contact + property.
+- Idempotent: re-signing the same proposal returns the original `deposit_invoice_id` and never spawns a duplicate.
+- Skipped cleanly when there's no positive amount to invoice — no zero-dollar invoices on sign.
+- Books GL hook (`gl.post_invoice_issue`) runs best-effort so the invoice lands in the General Ledger like any manually-created one.
+- The sign response now includes `deposit_invoice_id` + `deposit_invoice_number`; the public Proposal Accepted card shows: *"Your deposit invoice (INV-2026-1237) is queued and the SealTech team will send it shortly."*
+- **Tested**: 3 new pytest cases (`tests/test_proposal_signing.py`) — auto-creates Draft 50% deposit, no invoice when amount=0, custom `deposit_pct` honored. 34-test critical suite stays green.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

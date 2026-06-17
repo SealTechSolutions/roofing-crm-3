@@ -222,3 +222,114 @@ def test_unknown_token_404s():
         timeout=15,
     )
     assert r.status_code == 404
+
+
+def test_sign_auto_creates_draft_deposit_invoice():
+    """A signed proposal must auto-spawn a Draft 50% deposit invoice and
+    return its id+number in the sign response. Re-signing must NOT create a
+    duplicate invoice."""
+    h = _auth()
+    create = requests.post(
+        f"{BASE_URL}/api/deals",
+        headers=h,
+        json={
+            "title": "Auto-deposit invoice probe",
+            "status": "Lead",
+            "deal_type": "Scope",
+            "chosen_amount": 50000.0,
+        },
+        timeout=30,
+    )
+    deal_id = create.json()["id"]
+    try:
+        token = _mint_token_via_email_send(h, deal_id)
+        r = requests.post(
+            f"{BASE_URL}/api/public/proposal/{token}/sign",
+            json={"signer_name": "Auto-deposit Customer", "accepted": True},
+            timeout=30,
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["deposit_invoice_id"], "sign response must include deposit_invoice_id"
+        assert body["deposit_invoice_number"], "sign response must include deposit_invoice_number"
+
+        # GET that invoice and verify the shape
+        invs = requests.get(
+            f"{BASE_URL}/api/invoices?deal_id={deal_id}", headers=h, timeout=30
+        ).json()
+        assert len(invs) == 1, f"exactly one invoice expected, got {len(invs)}"
+        inv = invs[0]
+        assert inv["invoice_type"] == "Deposit"
+        assert inv["status"] == "Draft"
+        assert inv["source_type"] == "proposal_signing"
+        assert inv["total"] == 25000.0
+        assert inv["line_items"][0]["description"].endswith("50% Deposit (signed by customer)")
+
+        # Re-sign — must NOT spawn a second invoice
+        requests.post(
+            f"{BASE_URL}/api/public/proposal/{token}/sign",
+            json={"signer_name": "Again", "accepted": True},
+            timeout=30,
+        )
+        invs2 = requests.get(
+            f"{BASE_URL}/api/invoices?deal_id={deal_id}", headers=h, timeout=30
+        ).json()
+        assert len(invs2) == 1, "re-signing must remain idempotent"
+    finally:
+        # Cleanup deal + the auto-created invoice
+        requests.delete(f"{BASE_URL}/api/deals/{deal_id}", headers=h, timeout=30)
+
+
+def test_sign_does_not_create_invoice_when_no_amount():
+    """A deal with chosen_amount = 0 and no proposal options must not get a
+    bogus zero-dollar invoice on sign."""
+    h = _auth()
+    create = requests.post(
+        f"{BASE_URL}/api/deals",
+        headers=h,
+        json={"title": "No-amount no-invoice probe", "deal_type": "Scope", "chosen_amount": 0},
+        timeout=30,
+    )
+    deal_id = create.json()["id"]
+    try:
+        token = _mint_token_via_email_send(h, deal_id)
+        body = requests.post(
+            f"{BASE_URL}/api/public/proposal/{token}/sign",
+            json={"signer_name": "Zero Amount", "accepted": True},
+            timeout=30,
+        ).json()
+        assert body["status"] == "Won"
+        assert body["deposit_invoice_id"] == ""
+        # And no invoice should have been spawned
+        invs = requests.get(
+            f"{BASE_URL}/api/invoices?deal_id={deal_id}", headers=h, timeout=30
+        ).json()
+        assert invs == []
+    finally:
+        requests.delete(f"{BASE_URL}/api/deals/{deal_id}", headers=h, timeout=30)
+
+
+def test_sign_respects_custom_deposit_pct():
+    """Passing `deposit_pct: 25` in the sign body uses that percentage."""
+    h = _auth()
+    create = requests.post(
+        f"{BASE_URL}/api/deals",
+        headers=h,
+        json={"title": "Custom-pct deposit probe", "deal_type": "Scope", "chosen_amount": 80000.0},
+        timeout=30,
+    )
+    deal_id = create.json()["id"]
+    try:
+        token = _mint_token_via_email_send(h, deal_id)
+        body = requests.post(
+            f"{BASE_URL}/api/public/proposal/{token}/sign",
+            json={"signer_name": "Custom Pct", "accepted": True, "deposit_pct": 25},
+            timeout=30,
+        ).json()
+        assert body["deposit_invoice_id"]
+        invs = requests.get(
+            f"{BASE_URL}/api/invoices?deal_id={deal_id}", headers=h, timeout=30
+        ).json()
+        assert invs[0]["total"] == 20000.0, invs[0]
+    finally:
+        requests.delete(f"{BASE_URL}/api/deals/{deal_id}", headers=h, timeout=30)
