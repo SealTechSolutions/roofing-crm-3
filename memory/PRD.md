@@ -588,6 +588,14 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - "Running" / "Stopped" status pill, auto-refresh every 30 seconds, manual Refresh button, empty-state hint when `DISABLE_SCHEDULER=1`.
 - Footer note: cron expressions live in `backend/scheduler.py`; UI editor is on the roadmap (held off this iteration per user — they wanted to see the page first).
 
+### Inline Schedule Editor (Feb 2026 — iteration_27)
+- Backend: new `scheduler_settings` Mongo collection holds per-job overrides (`{job_id, hour, minute, day_of_week, updated_at}`). On scheduler startup, the trigger config is resolved by merging the persisted override on top of the built-in defaults defined in `JOB_DEFAULTS`.
+- New endpoint `PUT /api/scheduler/jobs/{job_id}/schedule` (admin only) — body `{hour, minute, day_of_week?}` — persists the override AND re-registers the live trigger via `APScheduler.reschedule_job()`. Validates `0 ≤ hour ≤ 23`, `0 ≤ minute ≤ 59`. Unknown job → 404. `day_of_week` accepts comma-separated days (`"mon"`, `"mon,fri"`, `"*"`).
+- `GET /api/scheduler/jobs` now returns `supports_day_of_week`, `hour`, `minute`, `day_of_week` on every row so the UI editor pre-populates.
+- Frontend: inline editor on each Schedule card (data-testid=`schedule-job-<id>-editor`) — M/T/W/T/F/S/S day-of-week chips for weekly jobs, hour + minute number inputs, **Local-equivalent preview** ("Local equivalent: 05:30 PM UTC"), Cancel / Save buttons.
+- `start()` is now an awaitable so the persisted overrides are loaded before jobs register.
+- **Tested**: 4 new pytest cases (`tests/test_scheduler_edit.py`) — editor fields surfaced, persist + reschedule lands on a real Friday weekday, hour/minute validation, unknown-job 404. Verified live: flipped weekly digest to Mon+Fri 17:30 UTC, the next-run timestamp recomputed to "Fri, Jun 19, 05:30 PM UTC (in 3d)".
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

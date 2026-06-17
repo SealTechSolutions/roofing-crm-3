@@ -3,7 +3,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import {
   Clock, Play, RefreshCw, AlertCircle, CheckCircle2,
-  CalendarClock, Mail, ArrowUpRight,
+  CalendarClock, Mail, ArrowUpRight, Pencil, X, Save,
 } from "lucide-react";
 
 /**
@@ -29,6 +29,20 @@ const JOB_META = {
     description: "Mondays 08:00 MT. Each deal owner receives a personalized email listing their stuck deals + Won-without-deposit alerts.",
   },
 };
+
+// Day-of-week chips (APScheduler / cron 3-letter codes).
+const DOW_OPTIONS = [
+  ["mon", "M"], ["tue", "T"], ["wed", "W"], ["thu", "T"],
+  ["fri", "F"], ["sat", "S"], ["sun", "S"],
+];
+
+function localPreview(hourStr, minStr) {
+  const h = Math.max(0, Math.min(23, Number(hourStr) || 0));
+  const m = Math.max(0, Math.min(59, Number(minStr) || 0));
+  const d = new Date();
+  d.setUTCHours(h, m, 0, 0);
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+}
 
 function formatLocal(iso) {
   if (!iso) return "—";
@@ -64,6 +78,9 @@ export default function Schedule() {
   const [error, setError] = useState("");
   const [runningJob, setRunningJob] = useState("");
   const [lastResults, setLastResults] = useState({}); // jobId -> last result
+  const [editingJob, setEditingJob] = useState(""); // jobId in edit mode
+  const [editForm, setEditForm] = useState({ hour: 14, minute: 0, day_of_week: "mon" });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const load = async () => {
     try {
@@ -117,6 +134,37 @@ export default function Schedule() {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message);
     } finally {
       setRunningJob("");
+    }
+  };
+
+  const startEdit = (job) => {
+    setEditingJob(job.id);
+    setEditForm({
+      hour: job.hour ?? 14,
+      minute: job.minute ?? 0,
+      day_of_week: job.day_of_week || "mon",
+    });
+  };
+  const cancelEdit = () => {
+    setEditingJob("");
+  };
+  const saveEdit = async (jobId) => {
+    setSavingEdit(true);
+    try {
+      const payload = {
+        hour: Number(editForm.hour),
+        minute: Number(editForm.minute),
+      };
+      const job = (data?.jobs || []).find((j) => j.id === jobId);
+      if (job?.supports_day_of_week) payload.day_of_week = editForm.day_of_week;
+      await api.put(`/scheduler/jobs/${jobId}/schedule`, payload);
+      toast.success("Schedule updated — next run recomputed");
+      setEditingJob("");
+      await load();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -205,24 +253,127 @@ export default function Schedule() {
                 </div>
               </div>
 
-              <div className="flex sm:flex-col sm:items-end gap-3 sm:gap-1 sm:min-w-[200px]">
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Next Run</div>
-                  <div className="text-xs font-mono mt-0.5" data-testid={`schedule-job-${job.id}-next-run`}>
-                    {formatLocal(job.next_run_at)}
+              <div className="flex sm:flex-col sm:items-end gap-3 sm:gap-1 sm:min-w-[260px]">
+                {editingJob === job.id ? (
+                  <div className="bg-zinc-50 border border-zinc-300 rounded-sm p-3 w-full" data-testid={`schedule-job-${job.id}-editor`}>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-2">Edit Schedule (UTC)</div>
+                    {job.supports_day_of_week && (
+                      <div className="mb-3">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">Day of Week</div>
+                        <div className="flex flex-wrap gap-1" data-testid={`schedule-edit-${job.id}-dow`}>
+                          {DOW_OPTIONS.map(([k, lbl]) => {
+                            const active = (editForm.day_of_week || "").split(",").map((s) => s.trim()).includes(k);
+                            return (
+                              <button
+                                key={k}
+                                type="button"
+                                onClick={() => {
+                                  const cur = (editForm.day_of_week || "").split(",").map((s) => s.trim()).filter(Boolean);
+                                  const next = cur.includes(k)
+                                    ? cur.filter((x) => x !== k)
+                                    : [...cur, k];
+                                  // Keep canonical week order
+                                  const order = DOW_OPTIONS.map((o) => o[0]);
+                                  next.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+                                  setEditForm((f) => ({ ...f, day_of_week: next.join(",") || "mon" }));
+                                }}
+                                className={`w-8 h-8 text-[11px] font-bold uppercase rounded-sm transition-colors ${
+                                  active ? "bg-blue-700 text-white" : "bg-white border border-zinc-300 hover:border-zinc-500 text-zinc-700"
+                                }`}
+                                data-testid={`schedule-edit-${job.id}-dow-${k}`}
+                              >
+                                {lbl}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">Time (UTC)</div>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={0}
+                            max={23}
+                            value={editForm.hour}
+                            onChange={(e) => setEditForm((f) => ({ ...f, hour: e.target.value }))}
+                            className="w-14 px-1.5 py-1 border border-zinc-300 rounded-sm text-sm text-center font-mono focus:outline-none focus:ring-1 focus:ring-blue-700"
+                            data-testid={`schedule-edit-${job.id}-hour`}
+                          />
+                          <span className="font-mono text-zinc-500">:</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={59}
+                            value={editForm.minute}
+                            onChange={(e) => setEditForm((f) => ({ ...f, minute: e.target.value }))}
+                            className="w-14 px-1.5 py-1 border border-zinc-300 rounded-sm text-sm text-center font-mono focus:outline-none focus:ring-1 focus:ring-blue-700"
+                            data-testid={`schedule-edit-${job.id}-minute`}
+                          />
+                          <span className="text-[10px] text-zinc-400 ml-1 font-mono">UTC</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-zinc-500 mt-2 leading-snug">
+                      Local equivalent: <b className="text-zinc-700 font-mono">{localPreview(editForm.hour, editForm.minute)}</b>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={cancelEdit}
+                        className="inline-flex items-center gap-1 px-2.5 h-7 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-500 rounded-sm"
+                        data-testid={`schedule-edit-${job.id}-cancel`}
+                      >
+                        <X className="w-3 h-3" />
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => saveEdit(job.id)}
+                        disabled={savingEdit}
+                        className="inline-flex items-center gap-1 px-3 h-7 text-[10px] font-bold uppercase tracking-wider bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-sm"
+                        data-testid={`schedule-edit-${job.id}-save`}
+                      >
+                        <Save className="w-3 h-3" />
+                        {savingEdit ? "Saving…" : "Save"}
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-[10px] text-zinc-500 mt-0.5">{relativeFromNow(job.next_run_at)}</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => runNow(job.id)}
-                  disabled={isRunning}
-                  className="inline-flex items-center gap-1.5 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-blue-700 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-sm transition-colors"
-                  data-testid={`schedule-job-${job.id}-run`}
-                >
-                  <Play className="w-3 h-3" />
-                  {isRunning ? "Running…" : "Run now"}
-                </button>
+                ) : (
+                  <>
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Next Run</div>
+                      <div className="text-xs font-mono mt-0.5" data-testid={`schedule-job-${job.id}-next-run`}>
+                        {formatLocal(job.next_run_at)}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 mt-0.5">{relativeFromNow(job.next_run_at)}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(job)}
+                        className="inline-flex items-center gap-1 px-2.5 h-8 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-blue-700 hover:text-blue-700 rounded-sm transition-colors"
+                        data-testid={`schedule-job-${job.id}-edit`}
+                        title="Edit schedule"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runNow(job.id)}
+                        disabled={isRunning}
+                        className="inline-flex items-center gap-1.5 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-blue-700 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-sm transition-colors"
+                        data-testid={`schedule-job-${job.id}-run`}
+                      >
+                        <Play className="w-3 h-3" />
+                        {isRunning ? "Running…" : "Run now"}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
 
               {last && (
@@ -246,10 +397,10 @@ export default function Schedule() {
       </div>
 
       <div className="mt-8 bg-zinc-50 border border-zinc-200 rounded-sm p-5 text-xs text-zinc-600">
-        <div className="font-bold text-zinc-900 mb-1">Want to change a schedule?</div>
+        <div className="font-bold text-zinc-900 mb-1">Need a different cadence?</div>
         <p>
-          Cron expressions are defined in <code className="px-1 py-0.5 bg-white border border-zinc-200 rounded-sm font-mono">backend/scheduler.py</code>.
-          Editing them through this page is on the roadmap — tell the team if you want it next.
+          Click <b>Edit</b> on any job to change its time-of-day (UTC) and, for weekly jobs, the days it runs on.
+          Saves take effect immediately — no redeploy. Built-in defaults live in <code className="px-1 py-0.5 bg-white border border-zinc-200 rounded-sm font-mono">backend/scheduler.py</code> and apply when no override is set.
         </p>
       </div>
     </div>

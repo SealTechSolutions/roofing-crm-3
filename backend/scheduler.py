@@ -153,8 +153,52 @@ async def _weekly_stale_digest(stale_engine, send_one_digest) -> Dict[str, Any]:
 # Bootstrapping — called from server.py on FastAPI startup
 # ---------------------------------------------------------------------------
 
-def start(db, stale_engine, send_one_digest) -> AsyncIOScheduler:
-    """Initialize + start the scheduler. Idempotent."""
+# Built-in defaults for each job. Overridable via the `scheduler_settings`
+# Mongo collection (one doc per job_id). All times are UTC.
+JOB_DEFAULTS = {
+    "mark_lead_to_sent": {
+        "supports_day_of_week": False,  # daily job
+        "hour": 2,
+        "minute": 30,
+        "day_of_week": "*",
+        "name": "Auto-flip Lead → Sent (24h after scope emailed)",
+        "misfire_grace_time": 3600,
+    },
+    "weekly_stale_digest": {
+        "supports_day_of_week": True,
+        "hour": 14,  # 08:00 America/Denver
+        "minute": 0,
+        "day_of_week": "mon",
+        "name": "Weekly Stale-Deals Digest",
+        "misfire_grace_time": 3 * 3600,
+    },
+}
+
+
+async def _resolve_trigger_config(db, job_id: str) -> dict:
+    """Look up persisted overrides in `scheduler_settings`; fall back to defaults."""
+    base = dict(JOB_DEFAULTS.get(job_id, {}))
+    if not base:
+        raise KeyError(f"Unknown job: {job_id}")
+    override = await db.scheduler_settings.find_one({"job_id": job_id}, {"_id": 0})
+    if override:
+        for k in ("hour", "minute", "day_of_week"):
+            if override.get(k) is not None:
+                base[k] = override[k]
+    return base
+
+
+def _make_trigger(cfg: dict) -> CronTrigger:
+    """Build a CronTrigger from a resolved config dict."""
+    kwargs = {"hour": int(cfg["hour"]), "minute": int(cfg["minute"]), "timezone": timezone.utc}
+    if cfg.get("supports_day_of_week") and cfg.get("day_of_week"):
+        kwargs["day_of_week"] = cfg["day_of_week"]
+    return CronTrigger(**kwargs)
+
+
+async def start(db, stale_engine, send_one_digest) -> AsyncIOScheduler | None:
+    """Initialize + start the scheduler. Idempotent. Must be awaited so we can
+    load persisted trigger overrides from Mongo before registering jobs."""
     global _scheduler, _jobs
     if _scheduler is not None:
         return _scheduler
@@ -169,25 +213,16 @@ def start(db, stale_engine, send_one_digest) -> AsyncIOScheduler:
     }
 
     sched = AsyncIOScheduler(timezone=timezone.utc)
-    # Daily Lead → Sent flip at 02:30 UTC (well after midnight in every US TZ).
-    sched.add_job(
-        _jobs["mark_lead_to_sent"],
-        CronTrigger(hour=2, minute=30, timezone=timezone.utc),
-        id="mark_lead_to_sent",
-        name="Auto-flip Lead → Sent (24h after scope emailed)",
-        replace_existing=True,
-        misfire_grace_time=3600,  # if the pod was restarting, still run within an hour
-    )
-    # Monday 14:00 UTC == 08:00 America/Denver (Mountain Standard Time).
-    # Daylight Saving lands on the +1 hour automatically since we anchor in UTC.
-    sched.add_job(
-        _jobs["weekly_stale_digest"],
-        CronTrigger(day_of_week="mon", hour=14, minute=0, timezone=timezone.utc),
-        id="weekly_stale_digest",
-        name="Weekly Stale-Deals Digest (Mon 08:00 MT)",
-        replace_existing=True,
-        misfire_grace_time=3 * 3600,
-    )
+    for job_id, fn in _jobs.items():
+        cfg = await _resolve_trigger_config(db, job_id)
+        sched.add_job(
+            fn,
+            _make_trigger(cfg),
+            id=job_id,
+            name=cfg["name"],
+            replace_existing=True,
+            misfire_grace_time=cfg["misfire_grace_time"],
+        )
     sched.start()
     _scheduler = sched
     logger.info(
@@ -195,6 +230,36 @@ def start(db, stale_engine, send_one_digest) -> AsyncIOScheduler:
         ", ".join(j.id for j in sched.get_jobs()),
     )
     return sched
+
+
+async def reschedule_job(db, job_id: str, hour: int, minute: int, day_of_week: str | None = None) -> dict:
+    """Persist new trigger settings to Mongo AND re-register the job's trigger
+    on the live scheduler. Returns the resolved config."""
+    if job_id not in JOB_DEFAULTS:
+        raise KeyError(f"Unknown job: {job_id}")
+    supports_dow = JOB_DEFAULTS[job_id]["supports_day_of_week"]
+    h = int(hour)
+    m = int(minute)
+    if not (0 <= h <= 23):
+        raise ValueError("hour must be 0..23")
+    if not (0 <= m <= 59):
+        raise ValueError("minute must be 0..59")
+    set_doc: dict = {"job_id": job_id, "hour": h, "minute": m, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if supports_dow:
+        # Accept comma-separated days like "mon,fri" or "*" for every day.
+        dow = (day_of_week or "mon").strip().lower() if day_of_week is not None else None
+        if dow is None:
+            dow = JOB_DEFAULTS[job_id]["day_of_week"]
+        set_doc["day_of_week"] = dow
+    await db.scheduler_settings.update_one(
+        {"job_id": job_id},
+        {"$set": set_doc},
+        upsert=True,
+    )
+    cfg = await _resolve_trigger_config(db, job_id)
+    if _scheduler is not None:
+        _scheduler.reschedule_job(job_id, trigger=_make_trigger(cfg))
+    return cfg
 
 
 def shutdown() -> None:

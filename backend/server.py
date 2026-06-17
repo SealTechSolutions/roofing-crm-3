@@ -6006,7 +6006,7 @@ async def on_startup():
             )
             return entry.get("sent") is True
 
-        _sched.start(db=db, stale_engine=_stale_engine, send_one_digest=_send_one_digest)
+        await _sched.start(db=db, stale_engine=_stale_engine, send_one_digest=_send_one_digest)
     except Exception as e:
         logger.warning(f"Scheduler failed to start: {e}")
 
@@ -6121,7 +6121,19 @@ async def list_scheduler_jobs(current=Depends(get_current_user)):
     if current.get("role") != "admin":
         raise HTTPException(403, "Admins only")
     import scheduler as _sched
-    return {"running": _sched.get_scheduler() is not None, "jobs": _sched.list_jobs()}
+    base = {"running": _sched.get_scheduler() is not None, "jobs": _sched.list_jobs()}
+    # Enrich each job row with its effective trigger config so the UI editor
+    # can render the right controls (time picker + day-of-week chips when supported).
+    for row in base["jobs"]:
+        try:
+            cfg = await _sched._resolve_trigger_config(db, row["id"])
+            row["supports_day_of_week"] = bool(cfg.get("supports_day_of_week"))
+            row["hour"] = cfg["hour"]
+            row["minute"] = cfg["minute"]
+            row["day_of_week"] = cfg.get("day_of_week") or "*"
+        except Exception:
+            pass
+    return base
 
 
 @api_router.post("/scheduler/jobs/{job_id}/run")
@@ -6136,6 +6148,31 @@ async def run_scheduler_job(job_id: str, current=Depends(get_current_user)):
     except KeyError as e:
         raise HTTPException(404, str(e))
     return {"ok": True, "result": result}
+
+
+@api_router.put("/scheduler/jobs/{job_id}/schedule")
+async def update_scheduler_job_schedule(job_id: str, body: dict = Body(...), current=Depends(get_current_user)):
+    """Persist a new schedule for a job + re-register the live trigger. Admin only.
+
+    Body shape: { hour: 0..23, minute: 0..59, day_of_week?: "mon" | "mon,fri" | "*" }
+    `day_of_week` is honored only on jobs whose default `supports_day_of_week` is True.
+    """
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Admins only")
+    import scheduler as _sched
+    try:
+        cfg = await _sched.reschedule_job(
+            db,
+            job_id,
+            hour=body.get("hour"),
+            minute=body.get("minute"),
+            day_of_week=body.get("day_of_week"),
+        )
+    except KeyError as e:
+        raise HTTPException(404, str(e))
+    except (ValueError, TypeError) as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "config": cfg}
 
 
 # ----- Router & CORS -----
