@@ -5547,6 +5547,104 @@ async def dashboard_stale_deals(
     }
 
 
+async def _build_and_send_owner_digest(
+    user: dict,
+    deals_for_owner: list,
+    days: int,
+    won_grace_days: int,
+    cc_email: Optional[str] = None,
+    dry_run: bool = False,
+) -> dict:
+    """Compose + send one owner's weekly stale-deals digest. Shared by the
+    on-demand endpoint and the in-process scheduler (scheduler.py).
+    `user` must have at minimum {id, email, name}.
+    Returns a digest summary dict for the API response.
+    """
+    owner_id = user.get("id", "")
+    owner_email = user.get("email", "")
+    owner_name = (user.get("name") or "there").split(" ")[0]
+    stuck = [d for d in deals_for_owner if d["reason"] == "stuck"]
+    no_deposit = [d for d in deals_for_owner if d["reason"] == "no_deposit"]
+
+    def _row_line(d):
+        amt = f"${d['chosen_amount']:,.0f}" if d.get("chosen_amount") else "—"
+        return f"  • [{d['status']}] {d['title']} — {d['days_in_stage']}d at this stage · {amt}"
+
+    text_parts = [
+        f"Hi {owner_name},",
+        "",
+        f"Here is your weekly Stale-Deals digest from SealTech CRM ({len(deals_for_owner)} item"
+        f"{'s' if len(deals_for_owner) != 1 else ''} need your attention):",
+        "",
+    ]
+    if stuck:
+        text_parts.append(f"Stuck > {days} days at the same stage ({len(stuck)}):")
+        text_parts.extend(_row_line(d) for d in stuck)
+        text_parts.append("")
+    if no_deposit:
+        text_parts.append(f"Won {won_grace_days}+ days ago with no deposit recorded ({len(no_deposit)}):")
+        text_parts.extend(_row_line(d) for d in no_deposit)
+        text_parts.append("")
+    text_parts.extend([
+        "Open the dashboard to take action: /dashboard",
+        "",
+        "— SealTech CRM",
+    ])
+    body_text = "\n".join(text_parts)
+
+    def _html_row(d):
+        amt = f"${d['chosen_amount']:,.0f}" if d.get("chosen_amount") else "&mdash;"
+        return (
+            f'<li><b>[{d["status"]}]</b> {d["title"]} '
+            f'<span style="color:#71717A">&mdash; {d["days_in_stage"]}d at this stage &middot; {amt}</span></li>'
+        )
+
+    html_sections = []
+    if stuck:
+        html_sections.append(
+            f"<h4 style=\"color:#B45309;margin:16px 0 6px\">Stuck &gt; {days} days at the same stage ({len(stuck)})</h4>"
+            f"<ul>{''.join(_html_row(d) for d in stuck)}</ul>"
+        )
+    if no_deposit:
+        html_sections.append(
+            f"<h4 style=\"color:#BE123C;margin:16px 0 6px\">Won {won_grace_days}+ days ago with no deposit ({len(no_deposit)})</h4>"
+            f"<ul>{''.join(_html_row(d) for d in no_deposit)}</ul>"
+        )
+    body_html = (
+        f"<p>Hi {owner_name},</p>"
+        f"<p>Here is your weekly Stale-Deals digest from SealTech CRM "
+        f"(<b>{len(deals_for_owner)}</b> item{'s' if len(deals_for_owner) != 1 else ''} need your attention):</p>"
+        + "".join(html_sections)
+        + '<p><a href="/dashboard" style="background:#062B67;color:white;padding:8px 14px;text-decoration:none;'
+          'font-weight:bold;letter-spacing:1px;font-size:11px;text-transform:uppercase;border-radius:2px">Open Dashboard</a></p>'
+        + "<p style=\"color:#71717A;font-size:11px\">&mdash; SealTech CRM</p>"
+    )
+
+    subject = f"Stale Deals Digest — {len(deals_for_owner)} need your attention"
+    entry: dict = {
+        "owner_user_id": owner_id,
+        "owner_email": owner_email,
+        "owner_name": user.get("name", ""),
+        "stuck_count": len(stuck),
+        "no_deposit_count": len(no_deposit),
+        "subject": subject,
+    }
+
+    if not dry_run:
+        try:
+            from email_sender import send_email
+            cc = cc_email if (cc_email and cc_email != owner_email) else None
+            send_email(
+                to=owner_email, subject=subject,
+                body_text=body_text, body_html=body_html, cc=cc,
+            )
+            entry["sent"] = True
+        except Exception as e:
+            entry["sent"] = False
+            entry["error"] = str(e)
+    return entry
+
+
 @api_router.post("/dashboard/stale-deals/digest")
 async def send_stale_deals_digest(
     days: int = 14,
@@ -5591,88 +5689,17 @@ async def send_stale_deals_digest(
         if not user or not user.get("email"):
             skipped.append({"owner_user_id": owner_id, "reason": "no_email_on_file", "count": len(deals_for_owner)})
             continue
-        # Build per-owner email
-        owner_name = (user.get("name") or "there").split(" ")[0]
-        stuck = [d for d in deals_for_owner if d["reason"] == "stuck"]
-        no_deposit = [d for d in deals_for_owner if d["reason"] == "no_deposit"]
-
-        def _row_line(d):
-            amt = f"${d['chosen_amount']:,.0f}" if d.get("chosen_amount") else "—"
-            return f"  • [{d['status']}] {d['title']} — {d['days_in_stage']}d at this stage · {amt}"
-
-        text_parts = [
-            f"Hi {owner_name},",
-            "",
-            f"Here is your weekly Stale-Deals digest from SealTech CRM ({len(deals_for_owner)} item"
-            f"{'s' if len(deals_for_owner) != 1 else ''} need your attention):",
-            "",
-        ]
-        if stuck:
-            text_parts.append(f"Stuck > {days} days at the same stage ({len(stuck)}):")
-            text_parts.extend(_row_line(d) for d in stuck)
-            text_parts.append("")
-        if no_deposit:
-            text_parts.append(f"Won {won_grace_days}+ days ago with no deposit recorded ({len(no_deposit)}):")
-            text_parts.extend(_row_line(d) for d in no_deposit)
-            text_parts.append("")
-        text_parts.extend([
-            "Open the dashboard to take action: /dashboard",
-            "",
-            "— SealTech CRM",
-        ])
-        body_text = "\n".join(text_parts)
-
-        def _html_row(d):
-            amt = f"${d['chosen_amount']:,.0f}" if d.get("chosen_amount") else "&mdash;"
-            return (
-                f'<li><b>[{d["status"]}]</b> {d["title"]} '
-                f'<span style="color:#71717A">&mdash; {d["days_in_stage"]}d at this stage &middot; {amt}</span></li>'
-            )
-
-        html_sections = []
-        if stuck:
-            html_sections.append(
-                f"<h4 style=\"color:#B45309;margin:16px 0 6px\">Stuck &gt; {days} days at the same stage ({len(stuck)})</h4>"
-                f"<ul>{''.join(_html_row(d) for d in stuck)}</ul>"
-            )
-        if no_deposit:
-            html_sections.append(
-                f"<h4 style=\"color:#BE123C;margin:16px 0 6px\">Won {won_grace_days}+ days ago with no deposit ({len(no_deposit)})</h4>"
-                f"<ul>{''.join(_html_row(d) for d in no_deposit)}</ul>"
-            )
-        body_html = (
-            f"<p>Hi {owner_name},</p>"
-            f"<p>Here is your weekly Stale-Deals digest from SealTech CRM "
-            f"(<b>{len(deals_for_owner)}</b> item{'s' if len(deals_for_owner) != 1 else ''} need your attention):</p>"
-            + "".join(html_sections)
-            + '<p><a href="/dashboard" style="background:#062B67;color:white;padding:8px 14px;text-decoration:none;'
-              'font-weight:bold;letter-spacing:1px;font-size:11px;text-transform:uppercase;border-radius:2px">Open Dashboard</a></p>'
-            + "<p style=\"color:#71717A;font-size:11px\">&mdash; SealTech CRM</p>"
+        cc = admin_email if (cc_admin and admin_email and admin_email != user["email"]) else None
+        digest_entry = await _build_and_send_owner_digest(
+            user=user,
+            deals_for_owner=deals_for_owner,
+            days=days,
+            won_grace_days=won_grace_days,
+            cc_email=cc,
+            dry_run=dry_run,
         )
-
-        subject = f"Stale Deals Digest — {len(deals_for_owner)} need your attention"
-        digest_entry = {
-            "owner_user_id": owner_id,
-            "owner_email": user["email"],
-            "owner_name": user.get("name", ""),
-            "stuck_count": len(stuck),
-            "no_deposit_count": len(no_deposit),
-            "subject": subject,
-        }
-
-        if not dry_run:
-            try:
-                from email_sender import send_email
-                cc = admin_email if (cc_admin and admin_email and admin_email != user["email"]) else None
-                send_email(
-                    to=user["email"], subject=subject,
-                    body_text=body_text, body_html=body_html, cc=cc,
-                )
-                digest_entry["sent"] = True
-                sent += 1
-            except Exception as e:
-                digest_entry["sent"] = False
-                digest_entry["error"] = str(e)
+        if digest_entry.get("sent") is True:
+            sent += 1
         digests.append(digest_entry)
 
     return {
@@ -5798,6 +5825,34 @@ async def on_startup():
     except Exception as e:
         logger.warning(f"Books seeding failed: {e}")
 
+    # In-process scheduler (APScheduler) — runs the daily Lead→Sent auto-flip
+    # and the Monday Stale-Deals digest without needing a separate cron worker.
+    try:
+        import scheduler as _sched
+
+        async def _stale_engine(days=14, won_grace_days=30):
+            return await _compute_stale_deals(days=days, won_grace_days=won_grace_days)
+
+        async def _send_one_digest(owner_id, deals_for_owner, days, won_grace_days):
+            user_doc = await db.users.find_one(
+                {"id": owner_id}, {"_id": 0, "id": 1, "email": 1, "name": 1}
+            )
+            if not user_doc or not user_doc.get("email"):
+                return False
+            entry = await _build_and_send_owner_digest(
+                user=user_doc,
+                deals_for_owner=deals_for_owner,
+                days=days,
+                won_grace_days=won_grace_days,
+                cc_email=None,
+                dry_run=False,
+            )
+            return entry.get("sent") is True
+
+        _sched.start(db=db, stale_engine=_stale_engine, send_one_digest=_send_one_digest)
+    except Exception as e:
+        logger.warning(f"Scheduler failed to start: {e}")
+
     # Kick off the COI reminder scheduler (non-blocking background task).
     # Idempotent — uses last_sent_date/next_send_date stored in coi_reminder_settings.
     try:
@@ -5894,7 +5949,36 @@ def _start_payables_scheduler():
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    try:
+        import scheduler as _sched
+        _sched.shutdown()
+    except Exception:
+        pass
     client.close()
+
+
+# ----- Scheduler admin endpoints -----
+@api_router.get("/scheduler/jobs")
+async def list_scheduler_jobs(current=Depends(get_current_user)):
+    """List all scheduled background jobs + their next run time. Admin only."""
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Admins only")
+    import scheduler as _sched
+    return {"running": _sched.get_scheduler() is not None, "jobs": _sched.list_jobs()}
+
+
+@api_router.post("/scheduler/jobs/{job_id}/run")
+async def run_scheduler_job(job_id: str, current=Depends(get_current_user)):
+    """Trigger a scheduled job on-demand (admin only). Useful for both manual
+    sanity checks and exercising the cron path from a regression test."""
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Admins only")
+    import scheduler as _sched
+    try:
+        result = await _sched.run_job_now(job_id)
+    except KeyError as e:
+        raise HTTPException(404, str(e))
+    return {"ok": True, "result": result}
 
 
 # ----- Router & CORS -----

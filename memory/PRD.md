@@ -529,6 +529,17 @@
 - **Activity Timeline (Feb 2026 — iteration_21)**: `GET /deals/{id}/activity` now detects `status_history` entries with `label in {"Scope emailed", "Assessment emailed"}` and renders them as a dedicated item — "Scope emailed (send #N)" with subtitle "to <recipient> — N attachments by <Sender Name>". A running counter increments across all sends so reps see at a glance how many times the proposal has gone out.
 - Tested: 2 pytest cases (`tests/test_scope_sent_stamp.py`) — Deal model serializes the new fields; end-to-end send increments `scope_send_count`, appends a `status_history` entry, AND surfaces a "Scope emailed (send #N)" item on the activity feed.
 
+### In-Process Scheduler — Lead-to-Sent Auto-Flip + Monday Digest (Feb 2026 — iteration_22)
+- New `backend/scheduler.py` module wraps APScheduler's `AsyncIOScheduler` and runs **inside the FastAPI process** — no separate cron container required (the user requested a cron container; an in-process scheduler accomplishes the same outcome with zero ops overhead).
+- **Job 1 — `mark_lead_to_sent`**: daily at 02:30 UTC. Promotes any deal still in `Lead` status whose `last_scope_sent_at` is older than 24 hours to `Sent`. Stamps `status_history` with a `user_name="auto-flip"` audit entry so the timeline shows who/why.
+- **Job 2 — `weekly_stale_digest`**: Mondays at 14:00 UTC (08:00 America/Denver). Reuses the same engine as the on-demand digest button.
+- Refactored the per-owner digest build/send into a shared `_build_and_send_owner_digest(user, deals_for_owner, days, won_grace_days, cc_email, dry_run)` helper so the endpoint and the cron job share one code path.
+- New admin endpoints:
+  - `GET /api/scheduler/jobs` → list every registered job with its trigger and `next_run_at`.
+  - `POST /api/scheduler/jobs/{job_id}/run` → fire any job on-demand (great for sanity checks and regression tests).
+- Set env var `DISABLE_SCHEDULER=1` to disable in tests/CI.
+- Tested: 5 pytest cases (`tests/test_scheduler_jobs.py`) — jobs registered, unknown-job 404, aged-Lead flips, fresh-send stays Lead, digest job returns counts without crashing. Live verification: seeded a deal with a 25h-old timestamp → triggered `mark_lead_to_sent` → deal promoted Lead→Sent with a "Auto-promoted Lead → Sent (scope emailed 24h+ ago)" history entry.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
