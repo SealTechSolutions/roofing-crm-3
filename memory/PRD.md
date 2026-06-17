@@ -656,6 +656,16 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Verified live (5/5 PASS): phone UA visits `/`, `/contacts`, etc. → all redirect to `/field`; `?desktop=1` loads dashboard; desktop UA (1440×900) loads dashboard unchanged.
 - Rationale: user is the GM of a small roofing contractor — phones are exclusively for field photo work, never for browsing CRM tables. Removing the full CRM from the phone eliminates the misclick risk and keeps the device focused on shutter+upload.
 
+### Bug Fix — Black Camera View on iPhone (Feb 2026)
+- **Symptom**: After tapping a project on `/field`, the camera area showed a **solid black box** (no feed, no error) on iPhone Safari.
+- **Root cause**: `startCamera()` fired on the page's first mount, but at that point the user was on the LIST view — the `<video>` element didn't exist in the DOM yet, so `videoRef.current` was `null`. The MediaStream got created and attached to `streamRef.current` BUT never bound to a video element. When the user later tapped a deal and the camera view rendered, the `<video>` mounted with no `srcObject`, hence the black box.
+- **Fix** (`/app/frontend/src/pages/FieldCapture.jsx`):
+  1. Moved the camera-start effect from "fire on mount" to "fire when `dealId` becomes truthy" — i.e., only when the user enters the camera view. The list view never requests camera permission, which also fixes the iOS permission UX (the system prompt appears at the exact moment the user expects it, not eagerly on landing).
+  2. Replaced the regular `useRef` with a **callback ref** (`setVideoEl`) that binds `srcObject` AND calls `play()` the instant the `<video>` element mounts — bulletproof against the list→camera mount race.
+  3. Added `autoPlay` attribute to the `<video>` (already has `muted` + `playsInline`) to satisfy iOS Safari's autoplay-with-muted-track policy.
+  4. Cleanup on leaving the camera view stops the MediaStream tracks (turns the phone's camera LED off).
+- Headless test now surfaces the explicit `Requested device not found` error UI (instead of a silent black box), confirming the new flow.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

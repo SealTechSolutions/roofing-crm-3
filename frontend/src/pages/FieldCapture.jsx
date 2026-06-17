@@ -108,6 +108,17 @@ export default function FieldCapture() {
   }, [dealId]);
 
   // ---------- Camera stream ----------
+  // Use a callback ref so we can bind srcObject the instant the <video>
+  // element mounts (the element doesn't exist on the list view, so a regular
+  // useRef would be null when startCamera runs).
+  const setVideoEl = useCallback((el) => {
+    videoRef.current = el;
+    if (el && streamRef.current) {
+      el.srcObject = streamRef.current;
+      el.play().catch(() => {});
+    }
+  }, []);
+
   const startCamera = useCallback(async () => {
     try {
       setCameraError("");
@@ -127,12 +138,21 @@ export default function FieldCapture() {
     }
   }, []);
 
+  // Start the camera only when entering the camera view (dealId set). Stop
+  // and release the device when returning to the list so the phone's LED
+  // turns off and no permission prompt fires until the user actually picks
+  // a project to shoot.
   useEffect(() => {
+    if (!dealId) return undefined;
     startCamera();
     return () => {
-      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      setCameraReady(false);
     };
-  }, [startCamera]);
+  }, [dealId, startCamera]);
 
   // ---------- Online/offline listeners ----------
   useEffect(() => {
@@ -313,9 +333,10 @@ export default function FieldCapture() {
           </div>
         ) : (
           <video
-            ref={videoRef}
+            ref={setVideoEl}
             playsInline
             muted
+            autoPlay
             className="max-w-full max-h-full object-contain"
             data-testid="field-video"
           />
