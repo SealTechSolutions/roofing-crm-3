@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Camera, Upload, CloudOff, CheckCircle2, AlertCircle, LogOut, Loader2 } from "lucide-react";
+import { Camera, Upload, CloudOff, CheckCircle2, AlertCircle, LogOut, Loader2, ChevronLeft, Search } from "lucide-react";
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL;
 const QUEUE_DB = "field-photo-queue";
@@ -234,16 +234,53 @@ export default function FieldCapture() {
 
   // ---------- Render ----------
   const activeDeal = deals.find((d) => d.id === dealId);
+
+  // Handler to leave the camera and return to the project list. Stops the
+  // stream so the phone's flashlight/camera light turns off between sessions.
+  const backToList = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setCameraReady(false);
+    setDealId("");
+    localStorage.removeItem("field_capture_last_deal_id");
+    // Strip ?deal_id= from the URL without a full reload so the list view shows.
+    if (window.location.search) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  // ---------- Project list view (no project selected yet) ----------
+  if (!dealId) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex flex-col" data-testid="field-capture">
+        <TopBar me={me} online={online} onLogout={() => { localStorage.removeItem("crm_token"); nav("/login", { replace: true }); }} />
+        <ProjectList
+          deals={deals}
+          onPick={(id) => setDealId(id)}
+          queuedCount={queuedCount}
+        />
+      </div>
+    );
+  }
+
+  // ---------- Camera capture view (project picked) ----------
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col" data-testid="field-capture">
-      {/* Top bar */}
-      <div className="px-4 py-3 bg-zinc-900 border-b border-zinc-800 flex items-center gap-3">
-        <Camera className="w-5 h-5 text-blue-400" />
-        <div className="flex-1">
-          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400">Field Capture</div>
-          <div className="text-xs text-zinc-300 truncate">
-            {me ? me.name || me.email : "…"}
-          </div>
+      {/* Top bar — back arrow + project name */}
+      <div className="px-2 py-3 bg-zinc-900 border-b border-zinc-800 flex items-center gap-2">
+        <button
+          onClick={backToList}
+          className="p-2 -ml-1 text-zinc-300 hover:text-white rounded-sm"
+          data-testid="field-back"
+          aria-label="Back to projects"
+        >
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400">Capturing for</div>
+          <div className="text-sm text-white font-semibold truncate">{activeDeal ? activeDeal.title : "…"}</div>
         </div>
         {!online ? (
           <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-900 text-amber-200 text-[10px] font-bold uppercase rounded-sm">
@@ -262,24 +299,6 @@ export default function FieldCapture() {
         >
           <LogOut className="w-4 h-4" />
         </button>
-      </div>
-
-      {/* Project picker */}
-      <div className="px-4 py-3 bg-zinc-900 border-b border-zinc-800">
-        <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400 block mb-1.5">Project</label>
-        <select
-          value={dealId}
-          onChange={(e) => setDealId(e.target.value)}
-          className="w-full bg-zinc-800 border border-zinc-700 text-white px-3 py-3 text-base rounded-sm focus:outline-none focus:border-blue-500"
-          data-testid="field-deal-picker"
-        >
-          <option value="">— pick a project —</option>
-          {deals.map((d) => (
-            <option key={d.id} value={d.id}>
-              [{d.status}] {d.title}
-            </option>
-          ))}
-        </select>
       </div>
 
       {/* Live camera */}
@@ -339,6 +358,107 @@ export default function FieldCapture() {
             <div className="w-20 h-20 rounded-full bg-zinc-100 border-2 border-zinc-300" />
           )}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Small sub-components ----------
+
+/**
+ * Top bar shared between list view and camera view (the camera view renders
+ * its own variant with a back arrow). Shows the signed-in user, online pill,
+ * and logout button.
+ */
+function TopBar({ me, online, onLogout }) {
+  return (
+    <div className="px-4 py-3 bg-zinc-900 border-b border-zinc-800 flex items-center gap-3">
+      <Camera className="w-5 h-5 text-blue-400" />
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400">Field Capture</div>
+        <div className="text-xs text-zinc-300 truncate">{me ? me.name || me.email : "…"}</div>
+      </div>
+      {!online ? (
+        <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-900 text-amber-200 text-[10px] font-bold uppercase rounded-sm">
+          <CloudOff className="w-3 h-3" /> Offline
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-900 text-emerald-200 text-[10px] font-bold uppercase rounded-sm">
+          <CheckCircle2 className="w-3 h-3" /> Online
+        </span>
+      )}
+      <button
+        onClick={onLogout}
+        className="p-2 text-zinc-400 hover:text-white"
+        data-testid="field-logout"
+        title="Sign out"
+      >
+        <LogOut className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Full-screen project list: search box + a tappable row per open deal.
+ * Tap a row → onPick(dealId) which flips the parent into camera mode.
+ */
+function ProjectList({ deals, onPick, queuedCount }) {
+  const [q, setQ] = useState("");
+  const filtered = q.trim()
+    ? deals.filter((d) => (d.title || "").toLowerCase().includes(q.toLowerCase()))
+    : deals;
+  return (
+    <div className="flex-1 flex flex-col">
+      {/* Search */}
+      <div className="px-4 py-3 bg-zinc-900 border-b border-zinc-800">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search projects…"
+            className="w-full bg-zinc-800 border border-zinc-700 text-white pl-10 pr-3 py-3 text-base rounded-sm focus:outline-none focus:border-blue-500 placeholder-zinc-500"
+            data-testid="field-search"
+            autoFocus={false}
+          />
+        </div>
+        <div className="mt-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+          {filtered.length} {filtered.length === 1 ? "project" : "projects"}
+          {queuedCount > 0 && (
+            <span className="ml-2 text-amber-400" data-testid="field-queued-count">
+              · {queuedCount} queued to upload
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <div className="text-center text-zinc-500 text-sm py-12 px-6">
+            {deals.length === 0 ? "No open projects." : "No matches."}
+          </div>
+        ) : (
+          <ul className="divide-y divide-zinc-800" data-testid="field-project-list">
+            {filtered.map((d) => (
+              <li key={d.id}>
+                <button
+                  onClick={() => onPick(d.id)}
+                  className="w-full text-left px-4 py-5 hover:bg-zinc-900 active:bg-zinc-800 transition-colors flex items-center gap-3"
+                  data-testid={`field-project-row-${d.id}`}
+                >
+                  <Camera className="w-5 h-5 text-blue-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-base font-semibold text-white truncate">{d.title}</div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 mt-0.5">{d.status}</div>
+                  </div>
+                  <Upload className="w-4 h-4 text-zinc-600 flex-shrink-0" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

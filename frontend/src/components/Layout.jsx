@@ -100,7 +100,13 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      {showGetApp && <GetAppOnPhoneModal onClose={() => setShowGetApp(false)} />}
+      {showGetApp && (
+        <GetAppOnPhoneModal
+          onClose={() => setShowGetApp(false)}
+          redirectPath="/field"
+          subtitle="Scan to open Field Capture"
+        />
+      )}
     </div>
   );
 }

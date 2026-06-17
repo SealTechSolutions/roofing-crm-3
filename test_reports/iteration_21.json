@@ -1,0 +1,57 @@
+{
+  "summary": "Full E2E regression of the refactored /field experience (project-list + camera view) + sidebar/Deal Send-to-Field QR flows + magic-link single-use. Backend pytest 5/5 PASS. Playwright frontend 13/13 scenarios PASS. The new project-list view, search filter, camera transition, back-arrow, deep-link, IndexedDB queue drain, logout, sidebar QR redirectPath=/field, Send-to-Field URL = /m/<t>?next=%2Ffield%3Fdeal_id%3D<id>, and StrictMode-dedup'd single consume POST all verified end-to-end. No bugs found.",
+  "tests_executed": [
+    "T1 PASS — /field unauthenticated → /login redirect",
+    "T2 PASS — /field with no ?deal_id renders LIST view: top bar, [field-search], 8 [field-project-row-*]; NO [field-shutter]/[field-video]/[field-back]",
+    "T3 PASS — UI row count (8) == API non-closed deal count (8); no Closed/Lost/Past Lead leakage",
+    "T4 PASS — search 'TEST' filters 8→2 case-insensitively; clearing restores 8",
+    "T5 PASS — tapping [field-project-row-<id>] transitions to camera view: [field-back] + [field-shutter] visible, header shows 'CAPTURING FOR <title>', LIST elements gone (camera image shows 'Requested device not found' which is the headless-acceptable fallback per spec)",
+    "T6 PASS — [field-back] returns to LIST, URL stripped of ?deal_id, localStorage 'field_capture_last_deal_id' cleared (a hard reload would not auto-reopen camera)",
+    "T7 PASS — /field?deal_id=<openId> deep-link jumps STRAIGHT to camera view (header shows that deal's title 'TEST_Lead Deal')",
+    "T8 PASS — Programmatically inject JPEG Blob into IndexedDB 'field-photo-queue'.'shots', dispatch 'online' → queue drained (size 0) within 25×500ms, verified TEST_inject2.jpg present in GET /api/projects/<id>/photos, then DELETE for cleanup",
+    "T9 PASS — [field-logout] on LIST view AND CAMERA view both clear crm_token and route to /login",
+    "T10 PASS — Sidebar [get-app-button] modal: [get-app-copy] yields URL containing '/m/' AND 'next=%2Ffield' (NO deal_id) → confirms redirectPath='/field' wired in Layout.jsx",
+    "T11 PASS — DealDetail [send-to-field] modal: [get-app-copy] yields '/m/<token>?next=%2Ffield%3Fdeal_id%3D<id>'",
+    "T12 PASS — Anonymous visit to STF URL fires EXACTLY ONE POST /api/auth/magic-link/consume (StrictMode dedupe via sessionStorage RESULT/ERROR/LOCK_KEY holds) and lands on /field?deal_id=<id> with [field-shutter] visible (camera view)",
+    "T13 PASS — Backend pytest 5/5: deals filter, photo upload+list, unauth upload rejected (401/403), magic-link issue + single-use consume (200 then 401), invalid token (401)"
+  ],
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/field camera view",
+        "issues": ["The Sonner 'Back online' toast can overlay the top-right [field-logout] button momentarily after network state flips. Not a true bug (the toast auto-dismisses in ~3s), but on a real device a user tapping logout instantly after coming back online could miss-tap. Consider toast positioning further from header buttons OR shorter duration. Functional only — playwright resolved via force=True."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_field_capture_v2.py",
+    "/app/test_reports/pytest/pytest_iter21.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FieldCapture.jsx (466 lines): single-file but well-structured — TopBar + ProjectList sub-components are small and the main component is readable. Below the 700-line split threshold so OK.",
+    "FieldCapture.jsx:240-252 backToList correctly stops camera tracks, clears dealId, removes localStorage key, AND strips ?deal_id= via history.replaceState — no full reload required. Excellent.",
+    "FieldCapture.jsx:88-100 deep-link precedence: ?deal_id= > localStorage > none. Verified working in T7.",
+    "FieldCapture.jsx:89 closed-status filter list is hardcoded inline ['Closed','Lost','Past Lead']. Same comment as prev iteration — consider centralising; minor.",
+    "MagicLinkConsume.jsx:19-54 consumeOnce() lock pattern uses sessionStorage which is tab-scoped and synchronous → reliable dedupe across StrictMode double-mount + HMR. Verified T12 hit consume exactly once.",
+    "GetAppOnPhoneModal.jsx:40 URL builder correctly encodes next param: `${origin}/m/${token}?next=${encodeURIComponent(redirectPath)}`. Verified both sidebar (next=%2Ffield) and DealDetail (next=%2Ffield%3Fdeal_id%3D<id>) outputs.",
+    "Layout.jsx:103-109 passes redirectPath='/field' + subtitle. Confirmed in T10.",
+    "DealDetail.jsx:1182-1185 mounts GetAppOnPhoneModal with redirectPath=`/field?deal_id=${id}`. Confirmed.",
+    "Backend /auth/magic-link/consume: single-use enforced via $set with consumed_at=null filter — race-safe. Verified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_field_capture_v2.py",
+    "/app/test_reports/iteration_21.json",
+    "/app/test_reports/pytest/pytest_iter21.xml"
+  ],
+  "success_rate": { "backend": "100% (5/5 pytest)", "frontend": "100% (13/13 scenarios)" },
+  "test_credentials": "admin@roofingcrm.com / admin123",
+  "seed_data_creation": "Photo TEST_inject2.jpg + TEST_field_v2.jpg uploaded via /api/projects/{deal_id}/photos and DELETED after verification. Several magic-link tokens issued and consumed (auto-expire 5min via TTL index). No persistent test data left behind.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The /field route now has TWO views in a SINGLE component (FieldCapture.jsx). Selectors: LIST view = [field-search] + [field-project-row-<id>] + [field-logout]; CAMERA view = [field-back] + [field-shutter] + [field-video] (or 'Requested device not found' fallback) + [field-status] + [field-uploaded-count] + [field-queued-count] + [field-logout]. The OLD [field-deal-picker] selector is GONE — do not use it. IndexedDB DB='field-photo-queue' store='shots' item shape {deal_id, blob, filename, created_at}. localStorage keys: 'crm_token', 'crm_user', 'field_capture_last_deal_id' (cleared by back-arrow). Magic-link consume dedupe relies on sessionStorage RESULT/ERROR/LOCK keys per token. Sidebar Get-App-on-Phone modal redirects to /field (not dashboard). DealDetail Send-to-Field redirects to /field?deal_id=<id>. Reusable backend tests: /app/backend/tests/test_field_capture_v2.py (5 tests, all pass).",
+  "rca of the issue": "N/A — no issues found. Toast overlay on logout is a minor UX nit, not a bug."
+}
