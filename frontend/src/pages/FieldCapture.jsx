@@ -46,6 +46,15 @@ async function queueDelete(id) {
 // ---------- The page ----------
 export default function FieldCapture() {
   const nav = useNavigate();
+  // Read ?deal_id=… deep-link param directly from window.location so it
+  // survives all dev-env source instrumentation. Static one-shot read.
+  const urlDealId = (() => {
+    if (typeof window === "undefined") return "";
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      return sp.get("deal_id") || "";
+    } catch (e) { return ""; }
+  })();
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
@@ -82,12 +91,16 @@ export default function FieldCapture() {
         // Sort: most recently updated first
         open.sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
         setDeals(open);
-        // Restore last-used project from localStorage
-        const last = localStorage.getItem("field_capture_last_deal_id");
-        if (last && open.find((d) => d.id === last)) setDealId(last);
+        // Deep-link from a Deal page: ?deal_id=… wins over localStorage default.
+        if (urlDealId && open.find((d) => d.id === urlDealId)) {
+          setDealId(urlDealId);
+        } else {
+          const last = localStorage.getItem("field_capture_last_deal_id");
+          if (last && open.find((d) => d.id === last)) setDealId(last);
+        }
       })
       .catch(() => setDeals([]));
-  }, [token, nav]);
+  }, [token, nav, urlDealId]);
 
   // Persist project pick
   useEffect(() => {

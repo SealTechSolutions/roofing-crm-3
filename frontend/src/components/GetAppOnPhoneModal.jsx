@@ -9,10 +9,11 @@ import { X, Smartphone, RefreshCw, Copy, CheckCircle2 } from "lucide-react";
  * shows a QR code the user scans with their phone camera.
  *
  * The scanned URL (/m/:token) hits the public `consume` endpoint, drops the
- * returned JWT into localStorage, and forwards to the dashboard.
+ * returned JWT into localStorage, and forwards to the dashboard (or to
+ * `redirectPath` when provided — e.g. `/field?deal_id=abc` from a Deal).
  * Token expires in 5 minutes and is single-use.
  */
-export default function GetAppOnPhoneModal({ onClose }) {
+export default function GetAppOnPhoneModal({ onClose, redirectPath, title, subtitle }) {
   const [token, setToken] = useState("");
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -35,7 +36,9 @@ export default function GetAppOnPhoneModal({ onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const url = token ? `${window.location.origin}/m/${token}` : "";
+  const url = token
+    ? `${window.location.origin}/m/${token}${redirectPath ? `?next=${encodeURIComponent(redirectPath)}` : ""}`
+    : "";
 
   const copy = () => {
     if (!url) return;
@@ -55,9 +58,9 @@ export default function GetAppOnPhoneModal({ onClose }) {
         <div className="border-b-2 border-zinc-950 px-6 py-4 flex items-center justify-between">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-1.5">
-              <Smartphone className="w-3 h-3" /> Get App on My Phone
+              <Smartphone className="w-3 h-3" /> {title || "Get App on My Phone"}
             </div>
-            <div className="font-heading text-lg font-black tracking-tight mt-0.5">Scan to sign in</div>
+            <div className="font-heading text-lg font-black tracking-tight mt-0.5">{subtitle || "Scan to sign in"}</div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-zinc-100 rounded-sm" data-testid="get-app-close">
             <X className="w-4 h-4" />

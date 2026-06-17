@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus, ClipboardCheck, Clock } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus, ClipboardCheck, Clock, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
@@ -13,6 +13,7 @@ import GrammarCheck from "@/components/GrammarCheck";
 import { DealStagePipeline, NextStepCard, DealActivityTimeline, DealQuickActions } from "@/components/DealWorkflow";
 import { InvoiceEditor } from "@/pages/Invoices";
 import ScopeEditorModal from "@/components/ScopeEditorModal";
+import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 
 export default function DealDetail() {
   const { id } = useParams();
@@ -30,6 +31,7 @@ export default function DealDetail() {
   // One-click + Invoice / Record Payment quick-action modals (live on the Deal page itself)
   const [invoiceEditor, setInvoiceEditor] = useState(null); // null | invoice object (new or existing)
   const [scopeEditorOpen, setScopeEditorOpen] = useState(false);
+  const [sendToFieldOpen, setSendToFieldOpen] = useState(false);
 
   const reload = async () => {
     const r = await api.get(`/deals/${id}`);
@@ -361,6 +363,14 @@ export default function DealDetail() {
             className="inline-flex items-center gap-2 border border-blue-700 text-blue-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-50 rounded-sm transition-colors"
           >
             <ClipboardCheck className="w-4 h-4" /> New Assessment
+          </button>
+          <button
+            data-testid="send-to-field"
+            onClick={() => setSendToFieldOpen(true)}
+            title="Open Field Photo Capture on your phone with this project pre-selected"
+            className="inline-flex items-center gap-2 bg-amber-600 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-amber-700 rounded-sm transition-colors"
+          >
+            <Camera className="w-4 h-4" /> Send to Field
           </button>
           <DealQuickActions
             deal={deal}
@@ -1165,6 +1175,15 @@ export default function DealDetail() {
           dealId={id}
           onClose={() => setScopeEditorOpen(false)}
           onSaved={() => reload().catch(() => {})}
+        />
+      )}
+
+      {sendToFieldOpen && (
+        <GetAppOnPhoneModal
+          onClose={() => setSendToFieldOpen(false)}
+          redirectPath={`/field?deal_id=${id}`}
+          title="Send to Field"
+          subtitle={`Scan to capture photos for ${deal?.title || "this project"}`}
         />
       )}
     </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { CheckCircle2, AlertCircle, Smartphone } from "lucide-react";
 
@@ -11,10 +11,15 @@ const API_BASE = process.env.REACT_APP_BACKEND_URL;
  * The user scans the QR code from a desktop session on their phone, lands
  * here, the token is exchanged for a JWT, and they're redirected to the
  * dashboard already signed in. Single-use; expires in 5 minutes.
+ *
+ * Supports `?next=…` query param to redirect to a specific in-app path
+ * (e.g. `/field?deal_id=abc`) after sign-in instead of the dashboard.
  */
 export default function MagicLinkConsume() {
   const { token } = useParams();
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+  const nextPath = searchParams.get("next") || "/";
   const [error, setError] = useState("");
   const [user, setUser] = useState(null);
 
@@ -29,8 +34,10 @@ export default function MagicLinkConsume() {
         localStorage.setItem("crm_token", data.access_token);
         if (data.user) localStorage.setItem("crm_user", JSON.stringify(data.user));
         setUser(data.user);
+        // Only allow same-origin relative paths for `next` to avoid open-redirect.
+        const safeNext = nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/";
         // Brief pause so the user sees the confirmation before redirect
-        setTimeout(() => nav("/", { replace: true }), 1200);
+        setTimeout(() => nav(safeNext, { replace: true }), 1200);
       })
       .catch((e) => {
         if (!cancelled) {
@@ -38,7 +45,7 @@ export default function MagicLinkConsume() {
         }
       });
     return () => { cancelled = true; };
-  }, [token, nav]);
+  }, [token, nav, nextPath]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 p-4">

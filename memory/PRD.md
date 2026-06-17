@@ -624,6 +624,14 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Backend tests: `/app/backend/tests/test_field_capture.py` (4/4 pytest pass — upload, list, unauth-rejected, deals filter).
 - Verified end-to-end via testing agent iteration 20: all 10 scenarios PASS, including programmatic IndexedDB injection + online-event auto-flush + photo verified via `GET /api/projects/{id}/photos` + cleanup.
 
+### Send to Field — Deal Deep-Link QR (Feb 2026)
+- Each Deal page now has an amber **"Send to Field"** button (`[data-testid=send-to-field]`) next to **New Assessment**. Click → modal renders a QR code that includes both a one-time magic-link token AND a `?next=/field?deal_id=<id>` deep-link.
+- The field worker scans the QR with their phone camera → lands in the CRM signed-in → is redirected straight to `/field` with that project **already pre-selected** in the picker. Zero typing, zero scrolling. Start tapping the shutter.
+- `MagicLinkConsume` (`/m/:token`) now supports `?next=…` (same-origin paths only — guarded against open-redirect by checking the path starts with a single `/`).
+- `FieldCapture` reads `?deal_id=…` from `window.location.search` and uses it as the pre-selection (falls back to localStorage `field_capture_last_deal_id` if absent or invalid).
+- `GetAppOnPhoneModal` is now reusable: optional `redirectPath`, `title`, `subtitle` props let it serve both as the sidebar "Get App on My Phone" generic launcher and the Deal-page "Send to Field" pre-filled launcher.
+- Verified live via Playwright: button visible on Deal page → modal opens with custom copy → Copy Link returns `/m/<token>?next=%2Ffield%3Fdeal_id%3D<id>` → fresh visit to `/field?deal_id=<id>` pre-selects the deal in the picker, persists it to localStorage, and shows "To: <Deal Title>" in the status strip.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
