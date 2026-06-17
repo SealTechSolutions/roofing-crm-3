@@ -638,6 +638,17 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - **Fix**: Replaced the in-memory `Map` cache with a **sessionStorage-backed lock + result cache** keyed by token. The first caller acquires `magic-link-lock-<token>`, fires the network request, and writes either `magic-link-result-<token>` (success) or `magic-link-error-<token>` (failure). Any concurrent or subsequent caller within the same tab polls for the result instead of issuing a duplicate POST. SessionStorage survives StrictMode mount cycles AND HMR module re-evaluation.
 - Verified live: 1 consume POST per page load (was 2), success page renders, redirect honours `?next=/field?deal_id=…` and lands on `/field` with the deal pre-selected. Both the sidebar "Get App on My Phone" and Deal page "Send to Field" flows confirmed working end-to-end.
 
+### Field Capture v2 — Project-List + Camera (Feb 2026)
+- Refactored `/field` from a single dropdown page into a **two-view stripped-down mobile experience**:
+  - **List view** (no `?deal_id=`): top bar (user, online pill, logout) + search box (`[data-testid=field-search]`) + tappable row per open deal (`[data-testid^=field-project-row-]`). Just project NAMES + status sub-line. No camera, no shutter, no sidebar — nothing else.
+  - **Camera view** (deal selected): back-arrow (`[data-testid=field-back]`) returns to the list and strips `?deal_id=` from the URL via `history.replaceState` (no full reload, no flash). Header reads "CAPTURING FOR <deal title>".
+- Search filter is case-insensitive substring on the deal title; clears restore the full list.
+- Deep-link `/field?deal_id=<id>` jumps **straight to the camera** for that deal (skips the list).
+- **Sidebar "Get App on My Phone"** QR now uses `redirectPath="/field"` so the phone lands on the project list (not the full Dashboard).
+- **Deal-page "Send to Field"** QR uses `redirectPath="/field?deal_id=<id>"` so the phone jumps straight to the camera for that specific job.
+- Files: `/app/frontend/src/pages/FieldCapture.jsx` (466 lines, refactored with `TopBar` + `ProjectList` sub-components), `/app/frontend/src/components/Layout.jsx` (sidebar modal redirectPath wired).
+- Verified by testing agent iter 21: **13/13 frontend + 5/5 backend pytest PASS**. Includes IndexedDB queue inject + drain, single-consume StrictMode dedupe still holds, photo upload + listing, single-use magic-link enforcement.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
