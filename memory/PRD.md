@@ -556,6 +556,21 @@
 - Frontend: each `DealActivityTimeline` row whose `pdf_file_id` is set now wraps its title in an `<a target="_blank">` link — one click re-opens the exact version that went out.
 - Tested: 4 pytest cases (`tests/test_scope_editor.py`) — defaults shape, overrides change the PDF, empty overrides revert, snapshot is downloadable.
 
+### Public Proposal Signing — Sign-Off Link (Feb 2026 — iteration_24)
+
+Closed the entire Lead → Sent → Won loop without anyone in the office touching the deal between the scope email going out and the deposit landing.
+
+- New `backend/proposal_signing.py` module with three unauthenticated endpoints under `/api/public/proposal/{token}`:
+  - `GET /` — return safe-to-show project summary + effective scope bullets (template + overrides merged).
+  - `POST /sign` — signer name + acceptance flag (optional drawn signature data-URL). Flips deal `status` to "Won", stamps `scope_signed_at`, `scope_signed_by_name`, `scope_signed_by_email`, `scope_signed_ip`, `scope_signed_user_agent`, `scope_signature_file_id`, and appends a `public-sign` entry to `status_history` with `from/to: Lead→Won`. Persists the signature image to Object Storage with `parent_type=deal, category=Signature`.
+  - `GET /signature` — streams the saved signature image (post-sign confirmation card).
+- `ensure_proposal_token()` mints a 24-char URL-safe opaque token on the deal the first time the scope is emailed; idempotent on subsequent sends.
+- `/spec-sheet/email` injects the Sign Off link into the email body — both a styled HTML button and a plaintext URL fallback. Assessment emails are excluded.
+- All endpoints idempotent: re-signing a token returns the original `signed_at` + `signed_by_name`. Unknown tokens 404 (no information leak).
+- New Pydantic fields on `DealIn`: `proposal_sign_token`, `scope_signed_by_name`, `scope_signed_by_email`, `scope_signed_ip`, `scope_signed_user_agent`, `scope_signature_file_id`.
+- Frontend: new `/sign/:token` route (no auth) rendering `<ProposalSign>` — branded SealTech header, project summary card, scope bullets card (renders sections 1+2 + key advantages), inline e-signature canvas (mouse + touch), acceptance checkbox, "Accept & Sign Proposal" CTA. On success swaps to a green "Proposal Accepted" card. The existing Next-Step card on DealDetail automatically pivots to "Create deposit invoice" because the deal is now Won.
+- **Tested**: 6 new pytest cases (`tests/test_proposal_signing.py`) — token mint via email send, public viewer no-auth, sign flips deal to Won with audit, idempotent re-sign, name+acceptance validation, unknown-token 404. End-to-end browser test confirms: deal starts Lead → recipient lands on `/sign/{token}` → fills name + draws signature + accepts → POSTs → page shows "Proposal Accepted" → backend shows `status=Won, scope_signed_by_name=Jane Customer, signature_file_id=...`.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

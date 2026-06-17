@@ -532,6 +532,14 @@ class DealIn(BaseModel):
     # Set when the customer counter-signs the proposal — promotes the
     # "Scope Sent" pipeline derivation to a stronger checkpoint.
     scope_signed_at: str = ""
+    scope_signed_by_name: str = ""
+    scope_signed_by_email: str = ""
+    scope_signed_ip: str = ""
+    scope_signed_user_agent: str = ""
+    scope_signature_file_id: str = ""
+    # Opaque URL-safe token gating the public /sign/{token} proposal viewer.
+    # Minted on first scope-email send (see proposal_signing.ensure_proposal_token).
+    proposal_sign_token: str = ""
     # Per-deal scope-bullet overrides — populated by the in-app Scope Editor.
     # Schema: { title?: str, scope_1_title?: str, scope_1?: List[str],
     #           scope_2_title?: str, scope_2?: List[str], key_advantages?: List[str] }
@@ -4055,20 +4063,46 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
         f"Please find attached the roofing proposal for {deal.get('title') or 'your project'}. "
         f"The scope details our recommended system, pricing tiers, and standard inclusions/exclusions."
     )
+    # Mint or reuse the public proposal-signing token + build the Sign Off URL.
+    # The url is embedded in the email body so the recipient can accept inline
+    # without needing a CRM login. Assessment emails do not include this CTA.
+    sign_off_url = ""
+    if not is_assessment:
+        try:
+            token_val = await _proposal_signing.ensure_proposal_token(db, deal_id)
+            if _PUBLIC_BASE_URL and token_val:
+                sign_off_url = f"{_PUBLIC_BASE_URL.rstrip('/')}/sign/{token_val}"
+        except Exception as e:
+            logger.warning(f"could not mint proposal_sign_token for deal={deal_id}: {e}")
+            sign_off_url = ""
+
     body_text = (
         f"Hello {(cust_company or '')},\n\n"
         f"{intro}\n\n"
         f"  Attachments: {len(attachments)} file{'s' if len(attachments) > 1 else ''}\n\n"
-        f"If you have any questions, please reply to this email or call us at 720-715-9955.\n\n"
+        + (
+            f"Ready to move forward? Sign off here: {sign_off_url}\n\n"
+            if sign_off_url else ""
+        )
+        + f"If you have any questions, please reply to this email or call us at 720-715-9955.\n\n"
         f"Thank you,\n"
         f"SealTech Building Solutions\n"
         f"720-715-9955  ·  info@sealtechbuildingsolutions.com"
     )
+    sign_off_html = (
+        f'<p style="margin: 20px 0;"><a href="{sign_off_url}" style="background:#062B67;color:white;'
+        f'padding:12px 24px;text-decoration:none;font-weight:bold;letter-spacing:1.5px;font-size:13px;'
+        f'text-transform:uppercase;border-radius:2px;display:inline-block;">Review &amp; Sign Off</a></p>'
+        f'<p style="margin: 0 0 16px; color:#52525B; font-size:12px;">'
+        f'Or paste this link into your browser: <span style="word-break:break-all;color:#062B67;">{sign_off_url}</span>'
+        f'</p>'
+    ) if sign_off_url else ""
     body_html = f"""
     <html><body style="font-family: Arial, Helvetica, sans-serif; color: #0A0A0A; max-width: 620px;">
       <p style="margin: 0 0 16px;">Hello {cust_company or ''},</p>
       <p style="margin: 0 0 16px;">{intro.replace(chr(10), '<br/>')}</p>
       <p style="margin: 0 0 16px; color: #52525B; font-size: 13px;"><b>Attachments:</b> {len(attachments)} file{'s' if len(attachments) > 1 else ''}</p>
+      {sign_off_html}
       <p style="margin: 16px 0;">If you have any questions, please reply to this email or call us at 720-715-9955.</p>
       <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
         <b style="color: #0A0A0A;">SealTech Building Solutions</b><br/>
@@ -6119,6 +6153,57 @@ _PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL") or os.environ.get("GOOGLE_O
 api_router.include_router(gcal_module.make_google_calendar_router(db, get_current_user, _PUBLIC_BASE_URL))
 api_router.include_router(gcal_module.make_google_oauth_callback_router(db))
 api_router.include_router(tasks_module.make_tasks_router(db, get_current_user, push_task_fn=gcal_module.push_task, public_base_url=_PUBLIC_BASE_URL))
+
+
+# ----- Public Proposal Signing (Sign Off link) ----------------------------
+import proposal_signing as _proposal_signing
+
+
+async def _compute_scope_for_signing(deal_id: str) -> dict:
+    """Adapter passed into proposal_signing — returns effective scope bullets +
+    client info so the public viewer can render the proposal without hitting
+    any other endpoint."""
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        return {}
+    from spec_sheet import _resolve_template, _apply_scope_overrides
+    base = _resolve_template(deal.get("proposed_roof_type"), deal.get("current_roof_type"))
+    eff = _apply_scope_overrides(base, deal.get("scope_overrides") or {})
+
+    # Pull client (Bill-To) name + address from the linked property + contact
+    client_name = client_company = client_address = client_city = client_state = client_zip = ""
+    if deal.get("property_id"):
+        prop = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
+        if prop:
+            client_company = prop.get("property_name") or ""
+            client_address = " ".join([prop.get("property_address", ""), prop.get("property_address_line2", "")]).strip()
+            client_city = prop.get("property_city", "")
+            client_state = prop.get("property_state", "")
+            client_zip = prop.get("property_zip", "")
+    cid = deal.get("customer_contact_id") or deal.get("contact_id")
+    if cid:
+        cust = await db.contacts.find_one({"id": cid}, {"_id": 0})
+        if cust:
+            client_name = cust.get("contact_name", "") or ""
+
+    return {
+        "client_name": client_name,
+        "client_company": client_company,
+        "client_address": client_address,
+        "client_city": client_city,
+        "client_state": client_state,
+        "client_zip": client_zip,
+        "scope_title": eff.get("title", ""),
+        "scope_1_title": eff.get("scope_1_title", ""),
+        "scope_1": eff.get("scope_1", []),
+        "scope_2_title": eff.get("scope_2_title", ""),
+        "scope_2": eff.get("scope_2", []),
+        "key_advantages": eff.get("key_advantages", []),
+    }
+
+
+api_router.include_router(_proposal_signing.create_public_router(db, get_current_user, _compute_scope_for_signing))
+
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
