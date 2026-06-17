@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { Camera, Upload, Trash2, Share2, X, Download, Image as ImageIcon, Star, Link2, Copy, Eye, EyeOff } from "lucide-react";
+import { Camera, Upload, Trash2, Share2, X, Download, Image as ImageIcon, Star, Link2, Copy, Eye, EyeOff, FileText } from "lucide-react";
 import CameraCaptureButton from "@/components/CameraCaptureButton";
 
 const PRESET_TAGS = [
@@ -138,6 +138,36 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
     }
   };
 
+  /**
+   * Triggers the Progress Timeline PDF download. Honors the current album +
+   * tag filters so the user can export e.g. only "Drone" or only "After" shots.
+   * Uses the auth token from localStorage to make an authenticated fetch
+   * (needed because anchor downloads don't carry our Authorization header).
+   */
+  const downloadTimelinePdf = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (albumFilter) params.set("album_name", albumFilter);
+      if (tagFilter) params.set("tag", tagFilter);
+      const r = await api.get(
+        `/projects/${dealId}/photos/timeline.pdf${params.toString() ? `?${params}` : ""}`,
+        { responseType: "blob" }
+      );
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      const safe = (dealTitle || "Project").replace(/[^a-z0-9\- _]/gi, "_");
+      a.download = `${safe} - Progress Timeline.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success("Timeline PDF downloaded");
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message || "Could not generate PDF");
+    }
+  };
+
   const totalSize = photos.reduce((s, p) => s + (p.size || 0), 0);
 
   return (
@@ -150,6 +180,15 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            data-testid="timeline-pdf-btn"
+            onClick={downloadTimelinePdf}
+            disabled={photos.length === 0}
+            title="Generate a date-stamped PDF album of all photos"
+            className="inline-flex items-center gap-1.5 px-3 h-9 text-[10px] font-bold uppercase tracking-wider bg-white border border-zinc-700 text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 rounded-sm"
+          >
+            <FileText className="w-3.5 h-3.5" /> Timeline PDF
+          </button>
           <button
             data-testid="open-share-photos-btn"
             onClick={() => setShareOpen(true)}

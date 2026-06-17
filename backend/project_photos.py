@@ -27,6 +27,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from storage import put_object, get_object, APP_NAME
+from progress_timeline_pdf import build_progress_timeline_pdf
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg", "image/jpg", "image/png", "image/webp",
@@ -192,6 +193,42 @@ def create_router(db, get_current_user) -> APIRouter:
             io.BytesIO(content),
             media_type=rec.get("content_type", "image/jpeg"),
             headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+
+    # ---------- Progress Timeline PDF ----------
+    @router.get("/photos/timeline.pdf")
+    async def timeline_pdf(
+        deal_id: str,
+        album_name: Optional[str] = None,
+        tag: Optional[str] = None,
+        _=Depends(get_current_user),
+    ):
+        """Streaming PDF: cover page + per-date photo grid, ordered oldest-first.
+
+        Optional `album_name` / `tag` query params filter the photo set so the
+        user can export e.g. only "After" shots or only the "Drone" album.
+        """
+        deal = await _ensure_deal(deal_id)
+        q = {"deal_id": deal_id, "is_deleted": {"$ne": True}}
+        if album_name:
+            q["album_name"] = album_name
+        if tag:
+            q["tag"] = tag
+        photos = await db.project_photos.find(q, {"_id": 0}).sort("created_at", 1).to_list(2000)
+        # Fetch the linked property for the cover-page address (best-effort).
+        property_doc = None
+        if deal.get("property_id"):
+            property_doc = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
+        try:
+            pdf_bytes = build_progress_timeline_pdf(deal, photos, property_doc=property_doc)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+        safe_title = "".join(c if c.isalnum() or c in "-_ " else "_" for c in (deal.get("title") or "Project"))
+        filename = f"{safe_title} - Progress Timeline.pdf"
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     # ---------- Public shares ----------
