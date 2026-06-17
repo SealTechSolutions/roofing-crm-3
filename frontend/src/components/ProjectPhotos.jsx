@@ -29,6 +29,9 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
   const [editing, setEditing] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  // Chronological grouping: "asc" = oldest-first (matches before → during →
+  // after narrative); "desc" = newest-first.
+  const [sortOrder, setSortOrder] = useState("asc");
   const fileInputRef = useRef(null);
 
   const load = async () => {
@@ -53,6 +56,42 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
     ),
     [photos, albumFilter, tagFilter]
   );
+
+  /**
+   * Group filtered photos by calendar date taken (uses `created_at` which for
+   * field-camera photos = exact moment of capture, and for drag-drop uploads
+   * = upload date). Returns an array of `{ key, label, photos: [] }` sorted
+   * by `sortOrder` — oldest-first by default so the page reads as a natural
+   * before → during → after timeline.
+   */
+  const dateGroups = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const fmtLabel = (d) => {
+      const dayKey = d.toISOString().slice(0, 10);
+      const todayKey = today.toISOString().slice(0, 10);
+      const yKey = yesterday.toISOString().slice(0, 10);
+      if (dayKey === todayKey) return "Today";
+      if (dayKey === yKey) return "Yesterday";
+      return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
+    };
+    const buckets = new Map();
+    for (const p of filtered) {
+      const d = p.created_at ? new Date(p.created_at) : new Date(0);
+      const dayKey = isNaN(d.getTime()) ? "unknown" : d.toISOString().slice(0, 10);
+      if (!buckets.has(dayKey)) {
+        buckets.set(dayKey, { key: dayKey, label: dayKey === "unknown" ? "No date" : fmtLabel(d), photos: [], ts: d.getTime() || 0 });
+      }
+      buckets.get(dayKey).photos.push(p);
+    }
+    // Sort photos within a day by created_at to keep the order stable.
+    const groups = Array.from(buckets.values()).map((g) => ({
+      ...g,
+      photos: g.photos.slice().sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || ""))),
+    }));
+    groups.sort((a, b) => sortOrder === "asc" ? a.ts - b.ts : b.ts - a.ts);
+    return groups;
+  }, [filtered, sortOrder]);
 
   const uploadFiles = async (files) => {
     if (!files || files.length === 0) return;
@@ -157,9 +196,30 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
           {PRESET_TAGS.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <CustomAlbumInput onCreate={(name) => setAlbumFilter(name)} />
+        <div className="ml-auto inline-flex items-center gap-1 border border-zinc-300 rounded-sm bg-white overflow-hidden">
+          <span className="px-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Order</span>
+          <button
+            type="button"
+            onClick={() => setSortOrder("asc")}
+            className={"h-8 px-2.5 text-[10px] font-bold uppercase tracking-wider " + (sortOrder === "asc" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100")}
+            data-testid="photos-order-asc"
+            title="Before → During → After"
+          >
+            Oldest first
+          </button>
+          <button
+            type="button"
+            onClick={() => setSortOrder("desc")}
+            className={"h-8 px-2.5 text-[10px] font-bold uppercase tracking-wider " + (sortOrder === "desc" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100")}
+            data-testid="photos-order-desc"
+            title="Newest first"
+          >
+            Newest first
+          </button>
+        </div>
       </div>
 
-      {/* Grid */}
+      {/* Grid grouped by date */}
       {filtered.length === 0 ? (
         <div className="py-16 text-center text-sm text-zinc-500 border-2 border-dashed border-zinc-200 rounded-sm">
           <ImageIcon className="w-8 h-8 mx-auto text-zinc-300 mb-2" />
@@ -168,16 +228,29 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
             : "No photos match the current filter."}
         </div>
       ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2" data-testid="photo-grid">
-          {filtered.map((p) => (
-            <PhotoCard
-              key={p.id}
-              photo={p}
-              onView={() => setLightbox(p)}
-              onEdit={() => setEditing(p)}
-              onDelete={() => removePhoto(p)}
-              onToggleCover={() => setCover(p)}
-            />
+        <div className="space-y-6" data-testid="photo-grid">
+          {dateGroups.map((group) => (
+            <section key={group.key} data-testid={`photos-date-group-${group.key}`}>
+              <h3 className="flex items-center gap-3 mb-2.5">
+                <span className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-900">{group.label}</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                  {group.photos.length} {group.photos.length === 1 ? "photo" : "photos"}
+                </span>
+                <span className="flex-1 h-px bg-zinc-200" />
+              </h3>
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2">
+                {group.photos.map((p) => (
+                  <PhotoCard
+                    key={p.id}
+                    photo={p}
+                    onView={() => setLightbox(p)}
+                    onEdit={() => setEditing(p)}
+                    onDelete={() => removePhoto(p)}
+                    onToggleCover={() => setCover(p)}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}

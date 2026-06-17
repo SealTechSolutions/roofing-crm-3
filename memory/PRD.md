@@ -680,6 +680,12 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Bumped photo grid from `2/3/4` to `3/4/5/6/7/8` cols across responsive breakpoints in `/app/frontend/src/components/ProjectPhotos.jsx` (line 171). Gap tightened `gap-3 → gap-2`.
 - At 1920px viewport, the grid now renders **8 columns** of ~186px thumbnails (verified live), letting the user scan ~24+ photos without scrolling vs ~12 previously.
 
+### Project Photos Grouped by Date (Feb 2026)
+- Photos now display **grouped by calendar date taken** in `/app/frontend/src/components/ProjectPhotos.jsx`. Each date heading shows a friendly label (`Today`, `Yesterday`, or `Mon, Jun 15`) + a photo count, followed by the grid of shots from that day.
+- Default ordering: **Oldest first** (matches the natural before → during → after construction narrative). Toolbar toggle (`[data-testid=photos-order-asc]` / `photos-order-desc`) flips to **Newest first** for the daily-update workflow.
+- Uses `created_at` for grouping — for field-camera photos this is the exact moment of capture; for drag-drop uploads it's the upload date.
+- Verified live on a deal with 24 photos across 2 dates: groups render correctly, counts accurate, toggle flips group order. Internal grid retains the 3/4/5/6/7/8-col responsive layout from the previous task.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
