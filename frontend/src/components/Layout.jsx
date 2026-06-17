@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const ALL_NAV = [
@@ -21,6 +21,7 @@ const ALL_NAV = [
   { to: "/subcontractors", label: "Subcontractors", icon: HardHat, testId: "nav-subcontractors" },
   { to: "/users", label: "Users", icon: UserCog, testId: "nav-users", adminOnly: true },
   { to: "/settings/integrations", label: "Integrations", icon: Plug, testId: "nav-integrations", adminOnly: true },
+  { to: "/settings/schedule", label: "Schedule", icon: CalendarClock, testId: "nav-schedule", adminOnly: true },
   { to: "/trash", label: "Trash", icon: Trash2, testId: "nav-trash", adminOnly: true },
 ];
 

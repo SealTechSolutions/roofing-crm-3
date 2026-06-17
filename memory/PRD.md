@@ -581,6 +581,13 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - The sign response now includes `deposit_invoice_id` + `deposit_invoice_number`; the public Proposal Accepted card shows: *"Your deposit invoice (INV-2026-1237) is queued and the SealTech team will send it shortly."*
 - **Tested**: 3 new pytest cases (`tests/test_proposal_signing.py`) — auto-creates Draft 50% deposit, no invoice when amount=0, custom `deposit_pct` honored. 34-test critical suite stays green.
 
+### Settings → Schedule Admin Page (Feb 2026 — iteration_26)
+- New `/settings/schedule` admin route + sidebar entry surfacing the in-process APScheduler state.
+- Per-job card: icon, friendly label, raw job id, plain-English description (e.g. "Mondays 08:00 MT. Each deal owner receives a personalized email..."), the cron trigger expression, and a **next-run timestamp** rendered in the user's local timezone with a relative countdown ("in 23h" / "in 5d").
+- **"Run now"** button on each card fires the job out-of-band via `POST /api/scheduler/jobs/{id}/run` and renders the JSON result inline as a "Last manual run" panel. Friendly toasts: *"Promoted 2 Leads → Sent"* / *"Digest fired — 3/3 owners emailed"* / *"No Leads needed promotion"*.
+- "Running" / "Stopped" status pill, auto-refresh every 30 seconds, manual Refresh button, empty-state hint when `DISABLE_SCHEDULER=1`.
+- Footer note: cron expressions live in `backend/scheduler.py`; UI editor is on the roadmap (held off this iteration per user — they wanted to see the page first).
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
