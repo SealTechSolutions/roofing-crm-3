@@ -6,6 +6,54 @@ import { CheckCircle2, AlertCircle, Smartphone } from "lucide-react";
 const API_BASE = process.env.REACT_APP_BACKEND_URL;
 
 /**
+ * Tab-scoped consume cache (sessionStorage) that survives React StrictMode's
+ * double-mount AND any HMR-induced module re-evaluation in dev. The first
+ * caller acquires a lock and runs the POST; subsequent callers within the
+ * same tab/token poll until the result lands. Once a token has been consumed
+ * successfully, every later caller in this tab gets the cached JWT response.
+ */
+const RESULT_KEY = (t) => `magic-link-result-${t}`;
+const ERROR_KEY = (t) => `magic-link-error-${t}`;
+const LOCK_KEY = (t) => `magic-link-lock-${t}`;
+
+async function consumeOnce(token) {
+  // 1. Already-resolved? Return cached.
+  const cached = sessionStorage.getItem(RESULT_KEY(token));
+  if (cached) return { data: JSON.parse(cached) };
+  const cachedErr = sessionStorage.getItem(ERROR_KEY(token));
+  if (cachedErr) throw new Error(cachedErr);
+
+  // 2. Acquire lock synchronously (sessionStorage writes are sync).
+  if (sessionStorage.getItem(LOCK_KEY(token))) {
+    // Another caller is in flight — poll for up to 6s.
+    return await new Promise((resolve, reject) => {
+      const t0 = Date.now();
+      const tick = () => {
+        const ok = sessionStorage.getItem(RESULT_KEY(token));
+        if (ok) return resolve({ data: JSON.parse(ok) });
+        const er = sessionStorage.getItem(ERROR_KEY(token));
+        if (er) return reject(new Error(er));
+        if (Date.now() - t0 > 6000) return reject(new Error("timeout"));
+        setTimeout(tick, 60);
+      };
+      tick();
+    });
+  }
+  sessionStorage.setItem(LOCK_KEY(token), "1");
+
+  // 3. We hold the lock — fire the single network request.
+  try {
+    const r = await axios.post(`${API_BASE}/api/auth/magic-link/consume`, { token });
+    sessionStorage.setItem(RESULT_KEY(token), JSON.stringify(r.data));
+    return r;
+  } catch (e) {
+    const msg = e?.response?.data?.detail || e?.message || "Could not consume link";
+    sessionStorage.setItem(ERROR_KEY(token), msg);
+    throw e;
+  }
+}
+
+/**
  * Magic-link consumer page — public route `/m/:token`.
  *
  * The user scans the QR code from a desktop session on their phone, lands
@@ -25,8 +73,7 @@ export default function MagicLinkConsume() {
 
   useEffect(() => {
     let cancelled = false;
-    axios
-      .post(`${API_BASE}/api/auth/magic-link/consume`, { token })
+    consumeOnce(token)
       .then((r) => {
         if (cancelled) return;
         const data = r.data;

@@ -632,6 +632,12 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - `GetAppOnPhoneModal` is now reusable: optional `redirectPath`, `title`, `subtitle` props let it serve both as the sidebar "Get App on My Phone" generic launcher and the Deal-page "Send to Field" pre-filled launcher.
 - Verified live via Playwright: button visible on Deal page → modal opens with custom copy → Copy Link returns `/m/<token>?next=%2Ffield%3Fdeal_id%3D<id>` → fresh visit to `/field?deal_id=<id>` pre-selects the deal in the picker, persists it to localStorage, and shows "To: <Deal Title>" in the status strip.
 
+### Magic-Link "Expired Link" Bug Fix (Feb 2026)
+- **Bug**: Every freshly-issued magic link was showing "This link has already been used" on first scan.
+- **Root cause**: React 19 StrictMode + react-refresh in the dev preview caused `MagicLinkConsume`'s `useEffect` to fire on TWO independent module evaluations. The component re-mounted, the module re-evaluated (Map state wiped), and a second POST to `/auth/magic-link/consume` fired. The first call succeeded (200, stored JWT), the second hit the backend's `consumed_at` guard and returned 401. The 401's error message overwrote the success UI.
+- **Fix**: Replaced the in-memory `Map` cache with a **sessionStorage-backed lock + result cache** keyed by token. The first caller acquires `magic-link-lock-<token>`, fires the network request, and writes either `magic-link-result-<token>` (success) or `magic-link-error-<token>` (failure). Any concurrent or subsequent caller within the same tab polls for the result instead of issuing a duplicate POST. SessionStorage survives StrictMode mount cycles AND HMR module re-evaluation.
+- Verified live: 1 consume POST per page load (was 2), success page renders, redirect honours `?next=/field?deal_id=…` and lands on `/field` with the deal pre-selected. Both the sidebar "Get App on My Phone" and Deal page "Send to Field" flows confirmed working end-to-end.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
