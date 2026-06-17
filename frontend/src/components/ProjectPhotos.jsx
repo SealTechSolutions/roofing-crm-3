@@ -168,7 +168,7 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
             : "No photos match the current filter."}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" data-testid="photo-grid">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2" data-testid="photo-grid">
           {filtered.map((p) => (
             <PhotoCard
               key={p.id}

@@ -676,6 +676,10 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Files: `/app/frontend/src/pages/FieldCapture.jsx` — added `zoom`, `ultrawideId`, `useUltrawide` state; `onTouchStart`/`onTouchMove` pinch handlers; `setZoomLevel` helper; updated `captureAndUpload` to apply the zoom-crop; new `ZoomChip` sub-component.
 - Regression smoke-tested: list view (8 rows), tap → camera (back+shutter present), back → list (8 rows restored). All green.
 
+### Project Photos Grid Densified (Feb 2026)
+- Bumped photo grid from `2/3/4` to `3/4/5/6/7/8` cols across responsive breakpoints in `/app/frontend/src/components/ProjectPhotos.jsx` (line 171). Gap tightened `gap-3 → gap-2`.
+- At 1920px viewport, the grid now renders **8 columns** of ~186px thumbnails (verified live), letting the user scan ~24+ photos without scrolling vs ~12 previously.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
