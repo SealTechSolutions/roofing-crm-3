@@ -540,6 +540,22 @@
 - Set env var `DISABLE_SCHEDULER=1` to disable in tests/CI.
 - Tested: 5 pytest cases (`tests/test_scheduler_jobs.py`) — jobs registered, unknown-job 404, aged-Lead flips, fresh-send stays Lead, digest job returns counts without crashing. Live verification: seeded a deal with a 25h-old timestamp → triggered `mark_lead_to_sent` → deal promoted Lead→Sent with a "Auto-promoted Lead → Sent (scope emailed 24h+ ago)" history entry.
 
+### In-App Scope Editor + Sent-PDF Snapshot Links (Feb 2026 — iteration_23)
+
+**Scope Editor (P2)** — per-deal bullet overrides without leaving the app:
+- New `scope_overrides` field on `DealIn` model + helper `_apply_scope_overrides()` in `spec_sheet.py` deep-merges per-deal overrides onto the resolved template before rendering the PDF.
+- Backend endpoints:
+  - `GET /api/deals/{id}/scope-bullets` → returns `{template_title, defaults, effective, overrides, overridden_keys[]}` so the editor pre-populates with whatever the user currently sees.
+  - `PUT /api/deals/{id}/scope-bullets` → persists overrides; reverts each field automatically when an empty / whitespace-only value is supplied. Returns the updated GET shape in one round-trip.
+- Frontend: new `<ScopeEditorModal>` component opened by an "EDIT SCOPE" quick-action button on the deal header. Lets the user edit document title, both section headings, all bullets (with ▲/▼ reorder, delete, "+ Add bullet"), and the Key Advantages section when present. "CUSTOMIZED" badge per section + per-section "Reset" + global "Reset All".
+- Save logic is minimal: only fields that differ from template defaults are sent over the wire, so future template improvements still flow through for sections the user didn't touch.
+
+**Sent-PDF Snapshot Links (P3)** — "Open the PDF that went out":
+- `POST /api/deals/{id}/spec-sheet/email` now stashes the exact PDF bytes that were attached into Object Storage with `is_sent_snapshot: true` and writes the new file_id into the corresponding `status_history` entry's `pdf_file_id` field.
+- `GET /api/deals/{id}/activity` surfaces that file_id on the "Scope emailed (send #N)" row, and the existing `/files/{file_id}/download?token=...` endpoint serves it (no new download surface needed).
+- Frontend: each `DealActivityTimeline` row whose `pdf_file_id` is set now wraps its title in an `<a target="_blank">` link — one click re-opens the exact version that went out.
+- Tested: 4 pytest cases (`tests/test_scope_editor.py`) — defaults shape, overrides change the PDF, empty overrides revert, snapshot is downloadable.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

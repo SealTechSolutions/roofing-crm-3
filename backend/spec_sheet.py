@@ -809,6 +809,38 @@ def _resolve_template(roof_type: str | None, current_roof_type: str | None = Non
     return ROOF_TEMPLATE_MAP.get(key, SILICONE_TEMPLATE)
 
 
+def _apply_scope_overrides(template: dict, overrides: dict | None) -> dict:
+    """Return a shallow copy of `template` with any per-deal bullet overrides
+    applied. Each override key replaces the corresponding template field IF a
+    non-empty value is supplied; otherwise the template default wins.
+
+    Supported override keys:
+      - title (str)
+      - scope_1_title (str)
+      - scope_1 (List[str])
+      - scope_2_title (str)
+      - scope_2 (List[str])
+      - key_advantages (List[str])
+    """
+    if not overrides:
+        return template
+    merged = dict(template)
+    for key in ("title", "scope_1_title", "scope_2_title"):
+        v = overrides.get(key)
+        if isinstance(v, str) and v.strip():
+            merged[key] = v.strip()
+    for key in ("scope_1", "scope_2", "key_advantages"):
+        v = overrides.get(key)
+        if isinstance(v, list):
+            # Reject empty list to avoid blowing out the template by accident;
+            # filter blanks and require at least one real bullet.
+            cleaned = [str(x).strip() for x in v if str(x).strip()]
+            if cleaned:
+                merged[key] = cleaned
+    return merged
+
+
+
 TERMS = [
     ("PAYMENT TERMS.", "Proposals are valid for thirty (30) days from the date issued. Fifty percent (50%) of the total contract amount is due upon acceptance to order materials and prior to scheduling of the work, unless otherwise specified in the milestone schedule. The remaining balance is due at mid-project and/or upon substantial completion per the agreed milestone schedule."),
     ("ACCOUNTS.", "Invoices past due by thirty (30) days will accrue interest at one and one-half percent (1.5%) per month, or the maximum rate permitted by law. The Owner shall be responsible for all reasonable collection costs, including attorneys' fees."),
@@ -1309,6 +1341,9 @@ def build_spec_sheet(
         roof_type or data.get("roof_type_label"),
         current_roof_type or data.get("current_roof_type"),
     )
+    # Per-deal overrides from the in-app Scope Editor (P2). When the deal has
+    # `scope_overrides` set, those bullets/titles supersede the template.
+    template = _apply_scope_overrides(template, data.get("scope_overrides"))
 
     # Construction Project / Other — render a dedicated 2-page document
     # (Page 1 = scope + total + signoff, Page 2 = T&C). Bypasses the standard

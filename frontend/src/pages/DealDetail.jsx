@@ -12,6 +12,7 @@ import ProjectPhotos from "@/components/ProjectPhotos";
 import GrammarCheck from "@/components/GrammarCheck";
 import { DealStagePipeline, NextStepCard, DealActivityTimeline, DealQuickActions } from "@/components/DealWorkflow";
 import { InvoiceEditor } from "@/pages/Invoices";
+import ScopeEditorModal from "@/components/ScopeEditorModal";
 
 export default function DealDetail() {
   const { id } = useParams();
@@ -28,6 +29,7 @@ export default function DealDetail() {
   const [dealAssessments, setDealAssessments] = useState([]);
   // One-click + Invoice / Record Payment quick-action modals (live on the Deal page itself)
   const [invoiceEditor, setInvoiceEditor] = useState(null); // null | invoice object (new or existing)
+  const [scopeEditorOpen, setScopeEditorOpen] = useState(false);
 
   const reload = async () => {
     const r = await api.get(`/deals/${id}`);
@@ -363,6 +365,7 @@ export default function DealDetail() {
           <DealQuickActions
             deal={deal}
             onEmailScope={() => setEmailScopeOpen(true)}
+            onEditScope={() => setScopeEditorOpen(true)}
             onCreateInvoice={() => {
               // Prefill from deal + linked contact + property
               const contractTotal = Number(deal.chosen_amount || 0);
@@ -1154,6 +1157,14 @@ export default function DealDetail() {
               .catch(() => {});
             toast.success("Invoice saved");
           }}
+        />
+      )}
+
+      {scopeEditorOpen && (
+        <ScopeEditorModal
+          dealId={id}
+          onClose={() => setScopeEditorOpen(false)}
+          onSaved={() => reload().catch(() => {})}
         />
       )}
     </div>

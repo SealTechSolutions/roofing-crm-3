@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   CheckCircle2, Circle, Clock, ChevronRight, Send, FileText, DollarSign,
   Mail, Calendar as CalIcon, Wrench, Camera, Inbox, ArrowRight, Truck, ClipboardCheck,
-  Hammer, ShieldCheck, Lock, AlertCircle,
+  Hammer, ShieldCheck, Lock, AlertCircle, Pencil,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------------------
@@ -252,6 +252,9 @@ export function DealActivityTimeline({ dealId }) {
     <div className="space-y-2.5" data-testid="deal-activity-timeline">
       {items.map((it, idx) => {
         const Icon = KIND_ICON[it.kind] || Circle;
+        const pdfHref = it.pdf_file_id
+          ? `${process.env.REACT_APP_BACKEND_URL}/api/files/${it.pdf_file_id}/download?token=${encodeURIComponent(localStorage.getItem("crm_token") || "")}`
+          : null;
         return (
           <div key={idx} className="flex items-start gap-2.5">
             <div
@@ -261,7 +264,22 @@ export function DealActivityTimeline({ dealId }) {
               <Icon className="w-3 h-3 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium leading-tight" data-testid={`activity-item-${idx}`}>{it.title}</div>
+              <div className="text-xs font-medium leading-tight" data-testid={`activity-item-${idx}`}>
+                {pdfHref ? (
+                  <a
+                    href={pdfHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-700 hover:text-blue-900 underline decoration-dotted underline-offset-2"
+                    data-testid={`activity-pdf-link-${idx}`}
+                    title="Open the PDF that went out"
+                  >
+                    {it.title}
+                  </a>
+                ) : (
+                  it.title
+                )}
+              </div>
               {it.subtitle && <div className="text-[11px] text-zinc-500 truncate">{it.subtitle}</div>}
               <div className="text-[10px] font-mono text-zinc-400 mt-0.5">{formatTs(it.ts)}</div>
             </div>
@@ -288,12 +306,17 @@ function formatTs(ts) {
  * Quick Actions strip — top-right of the deal page header.
  * --------------------------------------------------------------------------- */
 
-export function DealQuickActions({ deal, onEmailScope, onCreateInvoice, onRecordPayment }) {
+export function DealQuickActions({ deal, onEmailScope, onCreateInvoice, onRecordPayment, onEditScope }) {
   return (
     <div className="flex items-center gap-2 flex-wrap" data-testid="deal-quick-actions">
       <button onClick={onEmailScope} className="inline-flex items-center gap-1.5 h-9 px-3 border border-zinc-300 hover:border-blue-700 hover:text-blue-700 text-[10px] font-bold uppercase tracking-wider rounded-sm" data-testid="quick-email-scope">
         <Mail className="w-3.5 h-3.5" /> Email Scope
       </button>
+      {onEditScope && (
+        <button onClick={onEditScope} className="inline-flex items-center gap-1.5 h-9 px-3 border border-zinc-300 hover:border-blue-700 hover:text-blue-700 text-[10px] font-bold uppercase tracking-wider rounded-sm" data-testid="quick-edit-scope">
+          <Pencil className="w-3.5 h-3.5" /> Edit Scope
+        </button>
+      )}
       <button onClick={onCreateInvoice} className="inline-flex items-center gap-1.5 h-9 px-3 border border-zinc-300 hover:border-blue-700 hover:text-blue-700 text-[10px] font-bold uppercase tracking-wider rounded-sm" data-testid="quick-new-invoice">
         <FileText className="w-3.5 h-3.5" /> + Invoice
       </button>

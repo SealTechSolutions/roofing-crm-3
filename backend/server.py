@@ -532,6 +532,11 @@ class DealIn(BaseModel):
     # Set when the customer counter-signs the proposal — promotes the
     # "Scope Sent" pipeline derivation to a stronger checkpoint.
     scope_signed_at: str = ""
+    # Per-deal scope-bullet overrides — populated by the in-app Scope Editor.
+    # Schema: { title?: str, scope_1_title?: str, scope_1?: List[str],
+    #           scope_2_title?: str, scope_2?: List[str], key_advantages?: List[str] }
+    # Empty / missing values fall back to the spec_sheet.py template default.
+    scope_overrides: dict = Field(default_factory=dict)
 
 
 class Deal(DealIn):
@@ -1237,12 +1242,14 @@ async def deal_activity(deal_id: str, current=Depends(get_current_user)):
             actor = entry.get("user_name") or ""
             attach_bit = f" {EM_DASH} {attach} attachment{'s' if attach != 1 else ''}" if attach else ""
             actor_bit = f" by {actor}" if actor else ""
+            pdf_file_id = entry.get("pdf_file_id") or ""
             items.append({
                 "ts": entry.get("at") or "",
                 "kind": "invoice_sent" if label.startswith("Scope") else "assessment_created",
                 "title": f"{label} (send #{scope_send_running_count})",
                 "subtitle": f"to {recipient}{attach_bit}{actor_bit}",
                 "color": "#062B67",
+                "pdf_file_id": pdf_file_id,
             })
             continue
         # Default status-change entry (existing pattern: {from, to, at})
@@ -4094,6 +4101,34 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
     # pipeline visualization stayed stuck at "Email the scope".)
     sent_at = now_iso()
     history_label = "Assessment emailed" if is_assessment else "Scope emailed"
+
+    # Persist the exact PDF that went out to Object Storage so reps can re-open
+    # it from the Activity Timeline ("Open the PDF that went out" link). The
+    # raw `pdf_bytes` was generated a few lines above for the attachment.
+    sent_pdf_file_id = ""
+    try:
+        sent_pdf_file_id = str(uuid.uuid4())
+        kind_slug = "assessment-pdf" if is_assessment else "scope-pdf"
+        sp = f"{APP_NAME}/uploads/deal/{deal_id}/{kind_slug}-{sent_pdf_file_id}.pdf"
+        put_object(sp, pdf_bytes, "application/pdf")
+        await db.files.insert_one({
+            "id": sent_pdf_file_id,
+            "parent_type": "deal",
+            "parent_id": deal_id,
+            "category": "Assessment" if is_assessment else "Scope",
+            "storage_path": sp,
+            "original_filename": f"{project_label}-{'assessment' if is_assessment else 'scope'}-{sent_at[:10]}.pdf",
+            "content_type": "application/pdf",
+            "size": len(pdf_bytes),
+            "is_deleted": False,
+            "uploaded_by": current["id"],
+            "created_at": sent_at,
+            "is_sent_snapshot": True,  # marks this as a frozen send-snapshot, not user-uploaded
+        })
+    except Exception as e:
+        logger.warning(f"sent-PDF snapshot stash failed for deal={deal_id}: {e}")
+        sent_pdf_file_id = ""
+
     history_entry = {
         "at": sent_at,
         "user_id": current.get("id", ""),
@@ -4101,6 +4136,7 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
         "label": history_label,
         "to": to_email,
         "attachments_count": len(attachments),
+        "pdf_file_id": sent_pdf_file_id,
     }
     try:
         await db.deals.update_one(
@@ -4469,6 +4505,9 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
         "construction_exclusions": (deal.get("construction_exclusions") or "").strip(),
         "construction_scope_subtitle": (deal.get("construction_scope_subtitle") or "").strip(),
         "project_type_override": (deal.get("project_type_override") or "").strip(),
+        # Per-deal bullet overrides — surface to build_spec_sheet so the editor
+        # changes win over the template defaults on this project's PDF only.
+        "scope_overrides": deal.get("scope_overrides") or {},
     }
 
     # Fetch cover photo if set
@@ -4491,6 +4530,90 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
         signer_credentials=(user.get("credentials") or "").strip(),
     )
     return pdf_bytes
+
+
+# ----- Scope Editor (P2): per-deal bullet overrides for the spec-sheet PDF -----
+@api_router.get("/deals/{deal_id}/scope-bullets")
+async def get_scope_bullets(deal_id: str, current=Depends(get_current_user)):
+    """Return the effective scope bullets for this deal so the Scope Editor
+    has something to pre-populate. Merges the template defaults with any
+    per-deal `scope_overrides` and flags which keys have been overridden."""
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        raise HTTPException(404, "Deal not found")
+    if current.get("role") == "sales":
+        owns = deal.get("assigned_to_user_id") == current["id"] or deal.get("created_by_user_id") == current["id"]
+        if not owns:
+            raise HTTPException(403, "Not your project")
+
+    from spec_sheet import _resolve_template, _apply_scope_overrides
+    base = _resolve_template(
+        deal.get("proposed_roof_type"),
+        deal.get("current_roof_type"),
+    )
+    overrides = deal.get("scope_overrides") or {}
+    effective = _apply_scope_overrides(base, overrides)
+
+    def _val(field, list_field=False):
+        return effective.get(field, [] if list_field else "")
+
+    return {
+        "deal_id": deal_id,
+        "roof_type": deal.get("proposed_roof_type") or "",
+        "is_new_construction": (deal.get("current_roof_type") or "").lower().startswith("none") or "new construction" in (deal.get("current_roof_type") or "").lower(),
+        "template_title": base.get("title", ""),
+        "is_dynamic_scope": bool(base.get("dynamic_scope")),
+        "effective": {
+            "title": _val("title"),
+            "scope_1_title": _val("scope_1_title"),
+            "scope_1": _val("scope_1", list_field=True),
+            "scope_2_title": _val("scope_2_title"),
+            "scope_2": _val("scope_2", list_field=True),
+            "key_advantages": _val("key_advantages", list_field=True),
+        },
+        "defaults": {
+            "title": base.get("title", ""),
+            "scope_1_title": base.get("scope_1_title", ""),
+            "scope_1": base.get("scope_1", []),
+            "scope_2_title": base.get("scope_2_title", ""),
+            "scope_2": base.get("scope_2", []),
+            "key_advantages": base.get("key_advantages", []),
+        },
+        "overrides": overrides,
+        "overridden_keys": [k for k in ("title", "scope_1_title", "scope_1", "scope_2_title", "scope_2", "key_advantages") if k in overrides and overrides[k]],
+    }
+
+
+@api_router.put("/deals/{deal_id}/scope-bullets")
+async def put_scope_bullets(deal_id: str, body: dict = Body(...), current=Depends(get_current_user)):
+    """Save (or clear) per-deal scope overrides. Pass `null` or omit a key to
+    revert that field to the template default; pass an empty list/string to
+    revert. Returns the same shape as the GET so the UI can refresh in one round trip.
+    """
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0, "id": 1, "assigned_to_user_id": 1, "created_by_user_id": 1})
+    if not deal:
+        raise HTTPException(404, "Deal not found")
+    if current.get("role") == "sales":
+        owns = deal.get("assigned_to_user_id") == current["id"] or deal.get("created_by_user_id") == current["id"]
+        if not owns:
+            raise HTTPException(403, "Not your project")
+
+    overrides: dict = {}
+    for key in ("title", "scope_1_title", "scope_2_title"):
+        v = body.get(key)
+        if isinstance(v, str) and v.strip():
+            overrides[key] = v.strip()
+    for key in ("scope_1", "scope_2", "key_advantages"):
+        v = body.get(key)
+        if isinstance(v, list):
+            cleaned = [str(x).strip() for x in v if str(x).strip()]
+            if cleaned:
+                overrides[key] = cleaned
+    await db.deals.update_one(
+        {"id": deal_id},
+        {"$set": {"scope_overrides": overrides, "updated_at": now_iso()}},
+    )
+    return await get_scope_bullets(deal_id, current)  # type: ignore[arg-type]
 
 
 # ----- Files (Documents) -----
