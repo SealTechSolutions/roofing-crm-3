@@ -612,6 +612,18 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - New package: `qrcode.react@4.2.0` (lightweight, zero extra deps).
 - Verified live: button visible in sidebar → click → modal renders QR + instructions → curl-tested the consume endpoint exchanges the token for a valid JWT, returns 401 on re-use, 401 on bogus tokens.
 
+### Standalone Field Photo Capture — `/field` (Feb 2026)
+- New full-screen mobile-first route `/field` outside the sidebar Layout for rapid roof-photo capture by field workers.
+- **Project picker** (`[data-testid=field-deal-picker]`) lists only OPEN deals — filters out `Closed`, `Lost`, `Past Lead`. Last-used dealId persists in `localStorage` (`field_capture_last_deal_id`) so reopening the page re-selects the same project.
+- **Continuous WebRTC live stream** via `navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })` — camera stays open between shots so users tap-tap-tap without the native camera app closing.
+- **Zero-click upload**: tap the giant white shutter button (`[data-testid=field-shutter]`) → canvas captures the frame → JPEG blob → instant `POST /api/projects/{deal_id}/photos`. No preview, no confirm, no friction.
+- **Offline queue (IndexedDB)**: DB `field-photo-queue` / store `shots` holds `{deal_id, blob, filename, created_at}` rows when offline. Header shows the amber **Offline** pill (`navigator.onLine` + window event listeners) and the status strip shows the `N queued` badge.
+- **Auto-flush on connectivity restore**: `window 'online'` event triggers `flushQueue()` which drains the IndexedDB store one row at a time via POST. Mutex (`flushingRef`) prevents concurrent flushes; breaks on first failure so the rest stay queued for the next online event.
+- **Logout**: `[data-testid=field-logout]` clears `crm_token` and redirects to `/login`.
+- Files: `/app/frontend/src/pages/FieldCapture.jsx` (335 lines), route wired in `/app/frontend/src/App.js` (`<Route path="/field" element={<FieldCapture />} />`, outside the Layout protected branch).
+- Backend tests: `/app/backend/tests/test_field_capture.py` (4/4 pytest pass — upload, list, unauth-rejected, deals filter).
+- Verified end-to-end via testing agent iteration 20: all 10 scenarios PASS, including programmatic IndexedDB injection + online-event auto-flush + photo verified via `GET /api/projects/{id}/photos` + cleanup.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
