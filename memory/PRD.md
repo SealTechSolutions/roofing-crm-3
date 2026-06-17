@@ -596,6 +596,11 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - `start()` is now an awaitable so the persisted overrides are loaded before jobs register.
 - **Tested**: 4 new pytest cases (`tests/test_scheduler_edit.py`) — editor fields surfaced, persist + reschedule lands on a real Friday weekday, hour/minute validation, unknown-job 404. Verified live: flipped weekly digest to Mon+Fri 17:30 UTC, the next-run timestamp recomputed to "Fri, Jun 19, 05:30 PM UTC (in 3d)".
 
+### Assessment Photo Picker — 8-Wide Grid + Clearer Project-Library Sourcing (Feb 2026)
+- The Assessment Findings photo picker already pulled from the project's photo library, but the header label was generic ("Photo Picker") and the "Upload Photo(s)" CTA made it look like a file-from-disk picker. Renamed the header to **"From Project Photo Library"**, the upload button to **"Add to Library"**, and added a project-photo count next to the buttons so the source is unmistakable.
+- Grid switched from `grid-cols-4` (4-wide) to `grid-cols-4 sm:grid-cols-6 md:grid-cols-8` (up to 8-wide on desktop). Tiles are now responsive squares (`PhotoThumb` gained a `tile` variant that uses `w-full aspect-square` instead of fixed 80×80px) so they fill each cell snugly without big gaps.
+- Empty-state copy rewritten to tell the user exactly how to get photos in: *"No photos in this project's library yet. Use **Add to Library** or **Take Photo** above to add one."*
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

@@ -1116,7 +1116,7 @@ function PhotoPickerModal({ dealId, dealPhotos, existingIds, multiSelect, onClos
       <div className="bg-white max-w-4xl w-full max-h-[88vh] overflow-y-auto">
         <div className="px-5 py-3 border-b border-zinc-200 flex items-center justify-between">
           <div>
-            <div className="text-xs font-bold uppercase tracking-widest text-blue-700">Photo Picker</div>
+            <div className="text-xs font-bold uppercase tracking-widest text-blue-700">From Project Photo Library</div>
             <div className="text-base font-black text-zinc-900">{multiSelect ? "Pick up to 4 photos" : "Pick aerial photo"}</div>
           </div>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-900"><X className="w-5 h-5" /></button>
@@ -1125,18 +1125,19 @@ function PhotoPickerModal({ dealId, dealPhotos, existingIds, multiSelect, onClos
         <div className="p-5">
           <div className="mb-4 flex items-center gap-3 flex-wrap">
             <label className="inline-flex items-center gap-2 border border-blue-700 text-blue-700 px-3 py-2 text-xs font-bold uppercase tracking-wider hover:bg-blue-50 cursor-pointer rounded-sm">
-              <Upload className="w-3.5 h-3.5" /> {uploading ? "Uploading..." : "Upload Photo(s)"}
+              <Upload className="w-3.5 h-3.5" /> {uploading ? "Uploading..." : "Add to Library"}
               <input type="file" accept="image/*" multiple onChange={upload} className="hidden" data-testid="photo-upload" />
             </label>
             <CameraCaptureButton onFiles={(files) => upload({ target: { files } })} disabled={uploading} testId="camera-assessment-photo-btn" />
-            <span className="ml-1 text-xs text-zinc-500">{dealPhotos.length} photo{dealPhotos.length === 1 ? "" : "s"} in project library</span>
+            <span className="ml-1 text-xs text-zinc-500">{dealPhotos.length} photo{dealPhotos.length === 1 ? "" : "s"} in this project</span>
           </div>
           {dealPhotos.length === 0 ? (
             <div className="text-sm text-zinc-500 text-center py-8 border border-dashed border-zinc-300">
-              No photos in this project yet. Upload one above to get started.
+              No photos in this project&apos;s library yet. Use <b>Add to Library</b> or <b>Take Photo</b> above to add one,
+              <br />or upload photos from the Project page first.
             </div>
           ) : (
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
               {dealPhotos.map((p) => (
                 <button
                   key={p.id}
@@ -1147,7 +1148,7 @@ function PhotoPickerModal({ dealId, dealPhotos, existingIds, multiSelect, onClos
                   }`}
                   data-testid={`pick-photo-${p.id}`}
                 >
-                  <PhotoThumb photo={p} />
+                  <PhotoThumb photo={p} tile />
                   {selected.has(p.id) && (
                     <div className="absolute top-1 right-1 bg-blue-700 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold">
                       ✓
@@ -1381,7 +1382,7 @@ function YearOrUnknown({ value, onChange, testId }) {
   );
 }
 
-function PhotoThumb({ photo, large }) {
+function PhotoThumb({ photo, large, tile }) {
   const token = localStorage.getItem("crm_token");
   const url = `${process.env.REACT_APP_BACKEND_URL}/api/projects/${photo.deal_id}/photos/${photo.id}/download?token_qs=${encodeURIComponent(token || "")}`;
   // The endpoint doesn't take token_qs; use img tag with crossOrigin won't work for auth headers.
@@ -1398,7 +1399,11 @@ function PhotoThumb({ photo, large }) {
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photo.id]);
-  const size = large ? "h-48" : "h-20 w-20";
+  // Three sizing modes:
+  //   tile  — fills the parent grid cell as a square (used by PhotoPickerModal at 6-wide)
+  //   large — fixed 192px preview (used for aerial cover photo)
+  //   default — fixed 80×80 (used in finding blocks alongside text)
+  const size = tile ? "w-full aspect-square" : large ? "h-48" : "h-20 w-20";
   return (
     <div className={`${size} bg-zinc-100 overflow-hidden flex items-center justify-center`}>
       {blobUrl ? (
