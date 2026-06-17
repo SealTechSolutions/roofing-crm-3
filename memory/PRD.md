@@ -666,6 +666,16 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
   4. Cleanup on leaving the camera view stops the MediaStream tracks (turns the phone's camera LED off).
 - Headless test now surfaces the explicit `Requested device not found` error UI (instead of a silent black box), confirming the new flow.
 
+### Field Camera Zoom & Ultrawide Support (Feb 2026)
+- Added **pinch-to-zoom** + **tap-zoom pills** to the camera view:
+  - Two-finger pinch on the camera area scales 1× to 6× (digital). `touch-action: none` blocks iOS from page-zooming during the gesture.
+  - Bottom-of-camera pill bar: `0.5×` (only shown if the device has an ultra-wide rear lens), `1×`, `2×`, `3×`, plus a live zoom-level readout (e.g., `1.7×`).
+  - Active pill is amber-filled; inactive pills are translucent.
+- **Ultra-wide lens switching** (`0.5×` on iPhone Pro / recent Androids): after the first successful `getUserMedia` call, `enumerateDevices()` labels become available — we look for one matching `/ultra.?wide|0\.5/i` and stash its `deviceId`. Tapping `0.5×` re-acquires the stream with `{video: {deviceId: {exact: ultrawideId}}}` for true optical wide-angle (not digital interpolation). Tapping `1×/2×/3×` switches back to the default rear camera.
+- **Capture matches preview**: the saved JPEG is cropped to the centre `1/zoom` of the source frame and rescaled to full canvas size, so the photo on the server matches exactly what the user saw on screen.
+- Files: `/app/frontend/src/pages/FieldCapture.jsx` — added `zoom`, `ultrawideId`, `useUltrawide` state; `onTouchStart`/`onTouchMove` pinch handlers; `setZoomLevel` helper; updated `captureAndUpload` to apply the zoom-crop; new `ZoomChip` sub-component.
+- Regression smoke-tested: list view (8 rows), tap → camera (back+shutter present), back → list (8 rows restored). All green.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

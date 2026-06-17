@@ -71,6 +71,18 @@ export default function FieldCapture() {
   const [queuedCount, setQueuedCount] = useState(0);
   const [online, setOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
 
+  // ---------- Zoom + lens selection ----------
+  // `zoom` is digital zoom (>=1, applied as CSS transform on the video and
+  // mirrored on the canvas at capture time so the saved JPEG matches).
+  // `ultrawideId` is the deviceId of the rear ultra-wide lens (iPhone Pro
+  // models, recent Androids). When the user taps the 0.5x pill we re-acquire
+  // the stream with that lens; tapping 1x/2x/3x switches back to the default
+  // back camera and applies digital zoom.
+  const [zoom, setZoom] = useState(1);
+  const [ultrawideId, setUltrawideId] = useState("");
+  const [useUltrawide, setUseUltrawide] = useState(false);
+  const pinchRef = useRef({ startDist: 0, startZoom: 1 });
+
   // ---------- Auth + projects bootstrap ----------
   useEffect(() => {
     if (!token) {
@@ -122,26 +134,40 @@ export default function FieldCapture() {
   const startCamera = useCallback(async () => {
     try {
       setCameraError("");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false,
-      });
+      // Tear down any prior stream so switching lenses cleanly releases it.
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      const constraints = useUltrawide && ultrawideId
+        ? { video: { deviceId: { exact: ultrawideId } }, audio: false }
+        : { video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play().catch(() => {});
       }
       setCameraReady(true);
+      // Best-effort: discover ultrawide lens once we have permission (labels
+      // are only populated after the first successful getUserMedia call).
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const back = devices.filter((d) => d.kind === "videoinput");
+        const uw = back.find((d) => /ultra.?wide|0\.5/i.test(d.label || ""));
+        if (uw && uw.deviceId && uw.deviceId !== ultrawideId) setUltrawideId(uw.deviceId);
+      } catch { /* ignore */ }
     } catch (e) {
       setCameraError(e.message || "Camera unavailable. Allow camera access in your browser settings.");
       setCameraReady(false);
     }
-  }, []);
+  }, [useUltrawide, ultrawideId]);
 
   // Start the camera only when entering the camera view (dealId set). Stop
   // and release the device when returning to the list so the phone's LED
   // turns off and no permission prompt fires until the user actually picks
-  // a project to shoot.
+  // a project to shoot. Also re-fires when the user toggles to the ultrawide
+  // lens so the stream is re-acquired with the new deviceId.
   useEffect(() => {
     if (!dealId) return undefined;
     startCamera();
@@ -216,10 +242,19 @@ export default function FieldCapture() {
     const video = videoRef.current;
     const canvas = canvasRef.current || document.createElement("canvas");
     canvasRef.current = canvas;
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
+    const vw = video.videoWidth || 1280;
+    const vh = video.videoHeight || 720;
+    // Digital zoom: crop the centre 1/zoom of the frame and rescale to full
+    // canvas size so the saved JPEG matches what the user saw on screen.
+    const z = Math.max(1, zoom);
+    const sw = vw / z;
+    const sh = vh / z;
+    const sx = (vw - sw) / 2;
+    const sy = (vh - sh) / 2;
+    canvas.width = vw;
+    canvas.height = vh;
     const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise((resolve) =>
       canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85)
     );
@@ -250,7 +285,37 @@ export default function FieldCapture() {
     } finally {
       setUploadingShot(false);
     }
-  }, [dealId, cameraReady, uploadingShot, token, refreshQueueCount]);
+  }, [dealId, cameraReady, uploadingShot, token, refreshQueueCount, zoom]);
+
+  // ---------- Pinch-to-zoom + tap-to-zoom ----------
+  const onTouchStart = useCallback((e) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchRef.current = { startDist: Math.hypot(dx, dy), startZoom: zoom };
+    }
+  }, [zoom]);
+  const onTouchMove = useCallback((e) => {
+    if (e.touches.length === 2 && pinchRef.current.startDist > 0) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const ratio = dist / pinchRef.current.startDist;
+      const next = Math.max(1, Math.min(6, pinchRef.current.startZoom * ratio));
+      setZoom(next);
+      e.preventDefault();
+    }
+  }, []);
+  const setZoomLevel = useCallback((level) => {
+    if (level === 0.5) {
+      // Switch to ultrawide lens (re-acquires the stream via the camera effect).
+      setUseUltrawide(true);
+      setZoom(1);
+    } else {
+      setUseUltrawide(false);
+      setZoom(level);
+    }
+  }, []);
 
   // ---------- Render ----------
   const activeDeal = deals.find((d) => d.id === dealId);
@@ -322,7 +387,12 @@ export default function FieldCapture() {
       </div>
 
       {/* Live camera */}
-      <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
+      <div
+        className="relative flex-1 bg-black flex items-center justify-center overflow-hidden"
+        style={{ touchAction: "none" }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+      >
         {cameraError ? (
           <div className="text-center p-6">
             <AlertCircle className="w-10 h-10 text-rose-500 mx-auto mb-3" />
@@ -337,9 +407,47 @@ export default function FieldCapture() {
             playsInline
             muted
             autoPlay
+            style={{ transform: `scale(${zoom})`, transformOrigin: "center center", transition: "transform 80ms linear" }}
             className="max-w-full max-h-full object-contain"
             data-testid="field-video"
           />
+        )}
+        {/* Zoom-level pills overlay (bottom of camera area) */}
+        {!cameraError && (
+          <div
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/60 backdrop-blur-md px-2 py-1.5 rounded-full"
+            data-testid="field-zoom-bar"
+          >
+            {ultrawideId && (
+              <ZoomChip
+                label="0.5x"
+                active={useUltrawide}
+                onClick={() => setZoomLevel(0.5)}
+                testId="field-zoom-05x"
+              />
+            )}
+            <ZoomChip
+              label="1x"
+              active={!useUltrawide && zoom < 1.5}
+              onClick={() => setZoomLevel(1)}
+              testId="field-zoom-1x"
+            />
+            <ZoomChip
+              label="2x"
+              active={!useUltrawide && zoom >= 1.5 && zoom < 2.5}
+              onClick={() => setZoomLevel(2)}
+              testId="field-zoom-2x"
+            />
+            <ZoomChip
+              label="3x"
+              active={!useUltrawide && zoom >= 2.5}
+              onClick={() => setZoomLevel(3)}
+              testId="field-zoom-3x"
+            />
+            <span className="text-[10px] font-mono text-zinc-400 ml-1 pr-1" data-testid="field-zoom-current">
+              {useUltrawide ? "0.5×" : `${zoom.toFixed(1)}×`}
+            </span>
+          </div>
         )}
       </div>
 
@@ -385,6 +493,28 @@ export default function FieldCapture() {
 }
 
 // ---------- Small sub-components ----------
+
+/**
+ * Single zoom-level chip in the bottom-of-camera zoom bar. Active state shows
+ * a filled circle with darker bg; inactive state is a flat translucent pill.
+ */
+function ZoomChip({ label, active, onClick, testId }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      className={
+        "min-w-[42px] h-9 rounded-full text-xs font-bold tracking-wide transition-colors " +
+        (active
+          ? "bg-amber-400 text-zinc-950"
+          : "bg-zinc-800/80 text-zinc-200 hover:bg-zinc-700")
+      }
+    >
+      {label}
+    </button>
+  );
+}
 
 /**
  * Top bar shared between list view and camera view (the camera view renders
