@@ -21,6 +21,7 @@ import BooksCOA from "@/pages/BooksCOA";
 import CoiReminders from "@/pages/CoiReminders";
 import PublicGallery from "@/pages/PublicGallery";
 import ProposalSign from "@/pages/ProposalSign";
+import MagicLinkConsume from "@/pages/MagicLinkConsume";
 import TrashPage from "@/pages/Trash";
 import Profile from "@/pages/Profile";
 import Assessments from "@/pages/Assessments";
@@ -64,6 +65,7 @@ function App() {
             {/* Public photo-share gallery — NO auth required */}
             <Route path="/share/photos/:token" element={<PublicGallery />} />
             <Route path="/sign/:token" element={<ProposalSign />} />
+            <Route path="/m/:token" element={<MagicLinkConsume />} />
             <Route
               element={
                 <ProtectedRoute>

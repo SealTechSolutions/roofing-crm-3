@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 
 const ALL_NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testId: "nav-dashboard" },
@@ -28,6 +29,7 @@ const ALL_NAV = [
 export default function Layout() {
   const { user, logout } = useAuth();
   const NAV = ALL_NAV.filter((item) => !item.adminOnly || user?.role === "admin");
+  const [showGetApp, setShowGetApp] = useState(false);
   return (
     <div className="min-h-screen flex bg-zinc-100">
       {/* Sidebar */}
@@ -75,6 +77,14 @@ export default function Layout() {
             </div>
           </NavLink>
           <button
+            data-testid="get-app-button"
+            onClick={() => setShowGetApp(true)}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 mb-2 border border-blue-700 text-blue-400 hover:bg-blue-700 hover:text-white text-xs uppercase tracking-wider font-bold transition-colors rounded-sm"
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+            Get App on My Phone
+          </button>
+          <button
             data-testid="logout-button"
             onClick={logout}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-zinc-800 hover:border-blue-700 hover:text-blue-500 text-xs uppercase tracking-wider font-bold transition-colors rounded-sm"
@@ -89,6 +99,8 @@ export default function Layout() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
+
+      {showGetApp && <GetAppOnPhoneModal onClose={() => setShowGetApp(false)} />}
     </div>
   );
 }

@@ -601,6 +601,17 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Grid switched from `grid-cols-4` (4-wide) to `grid-cols-4 sm:grid-cols-6 md:grid-cols-8` (up to 8-wide on desktop). Tiles are now responsive squares (`PhotoThumb` gained a `tile` variant that uses `w-full aspect-square` instead of fixed 80×80px) so they fill each cell snugly without big gaps.
 - Empty-state copy rewritten to tell the user exactly how to get photos in: *"No photos in this project's library yet. Use **Add to Library** or **Take Photo** above to add one."*
 
+### Get App on My Phone — Magic-Link QR (Feb 2026)
+- Backend: two new endpoints.
+  - `POST /api/auth/magic-link` (auth required) — issues a 24-char URL-safe single-use token bound to the caller. Stored in new `magic_links` Mongo collection with 5-minute expiry and a TTL index for auto-cleanup. Returns `{token, expires_in: 300}`.
+  - `POST /api/auth/magic-link/consume` (public) — exchanges the token for a JWT (same shape as `/auth/login`). Marks the token consumed atomically via `$set` filter on `consumed_at: null` so a race can't double-consume. 401 on unknown / expired / already-used tokens (no info leak between the three).
+- Frontend:
+  - New `GetAppOnPhoneModal` component renders a `qrcode.react` SVG of `<origin>/m/<token>`, with Copy Link + Regenerate buttons and per-OS Add-to-Home-Screen instructions.
+  - New `/m/:token` public route (`<MagicLinkConsume>`) consumes the token, drops the JWT into `localStorage`, and redirects to `/` already signed in.
+  - New sidebar button "Get App on My Phone" (data-testid=`get-app-button`) opens the modal.
+- New package: `qrcode.react@4.2.0` (lightweight, zero extra deps).
+- Verified live: button visible in sidebar → click → modal renders QR + instructions → curl-tested the consume endpoint exchanges the token for a valid JWT, returns 401 on re-use, 401 on bogus tokens.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

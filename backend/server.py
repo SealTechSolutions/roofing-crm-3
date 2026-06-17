@@ -735,6 +735,75 @@ async def me(current=Depends(get_current_user)):
     )
 
 
+# ----- Magic-link for "Get App on My Phone" -----------------------------------
+# A logged-in user generates a single-use token; scanning the QR / opening the
+# link on their phone consumes the token and signs them in without re-typing
+# the password. Token expires in 5 minutes and is invalidated on first use.
+@api_router.post("/auth/magic-link")
+async def issue_magic_link(current=Depends(get_current_user)):
+    token = secrets.token_urlsafe(24)
+    now = datetime.now(timezone.utc)
+    await db.magic_links.insert_one({
+        "token": token,
+        "user_id": current["id"],
+        "email": current["email"],
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=5)).isoformat(),
+        "consumed_at": None,
+    })
+    # Index for fast lookup + TTL cleanup (best-effort; idempotent)
+    try:
+        await db.magic_links.create_index("token", unique=True)
+        await db.magic_links.create_index("expires_at", expireAfterSeconds=600)
+    except Exception:
+        pass
+    return {"token": token, "expires_in": 300}
+
+
+@api_router.post("/auth/magic-link/consume")
+async def consume_magic_link(body: dict = Body(...)):
+    """Public endpoint — exchanges a one-time magic-link token for a JWT.
+    No auth required (you ARE authenticating). Idempotent within the 5-minute
+    window? No — single-use. Once consumed, returns 401 on retry."""
+    token = (body.get("token") or "").strip()
+    if not token:
+        raise HTTPException(400, "token required")
+    rec = await db.magic_links.find_one({"token": token})
+    if not rec:
+        raise HTTPException(401, "Invalid or expired link")
+    if rec.get("consumed_at"):
+        raise HTTPException(401, "This link has already been used")
+    expires_at = rec.get("expires_at") or ""
+    try:
+        exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+    except Exception:
+        exp_dt = None
+    if exp_dt and datetime.now(timezone.utc) > exp_dt:
+        raise HTTPException(401, "This link has expired — generate a new one")
+
+    # Mark consumed (best-effort race guard via $set with filter)
+    upd = await db.magic_links.update_one(
+        {"token": token, "consumed_at": None},
+        {"$set": {"consumed_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if upd.modified_count == 0:
+        raise HTTPException(401, "This link has already been used")
+
+    user = await db.users.find_one({"id": rec["user_id"]})
+    if not user:
+        raise HTTPException(401, "User no longer exists")
+
+    access_token = create_access_token(user["id"], user["email"])
+    return TokenOut(
+        access_token=access_token,
+        user=UserOut(
+            id=user["id"], email=user["email"], name=user.get("name", ""),
+            role=user.get("role", "admin"), phone=user.get("phone", ""),
+            title=user.get("title", ""), credentials=user.get("credentials", ""),
+        ),
+    )
+
+
 
 class ProfileUpdateReq(BaseModel):
     """Self-edit: a logged-in user updates their OWN profile (name / title / phone / credentials).
