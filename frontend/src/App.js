@@ -30,6 +30,7 @@ import Calendar from "@/pages/Calendar";
 import Tasks from "@/pages/Tasks";
 import Integrations from "@/pages/Integrations";
 import Schedule from "@/pages/Schedule";
+import FieldCapture from "@/pages/FieldCapture";
 import PWAControls from "@/components/PWAControls";
 import "@/App.css";
 
@@ -66,6 +67,8 @@ function App() {
             <Route path="/share/photos/:token" element={<PublicGallery />} />
             <Route path="/sign/:token" element={<ProposalSign />} />
             <Route path="/m/:token" element={<MagicLinkConsume />} />
+            {/* Standalone full-screen mobile camera capture (no sidebar Layout) */}
+            <Route path="/field" element={<FieldCapture />} />
             <Route
               element={
                 <ProtectedRoute>

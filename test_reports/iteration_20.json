@@ -1,0 +1,45 @@
+{
+  "summary": "Comprehensive E2E test of the new /field FieldCapture page. ALL 10 test scenarios PASSED. Backend pytest (4/4 pass) verified POST/GET /api/projects/{deal_id}/photos and the deals filter. Playwright covered: unauth redirect, render, dropdown filter (non-closed only), shutter disabled-state, deal-pick persistence, offline pill, IndexedDB queue add + badge, auto-flush on online + verified flushed photo via API, logout, and smoke /, /deals, /calendar, /tasks. No bugs found.",
+  "tests_executed": [
+    "Test 1 PASS — GET /field unauthenticated -> redirects to /login (FieldCapture useEffect token check works).",
+    "Test 2 PASS — After login + token in localStorage, /field renders header (Camera icon + user name 'Darren Oliver'), Online/Offline pill, [data-testid=field-deal-picker], [data-testid=field-shutter], [data-testid=field-status], [data-testid=field-logout]. Headless camera unavailable so 'Requested device not found' is shown (expected).",
+    "Test 3 PASS — Picker has 8 real deal options + 1 placeholder. None carry [Closed]/[Lost]/[Past Lead] prefixes. Filter `!['Closed','Lost','Past Lead'].includes(d.status)` working.",
+    "Test 4 PASS — Shutter disabled before pick (no dealId AND no camera). After picking project, shutter remains disabled because camera unavailable in headless — matches spec.",
+    "Test 5 PASS — Selecting a project writes `field_capture_last_deal_id` to localStorage. After page reload, the picker re-selects the same deal id.",
+    "Test 6 PASS — page.context.set_offline(True) + dispatch 'offline' -> header shows the amber Offline pill, Online pill hidden.",
+    "Test 7 PASS — Programmatically added 1 row to indexedDB `field-photo-queue` -> `shots` store via page.evaluate(). After reload (still offline), [data-testid=field-queued-count] renders text '1 queued'. refreshQueueCount on mount works.",
+    "Test 8 PASS — set_offline(False) + dispatch 'online' -> within 6s the queued item is uploaded via POST /api/projects/{deal_id}/photos, IndexedDB queue size drops to 0, and the new photo is verified present in GET /api/projects/{deal_id}/photos. UI uploaded-count badge increments to 1. Cleanup via DELETE succeeded.",
+    "Test 9 PASS — Click [data-testid=field-logout] -> localStorage 'crm_token' removed and navigation to /login.",
+    "Test 10 PASS — Smoke /, /deals, /calendar, /tasks all load while authenticated (no /login bounce).",
+    "Backend pytest 4/4 PASS — auth_me, deals filter sanity, upload+list+delete, unauth upload rejected (401)."
+  ],
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/field", "issues": ["Minor React hydration warning logged: '<span> cannot be a child of <option>'. Cause: the project label inside <option> is being wrapped in a tracking <span> by the dev tooling (x-source-* attrs). This is a dev-mode emergent-instrumentation artifact, not a functional bug — the option still renders and is selectable correctly. Will not appear in production builds."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_field_capture.py",
+    "/app/test_reports/pytest/pytest_iter20.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FieldCapture.jsx:117-122 startCamera is invoked once on mount and tracks are stopped on unmount — fine for a standalone page but if the camera errors (e.g. permission denied) there's no automatic retry; the user must hit 'Try Again'. Acceptable for MVP.",
+    "FieldCapture.jsx:141-166 flushQueue uses a `flushingRef` mutex AND breaks on first POST failure — good. However it does NOT add a retry backoff between attempts so a transient 500 will simply wait for the next 'online' event. Could be improved later with a setInterval-based retry.",
+    "FieldCapture.jsx:198-216 captureAndUpload: on a mid-upload failure it falls through to queueAdd — correct. Note: the upload sets `setUploadedCount(n=>n+1)` BEFORE the fd POST resolves successfully (line 207 is after await, so this is fine — re-read confirms it's inside the try block AFTER await).",
+    "FieldCapture.jsx:79-81 deal status filter is a simple include-set: ['Closed','Lost','Past Lead']. If new closed-like statuses are added in the future (e.g. 'Cancelled', 'Archived'), they will incorrectly appear in the field picker. Consider centralising the closed-status list in a shared util.",
+    "Hydration warning: option label is being instrumented with a <span> wrapper by dev tooling. Not a functional issue; mention only.",
+    "project_photos.py POST /photos correctly excludes _id (line 149: doc.pop('_id', None)), validates content type, enforces 25MB max, and persists uploader info. No issues."
+  ],
+  "updated_files": ["/app/backend/tests/test_field_capture.py", "/app/test_reports/iteration_20.json"],
+  "success_rate": {"backend": "100% (4/4 pytest)", "frontend": "100% (10/10 scenarios)"},
+  "test_credentials": "admin@roofingcrm.com / admin123",
+  "seed_data_creation": "Created and then deleted: 1 photo on first non-closed deal via offline-queue auto-flush path (filename TEST_offline.jpg). One additional photo via direct POST in backend pytest (filename TEST_field.jpg) — also deleted.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "FieldCapture at /field is fully wired and verified: route auth-gated via component-level localStorage 'crm_token' check, deal picker filters out Closed/Lost/Past Lead, last-used dealId persists in localStorage key 'field_capture_last_deal_id', IndexedDB DB name 'field-photo-queue' store 'shots' shape {id auto, deal_id, blob, filename, created_at}, online/offline listeners auto-flush queue, logout clears crm_token and routes to /login. Backend POST /api/projects/{deal_id}/photos accepts multipart file= upload and returns 200 with full photo doc. Headless browsers cannot exercise the actual shutter (camera unavailable) — that path was simulated by inserting a blob directly into IndexedDB. The flush path therefore IS exercised end-to-end and confirmed working. Reusable test file: /app/backend/tests/test_field_capture.py.",
+  "rca of the issue": "N/A — no issues found."
+}
