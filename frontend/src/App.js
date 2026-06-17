@@ -47,6 +47,27 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+/**
+ * On phone-sized viewports OR mobile user-agents, every protected CRM route
+ * auto-redirects to /field — the stripped-down project-list + camera UI. The
+ * full CRM is desktop/tablet only. Adding `?desktop=1` to any URL on a phone
+ * forces the full CRM through (preference is remembered for the tab session).
+ */
+const MobileGate = ({ children }) => {
+  if (typeof window === "undefined") return children;
+  // Honour explicit user override first.
+  const urlForce = new URLSearchParams(window.location.search).get("desktop") === "1";
+  if (urlForce) sessionStorage.setItem("force_desktop_crm", "1");
+  if (sessionStorage.getItem("force_desktop_crm") === "1") return children;
+  // Detect phone: small viewport OR a mobile UA string (catches phones that
+  // render the desktop layout via a zoomed-out viewport).
+  const ua = navigator.userAgent || "";
+  const uaIsPhone = /iPhone|Android.+Mobile|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  const isPhone = uaIsPhone || window.innerWidth < 768;
+  if (isPhone) return <Navigate to="/field" replace />;
+  return children;
+};
+
 const PublicRoute = ({ children }) => {
   const { user, loading } = useAuth();
   if (loading) return null;
@@ -72,7 +93,9 @@ function App() {
             <Route
               element={
                 <ProtectedRoute>
-                  <Layout />
+                  <MobileGate>
+                    <Layout />
+                  </MobileGate>
                 </ProtectedRoute>
               }
             >

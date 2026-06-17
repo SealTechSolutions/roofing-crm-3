@@ -11,7 +11,7 @@
  *
  * BUMP THIS WHEN THE STRATEGY CHANGES (build hashes are taken care of automatically).
  */
-const VERSION = "v3";
+const VERSION = "v4";
 const SHELL_CACHE = `sealtech-shell-${VERSION}`;
 const STATIC_CACHE = `sealtech-static-${VERSION}`;
 const SHELL_URLS = ["/", "/index.html", "/manifest.json", "/sealtech-logo.png"];

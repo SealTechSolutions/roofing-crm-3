@@ -649,6 +649,13 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Files: `/app/frontend/src/pages/FieldCapture.jsx` (466 lines, refactored with `TopBar` + `ProjectList` sub-components), `/app/frontend/src/components/Layout.jsx` (sidebar modal redirectPath wired).
 - Verified by testing agent iter 21: **13/13 frontend + 5/5 backend pytest PASS**. Includes IndexedDB queue inject + drain, single-consume StrictMode dedupe still holds, photo upload + listing, single-use magic-link enforcement.
 
+### Mobile-Only Field Mode (Feb 2026)
+- New `MobileGate` wrapper in `/app/frontend/src/App.js` — any phone-sized viewport (`window.innerWidth < 768`) OR mobile user-agent (iPhone/Android-Mobile/iPod/etc.) hitting ANY protected CRM route is auto-redirected to `/field`.
+- Escape hatch: `?desktop=1` on any URL forces the full CRM and is remembered for the tab session (`sessionStorage.force_desktop_crm=1`).
+- Service worker bumped `v3 → v4` so any phones with stale cached bundles get a clean reload + activate-cycle cache purge.
+- Verified live (5/5 PASS): phone UA visits `/`, `/contacts`, etc. → all redirect to `/field`; `?desktop=1` loads dashboard; desktop UA (1440×900) loads dashboard unchanged.
+- Rationale: user is the GM of a small roofing contractor — phones are exclusively for field photo work, never for browsing CRM tables. Removing the full CRM from the phone eliminates the misclick risk and keeps the device focused on shutter+upload.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
