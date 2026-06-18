@@ -1,0 +1,29 @@
+{
+  "summary": "Tested new Ad-hoc Deal Events feature (Roof Walk/Presentation/Meeting/Job Start/Other). All 14 backend pytest cases pass (auth, validation, CRUD lifecycle, calendar feed integration, /api/dashboard/today, include_past filter, reminder scheduler import). Frontend UI flow works end-to-end: schedule panel renders on deal page, form opens with all 5 type options + all data-testid fields, event creates successfully (toast shown, G-Cal badge visible), delete works with confirm prompt + 'Event deleted' toast.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Dashboard Today widget after deal-page event create", "issue": "After creating a Roof Walk for tomorrow on Deal page, navigating to /dashboard within 4s did not show the data-testid='dashboard-today-events' card. Backend GET /api/dashboard/today correctly returns the event (verified by pytest test_appears_in_today_widget). Likely an in-app navigation/caching/timing race — a hard refresh may render it. Worth verifying with a longer wait or by adding a window-focus refetch.", "affected_selectors": ["[data-testid='dashboard-today-events']", "[data-testid^='today-event-']"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_deal_events.py", "/app/test_reports/pytest/pytest_iter22.xml"],
+  "action_items": [
+    "Investigate why /dashboard/today widget didn't appear after in-app navigation when a future event exists. Possibly add useEffect dependency on route change or revalidate on focus. Backend payload is correct."
+  ],
+  "critical_code_review_comments": [
+    "deal_events.py:163 — DealEvent.model_dump() reuses default-factory id, fine. However insert_one(doc.copy()) then find_one — could just return doc to save a DB round trip.",
+    "deal_events.py:215 send_due_reminders only queries today (date == today_iso). If event start is 00:30 UTC tomorrow Mountain Time but local-tz date string is tomorrow, the reminder window 55-65 min before will miss because we never look at tomorrow's docs from yesterday night. Edge case for late-night MT events near midnight; consider also querying date==tomorrow within last hour of day.",
+    "Frontend DealSchedulePanel:46 default form date is today() rather than tomorrow; user might unintentionally schedule a past time. Minor UX nit.",
+    "Frontend Dashboard.jsx TodayEvents fires /dashboard/today only on mount — won't refresh when a deal is created and user returns to dashboard via SPA nav. Add refetch on visibilityChange or route focus."
+  ],
+  "updated_files": ["/app/backend/tests/test_deal_events.py"],
+  "success_rate": {"backend": "100%", "frontend": "92%"},
+  "test_credentials": "darren@sealtechsolutions.co / admin123 (admin)",
+  "seed_data_creation": "Tests create/delete TEST_ prefixed events on first deal (b2f4b511-...). One leftover pre-existing test event remained; one new 'Test Roof Walk UI' was created and deleted during UI test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend test file at /app/backend/tests/test_deal_events.py is a clean regression suite. Frontend UI works; the only flagged item is a SPA nav timing issue on the dashboard Today widget — refresh fixes it. Reminder scheduler not time-traveled, only smoke-imported.",
+  "rca of the issue": "Dashboard Today widget invisible after in-app nav: TodayEvents component fetches /dashboard/today once on mount via useEffect with empty deps. When user goes Deal->Dashboard via React Router, the component was likely already mounted earlier (from initial dashboard visit), so the stale (empty) result persists. Fix: add a refetch trigger (e.g., useLocation key in deps, or window.visibilitychange listener)."
+}

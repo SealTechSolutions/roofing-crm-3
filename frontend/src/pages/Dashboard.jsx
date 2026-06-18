@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { Link } from "react-router-dom";
-import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail, AlarmClock, Flame, Send } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail, AlarmClock, Flame, Send, CalendarDays, Clock, MapPin } from "lucide-react";
 import { ExportButtons } from "@/components/ExportImport";
 import { toast } from "sonner";
 
@@ -105,6 +105,9 @@ export default function Dashboard() {
 
       {/* Books — Per-Entity KPI Strip */}
       <BooksKpiStrip />
+
+      {/* Today + Next 48h — ad-hoc deal events */}
+      <TodayEvents />
 
       {/* Materials In Motion */}
       <MaterialsInMotion motion={motion} />
@@ -841,6 +844,95 @@ function StaleDeals() {
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+
+const EVENT_EMOJI = { "Roof Walk": "🪜", Presentation: "📊", Meeting: "🤝", "Job Start": "🚧", Other: "📅" };
+
+function fmtTime(hhmm) {
+  if (!hhmm || !hhmm.includes(":")) return "";
+  const [h, m] = hhmm.split(":").map((n) => parseInt(n, 10));
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
+function fmtDayHeading(iso, todayIso) {
+  if (iso === todayIso) return "Today";
+  const d = new Date(iso + "T00:00:00");
+  const tomorrow = new Date(todayIso + "T00:00:00");
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (d.toDateString() === tomorrow.toDateString()) return "Tomorrow";
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+}
+
+function TodayEvents() {
+  const [data, setData] = useState({ today: "", events: [] });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/dashboard/today").then((r) => { if (!cancelled) { setData(r.data || { today: "", events: [] }); setLoading(false); } }).catch(() => setLoading(false));
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) return null;
+  if (!data.events || data.events.length === 0) return null;
+
+  // Group by date
+  const byDay = data.events.reduce((acc, ev) => {
+    (acc[ev.date] = acc[ev.date] || []).push(ev);
+    return acc;
+  }, {});
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-sm mb-12" data-testid="dashboard-today-events">
+      <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-teal-700 mb-1">Today &amp; Next 48 Hours</div>
+          <h2 className="font-heading text-lg font-bold tracking-tight flex items-center gap-2">
+            <CalendarDays className="w-5 h-5 text-teal-700" /> Upcoming Appointments
+          </h2>
+        </div>
+        <Link to="/schedule" className="text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:underline">
+          Full Calendar →
+        </Link>
+      </div>
+      <div className="divide-y divide-zinc-100">
+        {Object.entries(byDay).map(([day, evs]) => (
+          <div key={day} className="px-6 py-4">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">
+              {fmtDayHeading(day, data.today)} <span className="text-zinc-300">·</span> {day}
+            </div>
+            <ul className="space-y-2">
+              {evs.map((ev) => (
+                <li key={ev.id} className="flex items-start gap-3" data-testid={`today-event-${ev.id}`}>
+                  <div className="text-2xl leading-none mt-0.5" aria-hidden>{EVENT_EMOJI[ev.event_type] || "📅"}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-teal-100 text-teal-800">{ev.event_type}</span>
+                      <Link to={`/deals/${ev.deal_id}`} className="font-bold text-sm hover:underline truncate">{ev.title || ev.deal_title}</Link>
+                    </div>
+                    <div className="text-xs text-zinc-600 mt-0.5 flex items-center gap-3 flex-wrap">
+                      {ev.start_time && (
+                        <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" />{fmtTime(ev.start_time)}{ev.end_time ? ` – ${fmtTime(ev.end_time)}` : ""}</span>
+                      )}
+                      {ev.location && (
+                        <span className="inline-flex items-center gap-1 truncate"><MapPin className="w-3 h-3" />{ev.location}</span>
+                      )}
+                      {ev.deal_title && (
+                        <span className="text-zinc-400 truncate">· {ev.deal_title}</span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </div>
     </div>
   );

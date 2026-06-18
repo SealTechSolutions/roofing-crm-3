@@ -5534,8 +5534,71 @@ async def calendar_events(start: str, end: str, current=Depends(get_current_user
                 "amount": float(inv.get("balance_due") or 0),
             })
 
+    # --- Ad-hoc Deal Events (appointments) — teal ---
+    ade_cursor = db.deal_events.find(
+        {
+            "is_deleted": {"$ne": True},
+            "date": {"$gte": start, "$lte": end},
+        },
+        {"_id": 0},
+    )
+    ad_hoc = await ade_cursor.to_list(2000)
+    EMOJI = {
+        "Roof Walk": "🪜",
+        "Presentation": "📊",
+        "Meeting": "🤝",
+        "Job Start": "🚧",
+        "Other": "📅",
+    }
+    for ev in ad_hoc:
+        emoji = EMOJI.get(ev.get("event_type") or "Other", "📅")
+        time_part = f" {ev['start_time']}" if ev.get("start_time") else ""
+        events.append({
+            "id": f"appt-{ev['id']}",
+            "kind": "appointment",
+            "title": f"{emoji} {ev.get('event_type') or 'Appointment'}{time_part}: {ev.get('title') or ''}",
+            "start": ev["date"],
+            "end": ev["date"],
+            "color": "#0F766E",  # teal
+            "deal_id": ev.get("deal_id"),
+            "event_type": ev.get("event_type"),
+            "start_time": ev.get("start_time") or "",
+            "end_time": ev.get("end_time") or "",
+            "location": ev.get("location") or "",
+            "notes": ev.get("notes") or "",
+        })
+
     events.sort(key=lambda x: (x["start"], x["kind"]))
     return events
+
+
+@api_router.get("/dashboard/today")
+async def dashboard_today(current=Depends(get_current_user)):
+    """Today + next-2-days widget for the Dashboard.
+
+    Returns ad-hoc deal events (appointments) scheduled for today or the next
+    48 hours, with the linked deal title attached so the widget can render
+    a clickable card without making N+1 lookups.
+    """
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    soon_iso = (datetime.now(timezone.utc) + timedelta(days=2)).date().isoformat()
+    cur = db.deal_events.find(
+        {
+            "is_deleted": {"$ne": True},
+            "date": {"$gte": today_iso, "$lte": soon_iso},
+        },
+        {"_id": 0},
+    ).sort([("date", 1), ("start_time", 1)])
+    events = await cur.to_list(200)
+    # Attach deal title in one pass
+    deal_ids = list({ev["deal_id"] for ev in events})
+    deals = await db.deals.find(
+        {"id": {"$in": deal_ids}}, {"_id": 0, "id": 1, "title": 1}
+    ).to_list(len(deal_ids)) if deal_ids else []
+    by_id = {d["id"]: d.get("title") or "" for d in deals}
+    for ev in events:
+        ev["deal_title"] = by_id.get(ev["deal_id"], "")
+    return {"today": today_iso, "events": events}
 
 
 
@@ -6094,6 +6157,29 @@ async def on_startup():
     except Exception as e:
         logger.warning(f"COI scheduler failed to start (non-fatal): {e}")
 
+    # Deal-events reminder: every 5 minutes, fire email reminders 1h before
+    # any ad-hoc appointment (Roof Walks etc.).
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        await db.deal_events.create_index("deal_id")
+        await db.deal_events.create_index("date")
+        if not hasattr(app.state, "_deal_events_sched"):
+            sched = AsyncIOScheduler(timezone="UTC")
+
+            async def _tick():
+                try:
+                    await deal_events_module.send_due_reminders(db)
+                except Exception as e:
+                    logger.warning(f"deal_events reminder tick failed: {e}")
+
+            sched.add_job(_tick, CronTrigger(minute="*/5"), id="deal_event_reminders", replace_existing=True)
+            sched.start()
+            app.state._deal_events_sched = sched
+            logger.info("Deal-events reminder scheduler started (every 5 min)")
+    except Exception as e:
+        logger.warning(f"Deal-events reminder scheduler failed (non-fatal): {e}")
+
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@roofingcrm.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
     existing = await db.users.find_one({"email": admin_email})
@@ -6255,10 +6341,12 @@ api_router.include_router(assessment_module.create_router(db, get_current_user))
 # Google Calendar integration + Tasks (sync target)
 import google_calendar as gcal_module
 import tasks as tasks_module
+import deal_events as deal_events_module
 _PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL") or os.environ.get("GOOGLE_OAUTH_REDIRECT_URI", "").replace("/api/oauth/calendar/callback", "")
 api_router.include_router(gcal_module.make_google_calendar_router(db, get_current_user, _PUBLIC_BASE_URL))
 api_router.include_router(gcal_module.make_google_oauth_callback_router(db))
 api_router.include_router(tasks_module.make_tasks_router(db, get_current_user, push_task_fn=gcal_module.push_task, public_base_url=_PUBLIC_BASE_URL))
+api_router.include_router(deal_events_module.make_router(db, get_current_user, public_base_url=_PUBLIC_BASE_URL))
 
 
 # ----- Public Proposal Signing (Sign Off link) ----------------------------

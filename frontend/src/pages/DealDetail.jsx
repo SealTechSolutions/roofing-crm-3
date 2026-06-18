@@ -14,6 +14,7 @@ import { DealStagePipeline, NextStepCard, DealActivityTimeline, DealQuickActions
 import { InvoiceEditor } from "@/pages/Invoices";
 import ScopeEditorModal from "@/components/ScopeEditorModal";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
+import DealSchedulePanel from "@/components/DealSchedulePanel";
 
 export default function DealDetail() {
   const { id } = useParams();
@@ -35,6 +36,7 @@ export default function DealDetail() {
   const [finalInvoicePreview, setFinalInvoicePreview] = useState(null); // {contract_total, already_invoiced, final_amount, existing_final_invoice_id?}
   const [closedBannerDismissed, setClosedBannerDismissed] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
+  const [googleConnected, setGoogleConnected] = useState(false);
 
   const reload = async () => {
     const r = await api.get(`/deals/${id}`);
@@ -54,6 +56,7 @@ export default function DealDetail() {
     api.get(`/vendor-bills?project_id=${id}`).then((r) => setVendorBills(r.data)).catch(() => setVendorBills([]));
     api.get(`/invoices?deal_id=${id}`).then((r) => setDealInvoices(r.data || [])).catch(() => setDealInvoices([]));
     api.get(`/assessments?deal_id=${id}`).then((r) => setDealAssessments(r.data || [])).catch(() => setDealAssessments([]));
+    api.get(`/integrations/google/status`).then((r) => setGoogleConnected(!!r.data?.connected)).catch(() => setGoogleConnected(false));
   }, [id]);
 
   // Refresh the Final-invoice preview whenever this deal's status flips, so
@@ -688,6 +691,9 @@ export default function DealDetail() {
           </table>
         </div>
       )}
+
+      {/* Schedule / Events panel — ad-hoc appointments tied to this deal */}
+      <DealSchedulePanel dealId={id} googleConnected={googleConnected} />
 
       {/* Estimated vs Actual P&L */}
       <div className="bg-white border border-zinc-200 rounded-sm p-5 mb-8" data-testid="pnl-comparison">
