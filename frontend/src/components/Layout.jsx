@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
 const ALL_NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, testId: "nav-dashboard" },
@@ -84,6 +86,46 @@ export default function Layout() {
             <Smartphone className="w-3.5 h-3.5" />
             Get App on My Phone
           </button>
+
+          {/* Printable how-to PDFs — regenerated live from the backend on every click. */}
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <button
+              data-testid="dl-quick-guide"
+              onClick={async () => {
+                try {
+                  const r = await api.get("/docs/quick-guide.pdf", { responseType: "blob" });
+                  const u = URL.createObjectURL(r.data);
+                  const a = document.createElement("a");
+                  a.href = u; a.download = "SealTech CRM - Quick Reference.pdf";
+                  document.body.appendChild(a); a.click(); a.remove();
+                  setTimeout(() => URL.revokeObjectURL(u), 1000);
+                } catch (e) { toast.error(e?.message || "Could not download"); }
+              }}
+              title="2-page laminate-on-the-truck cheat sheet"
+              className="flex items-center justify-center gap-1 px-2 py-2 border border-zinc-800 hover:border-amber-500 hover:text-amber-300 text-zinc-400 text-[10px] uppercase tracking-wider font-bold transition-colors rounded-sm"
+            >
+              <HelpCircle className="w-3 h-3" />
+              Quick Guide
+            </button>
+            <button
+              data-testid="dl-full-manual"
+              onClick={async () => {
+                try {
+                  const r = await api.get("/docs/full-manual.pdf", { responseType: "blob" });
+                  const u = URL.createObjectURL(r.data);
+                  const a = document.createElement("a");
+                  a.href = u; a.download = "SealTech CRM - Full User Manual.pdf";
+                  document.body.appendChild(a); a.click(); a.remove();
+                  setTimeout(() => URL.revokeObjectURL(u), 1000);
+                } catch (e) { toast.error(e?.message || "Could not download"); }
+              }}
+              title="Full ~11-page user manual covering every feature"
+              className="flex items-center justify-center gap-1 px-2 py-2 border border-zinc-800 hover:border-amber-500 hover:text-amber-300 text-zinc-400 text-[10px] uppercase tracking-wider font-bold transition-colors rounded-sm"
+            >
+              <FileText className="w-3 h-3" />
+              Full Manual
+            </button>
+          </div>
           <button
             data-testid="logout-button"
             onClick={logout}

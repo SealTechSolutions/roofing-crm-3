@@ -6425,6 +6425,32 @@ async def _auto_create_deposit_invoice(deal_id: str, percentage: float = 50.0) -
 api_router.include_router(_proposal_signing.create_public_router(db, get_current_user, _compute_scope_for_signing, _auto_create_deposit_invoice))
 
 
+# ---------- User Guide PDFs ----------
+import user_guide_pdf as _user_guide_pdf  # noqa: E402
+
+
+@api_router.get("/docs/quick-guide.pdf")
+async def docs_quick_guide_pdf(_=Depends(get_current_user)):
+    """SealTech CRM Quick Reference — 2–3 page laminate-on-the-truck cheat sheet."""
+    pdf = _user_guide_pdf.build_quick_guide_pdf()
+    return StreamingResponse(
+        io.BytesIO(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="SealTech CRM - Quick Reference.pdf"'},
+    )
+
+
+@api_router.get("/docs/full-manual.pdf")
+async def docs_full_manual_pdf(_=Depends(get_current_user)):
+    """SealTech CRM Full User Manual — every screen, button, workflow."""
+    pdf = _user_guide_pdf.build_full_manual_pdf()
+    return StreamingResponse(
+        io.BytesIO(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="SealTech CRM - Full User Manual.pdf"'},
+    )
+
+
 # ---------- Final Invoice (project completion) ----------
 async def _compute_final_invoice_preview(deal_id: str) -> dict:
     """Pure-read calculation of what a Final invoice would look like.

@@ -735,6 +735,15 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Manatt Ct deal restored to `In Progress` (correct pre-rollback status), signature audit fields intact.
 - Cleanup leftover from previous edit: removed orphan JSX at end of `ProposalSign.jsx` that was triggering a Babel parse error.
 
+### Printable User Guides (Feb 2026)
+- Two on-demand backend-rendered PDFs covering the entire CRM:
+  - **`GET /api/docs/quick-guide.pdf`** — 4-page laminate-on-the-truck Quick Reference (sidebar map, pipeline cheat, 60-second daily workflow, phone shortcuts, key-buttons table, troubleshooting).
+  - **`GET /api/docs/full-manual.pdf`** — 11-page Full User Manual covering Getting Started, Sidebar, Contacts/Properties, Deals + Pipeline, Assessments, Scopes, Public Sign-Off, Invoicing, Final Invoice, Photos + Timeline PDF, Field Capture, Books, Vendors, Calendar, Tasks, Reports, Admin, PWA, Tips/Troubleshooting, and a Glossary.
+- Module: `/app/backend/user_guide_pdf.py` (ReportLab, brand-colored navy + bronze, KV tables for cheat-sheet style).
+- Sidebar buttons (`[data-testid=dl-quick-guide]`, `[data-testid=dl-full-manual]`) sit between "Get App on My Phone" and "Sign Out". Click → fetch the PDF as a blob → `<a download>` trigger with the proper filename.
+- Re-renders live from the codebase on every download, so the docs evolve with the app — no stale Word docs.
+- Verified live: both endpoints return valid `%PDF`, quick=4 pages / full=11 pages.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
