@@ -809,6 +809,30 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - **Cleanup**: Soft-deleted the stale `admin@roofingcrm.com` stub that was still on the recipient list (per handoff note).
 - **Tests**: 10/10 pytest + frontend Playwright download test (`/app/backend/tests/test_daily_status.py`, iteration_24, both 100%).
 
+## 2026-02-18 — Per-Category Email & Calendar Routing
+- **Why**: Darren keeps role mailboxes in Google Workspace to keep his selling inbox clean. Each kind of CRM email/event now goes to the matching role address + matching shared calendar.
+- **Categories** (all `@sealtechsolutions.co`):
+  - 📅 **assessments** — assessment scheduling, assessment-report emails
+  - 📝 **scope** — proposals, scope emails, sales follow-ups, stale-deal digests
+  - 💰 **finance** — invoices, statements, late notices, payables reports
+  - 🛠 **projects** — POs, COI requests, project comms, daily status report
+  - 🟢 **maintenance** — maintenance visit reminders
+- **Backend**:
+  - New `email_routing.py` module — `EmailRoutingSettings` Pydantic model, GET/PUT `/api/settings/email-routing` (admin), `get_from_for_category()` resolver.
+  - Storage: single doc `app_settings._id="email_routing"` with 5 fields; blank fields fall back to a matching `GMAIL_FROM_ALIASES` env entry.
+  - Whitelist enforcement on PUT — every alias must be in `GMAIL_FROM_ALIASES` so Gmail "Send As" relay accepts it.
+  - `email_sender.send_for_category(db, category, ...)` — new async helper; resolves the alias then delegates to `send_email`. All ≥13 send sites converted (`server.py`, `assessment.py`, `coi_reminders.py`, `scheduler.py`, `deal_events.py`).
+  - `GoogleCalendarSettings` extended with `scope_calendar_id` + `finance_calendar_id` (5 calendar fields total).
+  - `deal_events.push_event_to_gcal` now picks the calendar by event_type: Roof Walk → assessments, Presentation/Meeting → scope, Job Start → projects, Other → assessments.
+  - `deal_events.send_due_reminders` picks the email category by event_type so the reminder fires from the right mailbox.
+  - `GMAIL_FROM_ALIASES` env extended to include `maintenance@sealtechsolutions.co`.
+- **Frontend** (`Integrations.jsx`):
+  - **Calendar Mapping** UI expanded from 3 → 5 dropdowns (Assessments / Scopes / Finance / Projects / Maintenance).
+  - **Email "Send As" Routing** panel below — 5 selects listing every alias from `GMAIL_FROM_ALIASES`. Dirty-state "Save changes" button. Help text per category.
+- **Locked**: Material Take-Off must NEVER auto-attach to customer scope emails (Darren 2026-02-18, internal pricing/margin info).
+- **Tests**: 12/12 pytest + frontend Playwright pass (iteration_25, 100/100).
+
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics) — DONE
 - Statement of Account PDF (aging report per customer) — DONE
