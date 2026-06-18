@@ -6424,6 +6424,203 @@ async def _auto_create_deposit_invoice(deal_id: str, percentage: float = 50.0) -
 
 api_router.include_router(_proposal_signing.create_public_router(db, get_current_user, _compute_scope_for_signing, _auto_create_deposit_invoice))
 
+
+# ---------- Final Invoice (project completion) ----------
+async def _compute_final_invoice_preview(deal_id: str) -> dict:
+    """Pure-read calculation of what a Final invoice would look like.
+
+    Returns {contract_total, already_invoiced, final_amount,
+             existing_final_invoice_id?, has_deal}.
+
+    `contract_total` = chosen_amount (or MID proposal fallback) + approved
+    change-orders. `already_invoiced` = sum of all non-void, non-deleted
+    invoices' total_amount on this deal — including drafts, since drafts
+    are queued-to-bill. Excludes any pre-existing Final invoice so the
+    preview tells the user what to expect _next time they hit the button_.
+    """
+    deal = await db.deals.find_one(
+        {"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0},
+    )
+    if deal is None:
+        return {"has_deal": False, "contract_total": 0.0, "already_invoiced": 0.0, "final_amount": 0.0}
+
+    contract_total = float(deal.get("chosen_amount") or 0)
+    if contract_total <= 0:
+        contract_total = proposal_mid_amount(deal)
+    co_total = sum(
+        float(co.get("amount", 0) or 0)
+        for co in (deal.get("change_orders") or [])
+        if (co.get("status") or "Approved") == "Approved"
+    )
+    contract_total = round(contract_total + co_total, 2)
+
+    # Existing Final invoice on this deal (non-void).
+    existing_final = await db.invoices.find_one(
+        {"deal_id": deal_id, "invoice_type": "Final",
+         "is_deleted": {"$ne": True}, "status": {"$nin": ["Void"]}},
+        {"_id": 0, "id": 1, "invoice_number": 1, "status": 1, "total": 1},
+    )
+
+    # Already-invoiced excludes the pre-existing Final (so re-running the
+    # preview after creation doesn't double-count). Invoice totals live on
+    # the `total` field after _recalc_invoice — fall back to `total_amount`
+    # for any legacy doc that still uses the older field name.
+    q = {"deal_id": deal_id, "is_deleted": {"$ne": True}, "status": {"$nin": ["Void"]}}
+    if existing_final:
+        q["id"] = {"$ne": existing_final["id"]}
+    already_invoiced = 0.0
+    async for inv in db.invoices.find(q, {"_id": 0, "total": 1, "total_amount": 1}):
+        already_invoiced += float(inv.get("total") or inv.get("total_amount") or 0)
+    already_invoiced = round(already_invoiced, 2)
+
+    final_amount = max(0.0, round(contract_total - already_invoiced, 2))
+    out = {
+        "has_deal": True,
+        "contract_total": contract_total,
+        "already_invoiced": already_invoiced,
+        "final_amount": final_amount,
+    }
+    if existing_final:
+        out["existing_final_invoice_id"] = existing_final["id"]
+        out["existing_final_invoice_number"] = existing_final.get("invoice_number")
+    return out
+
+
+async def _auto_create_final_invoice(deal_id: str, user_id: str = "manual") -> dict | None:
+    """Draft a Final invoice for the project balance. Idempotent — returns the
+    existing non-void Final invoice if one already exists. Returns None when
+    there is no balance left to bill (final_amount <= 0)."""
+    preview = await _compute_final_invoice_preview(deal_id)
+    if not preview.get("has_deal"):
+        return None
+    if preview.get("existing_final_invoice_id"):
+        # Hand back the existing one so callers can re-open it.
+        existing = await db.invoices.find_one(
+            {"id": preview["existing_final_invoice_id"]}, {"_id": 0},
+        )
+        return strip_id(existing) if existing else None
+
+    final_amount = preview["final_amount"]
+    if final_amount <= 0:
+        return None
+
+    deal = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    customer_id = deal.get("customer_contact_id") or deal.get("contact_id")
+    bill_to = await _build_bill_to_from_contact(customer_id) if customer_id else {}
+    bill_to = bill_to or {}
+
+    project_address = ""
+    if deal.get("property_id"):
+        prop = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
+        if prop:
+            addr1 = " ".join(
+                [p for p in [prop.get("property_address", ""), prop.get("property_address_line2", "")] if p]
+            ).strip()
+            line2 = ", ".join(
+                [p for p in [prop.get("property_city", ""), prop.get("property_state", "")] if p]
+            )
+            if prop.get("property_zip"):
+                line2 = f"{line2} {prop.get('property_zip')}".strip()
+            project_address = "  ·  ".join([p for p in [addr1, line2] if p])
+
+    title = deal.get("title") or "Project"
+    description = f"{title} — Final Invoice (project completion)"
+    invoice_today = datetime.now(timezone.utc).date().isoformat()
+
+    data = {
+        "id": str(uuid.uuid4()),
+        "deal_id": deal_id,
+        "customer_contact_id": customer_id or None,
+        "invoice_type": "Final",
+        "bill_to_company": bill_to.get("bill_to_company") or "",
+        "bill_to_name": bill_to.get("bill_to_name") or "",
+        "bill_to_address": bill_to.get("bill_to_address") or "",
+        "bill_to_address_line2": bill_to.get("bill_to_address_line2") or "",
+        "bill_to_city": bill_to.get("bill_to_city") or "",
+        "bill_to_state": bill_to.get("bill_to_state") or "",
+        "bill_to_zip": bill_to.get("bill_to_zip") or "",
+        "bill_to_email": bill_to.get("bill_to_email") or "",
+        "cc_email": "",
+        "invoice_date": invoice_today,
+        "due_date": invoice_today,
+        "terms": "Due Upon Receipt",
+        "project_title": title,
+        "project_address": project_address,
+        "project_total": preview["contract_total"],
+        "notes": (
+            "Auto-generated on project completion. Contract total "
+            f"${preview['contract_total']:,.2f} minus prior invoices "
+            f"${preview['already_invoiced']:,.2f} = balance due "
+            f"${final_amount:,.2f}. Edit any field before sending."
+        ),
+        "line_items": [
+            {
+                "description": description,
+                "quantity": 1,
+                "unit_price": final_amount,
+                "amount": final_amount,
+            }
+        ],
+        "status": "Draft",
+        "amount_paid": 0.0,
+        "payment_date": "",
+        "payment_method": "",
+        "payment_reference": "",
+        "source_type": "mark_complete",
+        "source_id": deal_id,
+        "created_at": now_iso(),
+        "created_by_user_id": user_id,
+        "is_deleted": False,
+        "invoice_number": await _next_invoice_number(),
+    }
+    data = _recalc_invoice(data)
+    await db.invoices.insert_one(data.copy())
+    try:
+        await gl.post_invoice_issue(db, data, posted_by_user_id=user_id)
+    except Exception as e:
+        logger.warning(f"GL post (final invoice) failed: {type(e).__name__}: {e}")
+    return strip_id(data)
+
+
+@api_router.get("/deals/{deal_id}/final-invoice/preview")
+async def preview_final_invoice(deal_id: str, _=Depends(get_current_user)):
+    """Returns the projected Final-Invoice amount without creating anything.
+    Used by the Closed-stage suggestion banner so the user sees exactly what
+    they'd be billing before they click."""
+    out = await _compute_final_invoice_preview(deal_id)
+    if not out.get("has_deal"):
+        raise HTTPException(status_code=404, detail="Deal not found")
+    return out
+
+
+@api_router.post("/deals/{deal_id}/final-invoice")
+async def create_final_invoice(deal_id: str, current=Depends(get_current_user)):
+    """Drafts the Final Invoice for project completion. Idempotent — returns
+    the existing Final invoice if one already exists. 400 if there is nothing
+    left to bill (e.g., the project has been fully invoiced already)."""
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if deal is None:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    inv = await _auto_create_final_invoice(deal_id, user_id=current["id"])
+    if inv is None:
+        # Decide which message to show — no balance vs no contract total.
+        preview = await _compute_final_invoice_preview(deal_id)
+        if preview.get("contract_total", 0) <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No contract total on this deal yet — pick a proposal option or set chosen_amount first.",
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Nothing left to bill — prior invoices totaling "
+                f"${preview['already_invoiced']:,.2f} already cover the "
+                f"${preview['contract_total']:,.2f} contract."
+            ),
+        )
+    return inv
+
+
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

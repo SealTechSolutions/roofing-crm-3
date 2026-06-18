@@ -703,6 +703,20 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Verified: login works at the new email with the same `admin123` password; old email correctly rejected.
 - `/app/memory/test_credentials.md` updated for future fork/testing agents.
 
+### Final Invoice Auto-Generation (Hybrid Manual + Suggestion) (Feb 2026)
+- **User-picked option (d) — Hybrid manual button + Closed-stage auto-suggest banner**.
+- **Backend** (`/app/backend/server.py`):
+  - `_compute_final_invoice_preview(deal_id)` — read-only calc: `contract_total = chosen_amount (or MID proposal) + approved change-orders`; `already_invoiced = Σ non-void invoices' total`; returns `final_amount = max(0, contract_total - already_invoiced)` plus `existing_final_invoice_id` if one exists.
+  - `_auto_create_final_invoice(deal_id, user_id)` — drafts a `Final` invoice mirroring the existing deposit-auto-create pattern (auto-number, bill-to from contact, project address from property, GL post). Idempotent — returns existing non-void Final if one is already on the deal.
+  - `GET /api/deals/{deal_id}/final-invoice/preview` — for the suggestion banner.
+  - `POST /api/deals/{deal_id}/final-invoice` — drafts the invoice. Returns 400 if no contract total OR balance already fully invoiced.
+- **Frontend** (`/app/frontend/src/pages/DealDetail.jsx`):
+  - **Mark Complete button** (`[data-testid=mark-complete-btn]`) next to **Send to Field** — emerald green, drafts the Final invoice and opens the existing InvoiceEditor inline for review/edit before send.
+  - **Closed-stage suggestion banner** (`[data-testid=final-invoice-suggestion]`) — appears above the deal header WHEN: status is `Closed` AND no Final invoice exists yet AND a positive balance is remaining. Shows the math (Contract minus prior invoices = balance) and two CTAs: `Draft Final Invoice` / `Not yet`. Auto-loaded via the preview endpoint on every status change.
+  - Banner is dismissible per-page-visit (state-level, not persisted).
+- Tests: `/app/backend/tests/test_final_invoice.py` (4/4 PASS — preview, create + idempotency, 400 on no contract total, 400 on already-fully-invoiced).
+- Verified live: temp Closed deal with $5,000 chosen_amount renders the green banner with correct math, click → POST 200 → Final invoice drafted → banner disappears → InvoiceEditor opens. Toast confirms creation with the new invoice number.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

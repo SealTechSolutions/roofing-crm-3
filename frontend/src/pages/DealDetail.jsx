@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus, ClipboardCheck, Clock, Camera } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus, ClipboardCheck, Clock, Camera, CheckSquare, X as XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
@@ -32,6 +32,9 @@ export default function DealDetail() {
   const [invoiceEditor, setInvoiceEditor] = useState(null); // null | invoice object (new or existing)
   const [scopeEditorOpen, setScopeEditorOpen] = useState(false);
   const [sendToFieldOpen, setSendToFieldOpen] = useState(false);
+  const [finalInvoicePreview, setFinalInvoicePreview] = useState(null); // {contract_total, already_invoiced, final_amount, existing_final_invoice_id?}
+  const [closedBannerDismissed, setClosedBannerDismissed] = useState(false);
+  const [markingComplete, setMarkingComplete] = useState(false);
 
   const reload = async () => {
     const r = await api.get(`/deals/${id}`);
@@ -52,6 +55,45 @@ export default function DealDetail() {
     api.get(`/invoices?deal_id=${id}`).then((r) => setDealInvoices(r.data || [])).catch(() => setDealInvoices([]));
     api.get(`/assessments?deal_id=${id}`).then((r) => setDealAssessments(r.data || [])).catch(() => setDealAssessments([]));
   }, [id]);
+
+  // Refresh the Final-invoice preview whenever this deal's status flips, so
+  // the Closed-stage suggestion banner can show the projected balance amount.
+  useEffect(() => {
+    if (!deal) return;
+    if (deal.status !== "Closed") {
+      setFinalInvoicePreview(null);
+      return;
+    }
+    api.get(`/deals/${id}/final-invoice/preview`)
+      .then((r) => setFinalInvoicePreview(r.data))
+      .catch(() => setFinalInvoicePreview(null));
+  }, [deal?.status, id]);
+
+  /**
+   * Open the freshly-drafted Final invoice (or the pre-existing one) in the
+   * inline InvoiceEditor so the user can review/edit before sending.
+   */
+  const markCompleteAndInvoice = async () => {
+    if (markingComplete) return;
+    setMarkingComplete(true);
+    try {
+      const r = await api.post(`/deals/${id}/final-invoice`);
+      const newInv = r.data;
+      // Refresh the local deal-invoices list so the banner updates.
+      api.get(`/invoices?deal_id=${id}`)
+        .then((rr) => setDealInvoices(rr.data || []))
+        .catch(() => { /* refresh failure is not fatal */ });
+      api.get(`/deals/${id}/final-invoice/preview`)
+        .then((rp) => setFinalInvoicePreview(rp.data))
+        .catch(() => { /* preview refresh failure is not fatal */ });
+      toast.success(`Final invoice ${newInv.invoice_number} drafted ($${Number(newInv.total || newInv.total_amount || newInv.subtotal || 0).toLocaleString()})`);
+      setInvoiceEditor(newInv);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || e.message || "Could not draft Final invoice");
+    } finally {
+      setMarkingComplete(false);
+    }
+  };
 
   const totals = useMemo(() => {
     if (!deal) return { revenue: 0, costs: 0, profit: 0, margin: 0, scheduled: 0, received: 0, outstanding: 0, paidCosts: 0, pendingCosts: 0, actualCosts: 0, actualPaid: 0, actualUnpaid: 0, actualProfit: 0, actualMargin: 0 };
@@ -272,6 +314,52 @@ export default function DealDetail() {
         <ArrowLeft className="w-3 h-3" /> Back to Projects
       </Link>
 
+      {/* Closed-stage suggestion: this deal just hit Closed but no Final invoice exists yet. */}
+      {deal.status === "Closed"
+        && finalInvoicePreview
+        && !finalInvoicePreview.existing_final_invoice_id
+        && finalInvoicePreview.final_amount > 0
+        && !closedBannerDismissed && (
+        <div
+          className="mb-6 bg-emerald-50 border border-emerald-300 rounded-sm p-4 flex items-start gap-3"
+          data-testid="final-invoice-suggestion"
+        >
+          <CheckSquare className="w-5 h-5 text-emerald-700 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-emerald-900">This project is Closed — ready to bill?</div>
+            <div className="text-xs text-emerald-800 mt-1 leading-snug">
+              Contract <b>${finalInvoicePreview.contract_total.toLocaleString()}</b>
+              {" "}minus prior invoices <b>${finalInvoicePreview.already_invoiced.toLocaleString()}</b>
+              {" "}= <b className="text-emerald-950">${finalInvoicePreview.final_amount.toLocaleString()}</b> remaining balance.
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                data-testid="final-invoice-suggest-create"
+                onClick={markCompleteAndInvoice}
+                disabled={markingComplete}
+                className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-[10px] font-bold uppercase tracking-wider px-3 h-8 rounded-sm"
+              >
+                <CheckSquare className="w-3.5 h-3.5" /> {markingComplete ? "Drafting…" : "Draft Final Invoice"}
+              </button>
+              <button
+                data-testid="final-invoice-suggest-dismiss"
+                onClick={() => setClosedBannerDismissed(true)}
+                className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 hover:text-emerald-900 px-2 h-8"
+              >
+                Not yet
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={() => setClosedBannerDismissed(true)}
+            className="text-emerald-700 hover:text-emerald-900 -mr-1"
+            aria-label="Dismiss"
+          >
+            <XIcon className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <div className="flex items-start justify-between mb-8 pb-6 border-b border-zinc-200 gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-3 mb-2 flex-wrap">
@@ -371,6 +459,15 @@ export default function DealDetail() {
             className="inline-flex items-center gap-2 bg-amber-600 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-amber-700 rounded-sm transition-colors"
           >
             <Camera className="w-4 h-4" /> Send to Field
+          </button>
+          <button
+            data-testid="mark-complete-btn"
+            onClick={markCompleteAndInvoice}
+            disabled={markingComplete}
+            title="Mark this project complete and draft the Final invoice for the remaining balance"
+            className="inline-flex items-center gap-2 bg-emerald-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-emerald-800 disabled:opacity-50 rounded-sm transition-colors"
+          >
+            <CheckSquare className="w-4 h-4" /> {markingComplete ? "Drafting…" : "Mark Complete"}
           </button>
           <DealQuickActions
             deal={deal}
