@@ -45,9 +45,14 @@ export default function ProposalSign() {
     const c = canvasRef.current;
     if (!c) return;
     drawingRef.current = true;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    // Scale screen → canvas. CSS stretches the 620×140 bitmap to fill the
+    // column; without this the strokes get squashed onto the left side and
+    // end up overlapping (the "signature wrote on top of itself" bug).
     const rect = c.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    const x = (clientX - rect.left) * (c.width / rect.width);
+    const y = (clientY - rect.top) * (c.height / rect.height);
     const ctx = c.getContext("2d");
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -60,9 +65,11 @@ export default function ProposalSign() {
     const c = canvasRef.current;
     if (!c) return;
     e.preventDefault?.();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const rect = c.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    const x = (clientX - rect.left) * (c.width / rect.width);
+    const y = (clientY - rect.top) * (c.height / rect.height);
     const ctx = c.getContext("2d");
     ctx.lineTo(x, y);
     ctx.stroke();

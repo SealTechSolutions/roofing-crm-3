@@ -190,10 +190,19 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
         ua = request.headers.get("user-agent", "")
         prev_status = deal.get("status") or "Lead"
 
+        # Only promote pre-Won statuses to "Won". If the deal is already past
+        # Won (Deposit Paid / Materials Ordered / Scheduled / In Progress /
+        # Final Inspection / Closed), keep the current pipeline stage — the
+        # customer just re-signed (or signed late) and we must not roll the
+        # project backwards. The signature + history entry are still recorded
+        # so the legal hold and audit trail are intact.
+        PRE_WON = {"Lead", "Past Lead", "Assessment", "Scope Sent"}
+        new_status = "Won" if prev_status in PRE_WON else prev_status
+
         history_entry = {
             "at": now,
             "from": prev_status,
-            "to": "Won",
+            "to": new_status,
             "user_id": "public-sign",
             "user_name": signer_name,
             "label": "Proposal accepted (public sign-off)",
@@ -205,7 +214,7 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
             {"id": deal["id"]},
             {
                 "$set": {
-                    "status": "Won",
+                    "status": new_status,
                     "scope_signed_at": now,
                     "scope_signed_by_name": signer_name,
                     "scope_signed_by_email": signer_email,
@@ -220,8 +229,10 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
 
         # Hands-free cash collection: auto-spawn a Draft deposit invoice
         # (default 50%) so the project owner just opens, reviews, and sends.
+        # Only when this is the FIRST signing of a pre-Won deal — we don't
+        # want to spawn a duplicate deposit on a re-signed Won/In-Progress job.
         auto_invoice: Optional[dict] = None
-        if auto_create_deposit_invoice is not None:
+        if auto_create_deposit_invoice is not None and prev_status in PRE_WON:
             try:
                 deposit_pct = float(body.get("deposit_pct") or 50)
                 if deposit_pct > 0:
@@ -236,7 +247,7 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
             "signed_at": now,
             "signed_by_name": signer_name,
             "deal_id": deal["id"],
-            "status": "Won",
+            "status": new_status,
             "signature_file_id": signature_file_id,
             "deposit_invoice_id": (auto_invoice or {}).get("id", ""),
             "deposit_invoice_number": (auto_invoice or {}).get("invoice_number", ""),

@@ -728,6 +728,13 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Sorted newest invoice-date first.
 - Verified live: Manatt deal now shows the deposit row with `PAID`, `$5,000 / $5,000 / $0`, `2026-06-15 · ACH`, clickable to open.
 
+### Signature Canvas & No-Rollback Fixes (Feb 2026)
+- **Bug 1 — Signature overwrote on top of itself**: `ProposalSign.jsx` canvas has bitmap 620×140 but CSS `w-full` stretches it to the column width. On phones (≤620px), screen→canvas coords weren't being scaled, so strokes got squashed into ~60% of the bitmap and overlapped. **Fix**: scale `(clientX - rect.left) * (c.width / rect.width)` in both `beginStroke` and `strokeMove`. Verified live with a Playwright X-stroke on a 430px viewport — ink now spans 96% width × 81% height of the canvas (was ~60% before).
+- **Bug 2 — Signing rolled live projects backwards to Won**: `proposal_signing.py` was blindly setting `status="Won"` regardless of current pipeline stage. A re-sign on an In-Progress / Closed deal would demote it. **Fix**: introduced `PRE_WON = {"Lead", "Past Lead", "Assessment", "Scope Sent"}`; only deals in this set get promoted to Won. Otherwise the current status is preserved, the signature + IP + timestamp + status_history entry are still recorded (legal hold intact), and the auto-deposit invoice is **not** re-fired.
+- Tests: `/app/backend/tests/test_proposal_signing_no_rollback.py` (4/4 PASS — Lead → Won + invoice, In Progress stays put, Closed stays put, Scope Sent → Won).
+- Manatt Ct deal restored to `In Progress` (correct pre-rollback status), signature audit fields intact.
+- Cleanup leftover from previous edit: removed orphan JSX at end of `ProposalSign.jsx` that was triggering a Babel parse error.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
