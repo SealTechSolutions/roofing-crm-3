@@ -756,6 +756,27 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
+## 2026-02-18 — Ad-hoc Deal Schedule / Appointments
+- **Schedule panel on Deal page** (`/app/frontend/src/components/DealSchedulePanel.jsx`):
+  Inline "Schedule Event" form on `DealDetail.jsx` lets the rep book a Roof Walk,
+  Presentation, Meeting, Job Start, or Other appointment directly from the deal —
+  no jumping to global Calendar/Tasks. Shows Upcoming + collapsible Past lists with
+  date/time, location, notes, G-Cal badge.
+- **Backend** (`/app/backend/deal_events.py` + 3 server.py wiring blocks):
+  - CRUD: `POST/GET/PUT/DELETE /api/deals/{deal_id}/events`
+  - Merged into unified `/api/calendar` feed as `kind="appointment"` (teal `#0F766E`).
+  - New `/api/dashboard/today` returns today + next 48h events with `deal_title`.
+  - Auto-pushes to Google Calendar via existing `gcal.upsert_event` using the
+    user's assessment_calendar_id (falls back to project_calendar_id).
+  - Reminder scheduler — APScheduler job runs every 5 min, emails owner +
+    invitees 1 hour (±5 min) before start_time. Idempotent via
+    `reminder_sent_at` field. Mountain Time aware.
+- **Dashboard "Today" widget** (`/app/frontend/src/pages/Dashboard.jsx::TodayEvents`):
+  Card auto-hides when empty; otherwise groups events by date with "Today" /
+  "Tomorrow" / weekday headings, clickable through to the deal. Refetches on
+  tab focus + visibilitychange.
+- **Tests**: `/app/backend/tests/test_deal_events.py` (14 cases, 100% pass).
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics) — DONE
 - Statement of Account PDF (aging report per customer) — DONE

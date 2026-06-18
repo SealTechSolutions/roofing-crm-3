@@ -875,8 +875,22 @@ function TodayEvents() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get("/dashboard/today").then((r) => { if (!cancelled) { setData(r.data || { today: "", events: [] }); setLoading(false); } }).catch(() => setLoading(false));
-    return () => { cancelled = true; };
+    const fetchEvents = () => {
+      api.get("/dashboard/today")
+        .then((r) => { if (!cancelled) { setData(r.data || { today: "", events: [] }); setLoading(false); } })
+        .catch(() => setLoading(false));
+    };
+    fetchEvents();
+    // Refetch when the tab becomes visible again — covers the case where a
+    // user schedules an event on the Deal page and SPA-navigates back here.
+    const onVis = () => { if (document.visibilityState === "visible") fetchEvents(); };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", fetchEvents);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", fetchEvents);
+    };
   }, []);
 
   if (loading) return null;
