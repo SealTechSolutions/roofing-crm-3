@@ -83,6 +83,20 @@ export default function FieldCapture() {
   const [useUltrawide, setUseUltrawide] = useState(false);
   const pinchRef = useRef({ startDist: 0, startZoom: 1 });
 
+  // ---------- GPS / proof-of-presence stamp ----------
+  // We watch the device position the moment the user picks a project so the
+  // stamp on the first photo is already populated. Stored as {lat, lng, acc}.
+  // Stamp pixels are burned into the captured JPEG at upload time (see
+  // captureAndUpload below) AND sent as structured metadata so the backend
+  // can sort/map photos later without OCR.
+  const [position, setPosition] = useState(null); // { lat, lng, acc, ts }
+  const [posError, setPosError] = useState("");
+  const [stampEnabled, setStampEnabled] = useState(() => {
+    const stored = localStorage.getItem("field_stamp_enabled");
+    return stored === null ? true : stored === "true";
+  });
+  const [activeProperty, setActiveProperty] = useState(null);
+
   // ---------- Auth + projects bootstrap ----------
   useEffect(() => {
     if (!token) {
@@ -117,6 +131,55 @@ export default function FieldCapture() {
   // Persist project pick
   useEffect(() => {
     if (dealId) localStorage.setItem("field_capture_last_deal_id", dealId);
+  }, [dealId]);
+
+  // Persist stamp toggle
+  useEffect(() => {
+    localStorage.setItem("field_stamp_enabled", String(stampEnabled));
+  }, [stampEnabled]);
+
+  // Fetch the deal's linked property (best-effort) so the stamp can show
+  // the site address. Falls back to deal title if no property is linked.
+  useEffect(() => {
+    if (!dealId || !token) { setActiveProperty(null); return; }
+    const deal = deals.find((d) => d.id === dealId);
+    if (!deal?.property_id) { setActiveProperty(null); return; }
+    axios
+      .get(`${API_BASE}/api/properties/${deal.property_id}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => setActiveProperty(r.data))
+      .catch(() => setActiveProperty(null));
+  }, [dealId, deals, token]);
+
+  // Watch device position while in the camera view. Released on unmount /
+  // when the user backs out to the project list.
+  useEffect(() => {
+    if (!dealId || typeof navigator === "undefined" || !navigator.geolocation) return undefined;
+    let watchId = null;
+    setPosError("");
+    try {
+      watchId = navigator.geolocation.watchPosition(
+        (p) => {
+          setPosition({
+            lat: p.coords.latitude,
+            lng: p.coords.longitude,
+            acc: p.coords.accuracy || 0,
+            ts: p.timestamp || Date.now(),
+          });
+          setPosError("");
+        },
+        (err) => {
+          setPosError(err.message || "Location unavailable");
+        },
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+      );
+    } catch (e) {
+      setPosError(e.message || "Location unavailable");
+    }
+    return () => {
+      if (watchId != null && navigator.geolocation) {
+        try { navigator.geolocation.clearWatch(watchId); } catch { /* ignore */ }
+      }
+    };
   }, [dealId]);
 
   // ---------- Camera stream ----------
@@ -206,6 +269,11 @@ export default function FieldCapture() {
         try {
           const fd = new FormData();
           fd.append("file", item.blob, item.filename);
+          if (item.gps_lat != null) fd.append("gps_lat", String(item.gps_lat));
+          if (item.gps_lng != null) fd.append("gps_lng", String(item.gps_lng));
+          if (item.gps_accuracy != null) fd.append("gps_accuracy", String(item.gps_accuracy));
+          if (item.captured_at) fd.append("captured_at", item.captured_at);
+          if (item.stamped) fd.append("stamped", "true");
           await axios.post(
             `${API_BASE}/api/projects/${item.deal_id}/photos`,
             fd,
@@ -234,6 +302,84 @@ export default function FieldCapture() {
   }, [flushQueue, refreshQueueCount]);
 
   // ---------- Capture + upload ----------
+  // Paints a translucent black bar at the bottom of `canvas` with:
+  // foreman name • date/time • address (or deal title) • GPS coords ± acc.
+  // Sized in proportion to the canvas so the stamp looks consistent across
+  // wide / portrait / cropped frames.
+  const paintStamp = useCallback((canvas, ctx) => {
+    if (!stampEnabled) return;
+    const W = canvas.width;
+    const H = canvas.height;
+    // Stamp ~9% of frame height, min 90px, max 220px.
+    const stampH = Math.max(90, Math.min(220, Math.round(H * 0.09)));
+    const pad = Math.round(stampH * 0.14);
+    const lineGap = Math.round(stampH * 0.10);
+    const titleSize = Math.round(stampH * 0.30);
+    const bodySize = Math.round(stampH * 0.22);
+
+    // Background bar with subtle gradient so text reads on bright photos.
+    const grad = ctx.createLinearGradient(0, H - stampH, 0, H);
+    grad.addColorStop(0, "rgba(0,0,0,0.0)");
+    grad.addColorStop(0.25, "rgba(0,0,0,0.55)");
+    grad.addColorStop(1, "rgba(0,0,0,0.78)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, H - stampH, W, stampH);
+
+    // Cobalt accent stripe (left edge) — matches the CRM brand
+    ctx.fillStyle = "#1D4ED8";
+    ctx.fillRect(0, H - stampH, Math.max(4, Math.round(stampH * 0.04)), stampH);
+
+    // Text
+    ctx.fillStyle = "#FFFFFF";
+    ctx.textBaseline = "top";
+    ctx.shadowColor = "rgba(0,0,0,0.7)";
+    ctx.shadowBlur = 2;
+
+    const foreman = (me?.name || me?.email || "Field Tech").toString();
+    const activeDealLocal = deals.find((d) => d.id === dealId);
+    const project = activeDealLocal?.title || "Project";
+    const address = (() => {
+      if (!activeProperty) return "";
+      const parts = [
+        activeProperty.address,
+        [activeProperty.city, activeProperty.state, activeProperty.zip].filter(Boolean).join(", "),
+      ].filter(Boolean);
+      return parts.join(" · ");
+    })();
+    const ts = new Date();
+    const tsLine = ts.toLocaleString(undefined, {
+      year: "numeric", month: "short", day: "numeric",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    });
+    const gpsLine = position
+      ? `GPS  ${position.lat.toFixed(5)}, ${position.lng.toFixed(5)}  ±${Math.round(position.acc)}m`
+      : (posError ? "GPS  unavailable" : "GPS  acquiring…");
+
+    // Title row: foreman name + timestamp on right
+    ctx.font = `bold ${titleSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+    ctx.textAlign = "left";
+    ctx.fillText(foreman.toUpperCase(), pad + 8, H - stampH + pad);
+    ctx.textAlign = "right";
+    ctx.fillText(tsLine, W - pad, H - stampH + pad);
+
+    // Body row 1: project title (and address if present, line below)
+    ctx.font = `${bodySize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+    ctx.textAlign = "left";
+    const row1Y = H - stampH + pad + titleSize + lineGap;
+    ctx.fillText(address ? address : project, pad + 8, row1Y);
+
+    // Body row 2: GPS — bottom-aligned so it always sits flush to the edge
+    const row2Y = H - pad - bodySize;
+    ctx.fillText(gpsLine, pad + 8, row2Y);
+
+    // SealTech mark (right side of bottom row) — small caps watermark
+    ctx.textAlign = "right";
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillText("SEALTECH · PROOF OF PRESENCE", W - pad, row2Y);
+
+    ctx.shadowBlur = 0;
+  }, [stampEnabled, me, deals, dealId, activeProperty, position, posError]);
+
   const captureAndUpload = useCallback(async () => {
     if (!dealId) { alert("Pick a project first."); return; }
     if (!cameraReady || !videoRef.current) return;
@@ -255,18 +401,34 @@ export default function FieldCapture() {
     canvas.height = vh;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    // Burn the GPS + foreman stamp BEFORE we encode the JPEG so it survives
+    // every downstream pipeline (cloud storage, PDFs, insurance submission).
+    paintStamp(canvas, ctx);
     const blob = await new Promise((resolve) =>
       canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85)
     );
     if (!blob) return;
     const filename = `field-${Date.now()}.jpg`;
+    const capturedAt = new Date().toISOString();
 
     setUploadingShot(true);
     try {
+      const meta = {
+        gps_lat: position?.lat ?? null,
+        gps_lng: position?.lng ?? null,
+        gps_accuracy: position?.acc ?? null,
+        captured_at: capturedAt,
+        stamped: stampEnabled,
+      };
       if (navigator.onLine) {
         try {
           const fd = new FormData();
           fd.append("file", blob, filename);
+          if (meta.gps_lat != null) fd.append("gps_lat", String(meta.gps_lat));
+          if (meta.gps_lng != null) fd.append("gps_lng", String(meta.gps_lng));
+          if (meta.gps_accuracy != null) fd.append("gps_accuracy", String(meta.gps_accuracy));
+          fd.append("captured_at", capturedAt);
+          if (stampEnabled) fd.append("stamped", "true");
           await axios.post(
             `${API_BASE}/api/projects/${dealId}/photos`,
             fd,
@@ -274,18 +436,18 @@ export default function FieldCapture() {
           );
           setUploadedCount((n) => n + 1);
         } catch {
-          // network blip mid-upload — drop into queue
-          await queueAdd({ deal_id: dealId, blob, filename, created_at: Date.now() });
+          // network blip mid-upload — drop into queue (stamp already baked in)
+          await queueAdd({ deal_id: dealId, blob, filename, created_at: Date.now(), ...meta });
           await refreshQueueCount();
         }
       } else {
-        await queueAdd({ deal_id: dealId, blob, filename, created_at: Date.now() });
+        await queueAdd({ deal_id: dealId, blob, filename, created_at: Date.now(), ...meta });
         await refreshQueueCount();
       }
     } finally {
       setUploadingShot(false);
     }
-  }, [dealId, cameraReady, uploadingShot, token, refreshQueueCount, zoom]);
+  }, [dealId, cameraReady, uploadingShot, token, refreshQueueCount, zoom, paintStamp, position, stampEnabled]);
 
   // ---------- Pinch-to-zoom + tap-to-zoom ----------
   const onTouchStart = useCallback((e) => {
@@ -412,6 +574,33 @@ export default function FieldCapture() {
             data-testid="field-video"
           />
         )}
+        {/* Live stamp preview overlay — mirrors what will be burned in. Tiny
+            text in a translucent bar so the foreman knows the stamp is on
+            and where it'll land. Strictly visual (the real stamp is drawn
+            on the canvas, not on the DOM). Sits above the zoom pills. */}
+        {!cameraError && stampEnabled && (
+          <div className="absolute left-0 right-0 bottom-16 px-3 py-2 bg-gradient-to-t from-black/80 to-black/20 text-white pointer-events-none select-none" data-testid="field-stamp-preview">
+            <div className="border-l-2 border-blue-600 pl-2">
+              <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider drop-shadow">
+                <span className="truncate">{(me?.name || "Field Tech").toUpperCase()}</span>
+                <span className="text-[10px] font-mono opacity-90">
+                  {new Date().toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+              <div className="text-[10px] opacity-90 truncate drop-shadow">
+                {activeProperty
+                  ? [activeProperty.address, activeProperty.city, activeProperty.state].filter(Boolean).join(", ")
+                  : (activeDeal?.title || "")}
+              </div>
+              <div className="text-[10px] opacity-90 font-mono drop-shadow">
+                {position
+                  ? `GPS ${position.lat.toFixed(5)}, ${position.lng.toFixed(5)}  ±${Math.round(position.acc)}m`
+                  : (posError ? "GPS unavailable" : "GPS acquiring…")}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Zoom-level pills overlay (bottom of camera area) */}
         {!cameraError && (
           <div
@@ -452,8 +641,8 @@ export default function FieldCapture() {
       </div>
 
       {/* Status strip */}
-      <div className="px-4 py-2 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between text-[11px]">
-        <div className="text-zinc-400 truncate" data-testid="field-status">
+      <div className="px-4 py-2 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between text-[11px] gap-2 flex-wrap">
+        <div className="text-zinc-400 truncate flex-1 min-w-0" data-testid="field-status">
           {activeDeal ? (
             <span>To: <b className="text-zinc-100">{activeDeal.title}</b></span>
           ) : (
@@ -461,6 +650,34 @@ export default function FieldCapture() {
           )}
         </div>
         <div className="flex items-center gap-3 font-mono text-[11px]">
+          <button
+            type="button"
+            onClick={() => setStampEnabled((v) => !v)}
+            className={
+              "inline-flex items-center gap-1 px-2 py-1 rounded-sm uppercase tracking-wider font-bold transition-colors " +
+              (stampEnabled
+                ? "bg-blue-700 text-white hover:bg-blue-800"
+                : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")
+            }
+            data-testid="field-stamp-toggle"
+            title="Toggle GPS / foreman stamp on photos"
+          >
+            <span aria-hidden>{stampEnabled ? "★" : "☆"}</span>
+            <span>Stamp {stampEnabled ? "ON" : "OFF"}</span>
+          </button>
+          <span
+            className={
+              "inline-flex items-center gap-1 px-2 py-1 rounded-sm uppercase tracking-wider font-bold " +
+              (position
+                ? `${position.acc <= 25 ? "bg-emerald-900 text-emerald-200" : "bg-amber-900 text-amber-200"}`
+                : (posError ? "bg-rose-900 text-rose-200" : "bg-zinc-800 text-zinc-400"))
+            }
+            data-testid="field-gps-indicator"
+            title={position ? `${position.lat.toFixed(5)}, ${position.lng.toFixed(5)} ± ${Math.round(position.acc)} m` : (posError || "Acquiring GPS…")}
+          >
+            <span aria-hidden>📍</span>
+            {position ? `±${Math.round(position.acc)}m` : (posError ? "GPS OFF" : "GPS…")}
+          </span>
           <span className="text-emerald-400" data-testid="field-uploaded-count">
             <CheckCircle2 className="inline w-3 h-3" /> {uploadedCount}
           </span>

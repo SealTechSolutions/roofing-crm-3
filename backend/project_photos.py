@@ -107,6 +107,11 @@ def create_router(db, get_current_user) -> APIRouter:
         tag: str = Form(""),
         display_name: str = Form(""),
         description: str = Form(""),
+        gps_lat: Optional[float] = Form(None),
+        gps_lng: Optional[float] = Form(None),
+        gps_accuracy: Optional[float] = Form(None),
+        captured_at: str = Form(""),
+        stamped: bool = Form(False),
         current=Depends(get_current_user),
     ):
         await _ensure_deal(deal_id)
@@ -145,6 +150,14 @@ def create_router(db, get_current_user) -> APIRouter:
             "uploaded_by": current["id"],
             "uploader_name": current.get("name", ""),
             "created_at": _now_iso(),
+            # Proof-of-presence metadata (also burned into the JPEG as a stamp
+            # when `stamped=True`). Lets us sort/map photos by site visit
+            # later without re-running OCR on the burned-in text.
+            "gps_lat": gps_lat,
+            "gps_lng": gps_lng,
+            "gps_accuracy": gps_accuracy,
+            "captured_at": captured_at or _now_iso(),
+            "stamped": bool(stamped),
         }
         await db.project_photos.insert_one(doc.copy())
         doc.pop("_id", None)
