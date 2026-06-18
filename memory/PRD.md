@@ -686,6 +686,23 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Uses `created_at` for grouping — for field-camera photos this is the exact moment of capture; for drag-drop uploads it's the upload date.
 - Verified live on a deal with 24 photos across 2 dates: groups render correctly, counts accurate, toggle flips group order. Internal grid retains the 3/4/5/6/7/8-col responsive layout from the previous task.
 
+### Progress Timeline PDF + Stale-User Cleanup (Feb 2026)
+- **New feature**: `GET /api/projects/{deal_id}/photos/timeline.pdf` — generates a date-grouped photo album as a single PDF. Cover page + per-date sections (Today / Yesterday / friendly day-of-week label) with 2-col photo grid; each photo card has the image + filename + capture time. Honours optional `?album_name=` / `?tag=` filters so users can export e.g. only "After" or only "Drone" shots.
+- New module: `/app/backend/progress_timeline_pdf.py` (ReportLab-based).
+- Frontend button: `[data-testid=timeline-pdf-btn]` in `ProjectPhotos.jsx` toolbar — fetches blob and triggers an `<a download>` with the deal title in the filename.
+- Tests: `/app/backend/tests/test_progress_timeline_pdf.py` (4/4 pass — auth-required, PDF magic header, filter narrows results, empty-project cover-only PDF).
+- Verified live on 24-photo deal → 23 MB / 6-page PDF (cover + 2 date sections) with correct title, photo captions, and timestamps. Toast confirmation on success.
+
+### Bounce-Back Email Fix — Admin User Rename
+- **Symptom**: Mail Delivery Subsystem bounces in Darren's inbox saying "Delivery incomplete to admin@roofingcrm.com".
+- **Root cause**: Seed/placeholder admin email `admin@roofingcrm.com` was still in the DB; the CRM's notification + Monday-digest scheduler tries to mail every admin user at their stored email → bounces because the domain isn't real.
+- **Fix** (DB ops + test_credentials.md update):
+  1. Deleted 5 leftover test users (`test_user_*`, `test_sales_*`, `test_probe_*`).
+  2. Deleted the auto-created duplicate `darren@sealtechsolutions.co` admin (created Jun 18, no deals owned).
+  3. Renamed the original admin user's email `admin@roofingcrm.com` → `darren@sealtechsolutions.co` (password unchanged, role unchanged, title preserved).
+- Verified: login works at the new email with the same `admin123` password; old email correctly rejected.
+- `/app/memory/test_credentials.md` updated for future fork/testing agents.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 
