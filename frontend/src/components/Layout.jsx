@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 import { api } from "@/lib/api";
@@ -88,6 +88,30 @@ export default function Layout() {
           </button>
 
           {/* Printable how-to PDFs — regenerated live from the backend on every click. */}
+          <button
+            data-testid="dl-daily-status"
+            onClick={async () => {
+              const id = toast.loading("Building today's status report…");
+              try {
+                const r = await api.get("/reports/daily-status.pdf", { responseType: "blob" });
+                const u = URL.createObjectURL(r.data);
+                const a = document.createElement("a");
+                const date = new Date().toISOString().slice(0, 10);
+                a.href = u; a.download = `Daily Status - ${date}.pdf`;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(u), 1000);
+                toast.success("Daily Status downloaded", { id });
+              } catch (e) {
+                toast.error(e?.message || "Could not download", { id });
+              }
+            }}
+            title="Today's pipeline snapshot — where every deal is, what's next, who owns it. Also auto-emails every weekday 7am MT."
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 mb-2 border border-amber-500/40 text-amber-300 hover:bg-amber-500 hover:text-zinc-950 hover:border-amber-500 text-xs uppercase tracking-wider font-bold transition-colors rounded-sm"
+          >
+            <Sunrise className="w-3.5 h-3.5" />
+            Today&apos;s Status Report
+          </button>
+
           <div className="grid grid-cols-2 gap-2 mb-2">
             <button
               data-testid="dl-quick-guide"

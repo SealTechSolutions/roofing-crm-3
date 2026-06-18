@@ -150,6 +150,103 @@ async def _weekly_stale_digest(stale_engine, send_one_digest) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Job 3 — Daily Status Report email (7:00 AM Mountain Time, Mon–Fri)
+# ---------------------------------------------------------------------------
+
+async def _daily_status_email(db) -> Dict[str, Any]:
+    """Build the Daily Status PDF and email it to admin + every deal owner.
+
+    Data gathering + render are delegated to the same engine used by the
+    on-demand `/api/reports/daily-status.pdf` endpoint, so the cron and the
+    button output identical reports.
+    """
+    from email_sender import send_email
+    import daily_status_pdf as _dsp
+    try:
+        from server import collect_daily_status_data  # type: ignore
+    except Exception as e:
+        logger.warning(f"[scheduler] daily_status_email collector import failed: {e}")
+        return {"job": "daily_status_email", "sent": 0, "error": "collector_unavailable"}
+
+    payload = await collect_daily_status_data(db)
+    try:
+        pdf_bytes = _dsp.build_daily_status_pdf(**payload)
+    except Exception as e:
+        logger.warning(f"[scheduler] daily_status_email build failed: {e}")
+        return {"job": "daily_status_email", "sent": 0, "error": f"render_failed:{e}"}
+
+    recipients = await _resolve_daily_status_recipients(db)
+    if not recipients:
+        return {"job": "daily_status_email", "sent": 0, "skipped": "no_recipients"}
+
+    today_label = datetime.now(timezone.utc).strftime("%A, %B %d, %Y")
+    subject = f"Daily Status — {today_label}"
+    body_text = (
+        "Good morning,\n\n"
+        "Attached is today's Daily Status — every active deal, where it is in the\n"
+        "process, what's next, and who owns it.\n\n"
+        "— SealTech CRM"
+    )
+    sent = 0
+    failed = 0
+    for to in recipients:
+        try:
+            send_email(
+                to=to,
+                subject=subject,
+                body_text=body_text,
+                attachments=[{
+                    "filename": f"daily-status-{datetime.now(timezone.utc).date().isoformat()}.pdf",
+                    "content": pdf_bytes,
+                    "mime_type": "application/pdf",
+                }],
+            )
+            sent += 1
+        except Exception as e:
+            logger.warning(f"[scheduler] daily_status_email send to {to} failed: {e}")
+            failed += 1
+    logger.info(f"[scheduler] daily_status_email: sent={sent} failed={failed} recipients={len(recipients)}")
+    return {"job": "daily_status_email", "sent": sent, "failed": failed, "recipients": recipients}
+
+
+async def _resolve_daily_status_recipients(db) -> list[str]:
+    """Admin + every user owning ≥1 active (non-Lost / non-Past-Lead) deal."""
+    out: list[str] = []
+    seen: set[str] = set()
+    admins = await db.users.find(
+        {"role": "admin", "is_active": {"$ne": False}, "is_deleted": {"$ne": True}},
+        {"_id": 0, "email": 1},
+    ).to_list(20)
+    for a in admins:
+        e = (a.get("email") or "").strip()
+        if e and e.lower() not in seen:
+            out.append(e)
+            seen.add(e.lower())
+    deals = await db.deals.find(
+        {"is_deleted": {"$ne": True}, "status": {"$nin": ["Lost", "Past Lead"]}},
+        {"_id": 0, "assigned_to_user_id": 1, "created_by_user_id": 1},
+    ).to_list(5000)
+    owner_ids = {d.get("assigned_to_user_id") or d.get("created_by_user_id") for d in deals}
+    owner_ids.discard(None)
+    owner_ids.discard("")
+    if owner_ids:
+        users = await db.users.find(
+            {
+                "id": {"$in": list(owner_ids)},
+                "is_active": {"$ne": False},
+                "is_deleted": {"$ne": True},
+            },
+            {"_id": 0, "email": 1},
+        ).to_list(len(owner_ids))
+        for u in users:
+            e = (u.get("email") or "").strip()
+            if e and e.lower() not in seen:
+                out.append(e)
+                seen.add(e.lower())
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Bootstrapping — called from server.py on FastAPI startup
 # ---------------------------------------------------------------------------
 
@@ -171,6 +268,19 @@ JOB_DEFAULTS = {
         "day_of_week": "mon",
         "name": "Weekly Stale-Deals Digest",
         "misfire_grace_time": 3 * 3600,
+    },
+    "daily_status_email": {
+        # 7:00 AM Mountain Time. MDT (Mar–Nov) = UTC-6 → 13:00 UTC.
+        # MST (Nov–Mar) = UTC-7 → 14:00 UTC. We default to 13:00 UTC so the
+        # report lands no later than 7am MDT during the bulk of the year; the
+        # admin can shift via PUT /api/scheduler/jobs/daily_status_email/schedule
+        # for Standard Time if desired.
+        "supports_day_of_week": True,
+        "hour": 13,
+        "minute": 0,
+        "day_of_week": "mon,tue,wed,thu,fri",
+        "name": "Daily Status Report (7am MT, Mon–Fri)",
+        "misfire_grace_time": 2 * 3600,
     },
 }
 
@@ -210,6 +320,7 @@ async def start(db, stale_engine, send_one_digest) -> AsyncIOScheduler | None:
     _jobs = {
         "mark_lead_to_sent": lambda: _auto_flip_lead_to_sent(db),
         "weekly_stale_digest": lambda: _weekly_stale_digest(stale_engine, send_one_digest),
+        "daily_status_email": lambda: _daily_status_email(db),
     }
 
     sched = AsyncIOScheduler(timezone=timezone.utc)

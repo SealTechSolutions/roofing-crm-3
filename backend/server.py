@@ -6539,6 +6539,141 @@ async def docs_full_manual_pdf(_=Depends(get_current_user)):
     )
 
 
+# ---------- Daily Status Report (the "morning standup" PDF) ----------
+import daily_status_pdf as _daily_status_pdf  # noqa: E402
+
+
+async def collect_daily_status_data(_db=None) -> dict:
+    """Gather everything the Daily Status PDF needs in a single pass.
+
+    Public so the APScheduler cron in scheduler.py can call it without
+    re-implementing the queries. Returns kwargs suitable for
+    `daily_status_pdf.build_daily_status_pdf(**payload)`.
+    """
+    target_db = _db if _db is not None else db
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    tomorrow = (now + timedelta(days=1)).date().isoformat()
+
+    # Deals — exclude deleted/lost
+    deals = await target_db.deals.find(
+        {"is_deleted": {"$ne": True}}, {"_id": 0}
+    ).to_list(5000)
+    deal_ids = [d["id"] for d in deals]
+
+    # Invoices grouped by deal (for "final invoice paid?" check)
+    invs = await target_db.invoices.find(
+        {"deal_id": {"$in": deal_ids}, "is_deleted": {"$ne": True}},
+        {"_id": 0, "deal_id": 1, "status": 1, "is_final": 1, "balance_due": 1, "invoice_type": 1},
+    ).to_list(5000) if deal_ids else []
+    invoices_by_deal: dict = {}
+    for inv in invs:
+        inv["is_final"] = inv.get("is_final") or inv.get("invoice_type") == "Final"
+        invoices_by_deal.setdefault(inv["deal_id"], []).append(inv)
+
+    # Users
+    users = await target_db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
+    users_by_id = {u["id"]: u for u in users}
+
+    # Today's + Tomorrow's ad-hoc deal events (the ones from deal_events.py)
+    today_events = await target_db.deal_events.find(
+        {"is_deleted": {"$ne": True}, "date": today}, {"_id": 0},
+    ).sort([("start_time", 1)]).to_list(200)
+    tomorrow_events = await target_db.deal_events.find(
+        {"is_deleted": {"$ne": True}, "date": tomorrow}, {"_id": 0},
+    ).sort([("start_time", 1)]).to_list(200)
+    # Attach deal_title for nicer rendering
+    evt_deal_ids = list({ev["deal_id"] for ev in (today_events + tomorrow_events) if ev.get("deal_id")})
+    if evt_deal_ids:
+        evt_deals = await target_db.deals.find(
+            {"id": {"$in": evt_deal_ids}}, {"_id": 0, "id": 1, "title": 1},
+        ).to_list(len(evt_deal_ids))
+        title_by_id = {d["id"]: d.get("title") or "" for d in evt_deals}
+        for ev in today_events + tomorrow_events:
+            ev["deal_title"] = title_by_id.get(ev.get("deal_id"), "")
+
+    # Overdue tasks
+    overdue_tasks = await target_db.tasks.find(
+        {
+            "is_deleted": {"$ne": True},
+            "status": {"$ne": "Done"},
+            "due_date": {"$ne": "", "$lt": today},
+        },
+        {"_id": 0, "title": 1, "due_date": 1, "assigned_to_user_id": 1, "deal_id": 1},
+    ).sort([("due_date", 1)]).to_list(200)
+
+    # Stale deals (>= 7 days no movement)
+    stale_threshold = (now - timedelta(days=7))
+    stale = []
+    for d in deals:
+        if d.get("status") in ("Lost", "Past Lead"):
+            continue
+        hist = d.get("status_history") or []
+        last_iso = hist[-1].get("at") if hist else d.get("updated_at") or d.get("created_at")
+        try:
+            last_dt = datetime.fromisoformat(str(last_iso).replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if last_dt <= stale_threshold:
+            stale.append({
+                "id": d["id"],
+                "title": d.get("title") or "Untitled",
+                "status": d.get("status"),
+                "days_in_stage": (now - last_dt).days,
+                "owner_user_id": d.get("assigned_to_user_id") or d.get("created_by_user_id") or "",
+            })
+    stale.sort(key=lambda x: x["days_in_stage"], reverse=True)
+
+    # COIs expiring within 30 days (vendors)
+    coi_cutoff = (now + timedelta(days=30)).date().isoformat()
+    coi_expiring = await target_db.vendors.find(
+        {
+            "is_deleted": {"$ne": True},
+            "coi_expiration": {"$ne": "", "$lte": coi_cutoff, "$gte": today},
+        },
+        {"_id": 0, "name": 1, "vendor_name": 1, "contact_name": 1, "coi_expiration": 1},
+    ).sort([("coi_expiration", 1)]).to_list(200) if "vendors" in await target_db.list_collection_names() else []
+
+    return {
+        "deals": deals,
+        "invoices_by_deal": invoices_by_deal,
+        "users_by_id": users_by_id,
+        "today_events": today_events,
+        "tomorrow_events": tomorrow_events,
+        "overdue_tasks": overdue_tasks,
+        "coi_expiring_soon": coi_expiring,
+        "stale_deals": stale[:25],  # cap so PDF stays readable
+        "now": now,
+    }
+
+
+@api_router.get("/reports/daily-status.pdf")
+async def reports_daily_status_pdf(current=Depends(get_current_user)):
+    """On-demand Daily Status PDF — the same engine the 7am cron uses.
+
+    Any logged-in user can pull it; the contents are company-wide today
+    (admin's morning standup view). Per-user filtered views are a future
+    enhancement.
+    """
+    payload = await collect_daily_status_data(db)
+    pdf = _daily_status_pdf.build_daily_status_pdf(**payload)
+    filename = f"daily-status-{datetime.now(timezone.utc).date().isoformat()}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@api_router.get("/reports/daily-status/recipients")
+async def reports_daily_status_recipients(current=Depends(get_current_user)):
+    """Who the 7am morning email goes to — admin + every active deal owner."""
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Admins only")
+    import scheduler as _sched
+    return {"recipients": await _sched._resolve_daily_status_recipients(db)}
+
+
 # ---------- Final Invoice (project completion) ----------
 async def _compute_final_invoice_preview(deal_id: str) -> dict:
     """Pure-read calculation of what a Final invoice would look like.
