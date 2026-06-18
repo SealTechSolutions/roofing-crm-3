@@ -27,7 +27,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 
-from email_sender import send_email, EmailNotConfigured
+from email_sender import send_email, send_for_category, EmailNotConfigured
 
 logger = logging.getLogger("coi_reminder")
 
@@ -173,7 +173,8 @@ async def send_batch(db, *, manual: bool = False, triggered_by_user_id: Optional
             continue
         try:
             text, html = _build_email_body(v, settings)
-            r = send_email(
+            r = await send_for_category(
+                db, "projects",
                 to=email,
                 subject=subject,
                 body_text=text,

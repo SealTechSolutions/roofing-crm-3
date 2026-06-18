@@ -63,6 +63,8 @@ def send_email(
 
     attachments: list of dicts like {"filename": "invoice.pdf", "data": bytes, "mime": "application/pdf"}
     from_email: optional override; must be an allowed alias from `GMAIL_FROM_ALIASES`.
+                Use `send_email_for_category()` to auto-resolve from the
+                admin's email-routing settings.
     Returns: {"ok": True, "to": ..., "cc": ..., "message_id": ...}
     """
     username, password, default_from, from_name = _config()
@@ -123,3 +125,26 @@ def send_email(
         "cc": cc.strip() if cc else "",
         "message_id": msg["Message-ID"],
     }
+
+
+async def send_for_category(db, category: str, **kwargs) -> dict:
+    """Resolve the From alias for the given category from email-routing
+    settings, then call send_email. This is the preferred entry point for
+    new code; existing call sites still using send_email(from_email=...) keep
+    working unchanged.
+
+    `category` must be one of: assessments, scope, finance, projects, maintenance.
+    Falls back to the default GMAIL_FROM_EMAIL if the category isn't configured.
+    """
+    try:
+        import email_routing as _er
+        from_email = await _er.get_from_for_category(db, category)
+    except Exception:
+        from_email = None
+    if from_email:
+        # Defensive: only pass if it's in the whitelist; otherwise let
+        # send_email use its default.
+        allowed = {a.strip() for a in get_from_aliases()}
+        if from_email in allowed:
+            kwargs["from_email"] = from_email
+    return send_email(**kwargs)

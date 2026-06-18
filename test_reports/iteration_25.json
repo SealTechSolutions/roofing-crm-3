@@ -1,0 +1,48 @@
+{
+  "summary": "Per-category email routing + extended calendar mapping verified end-to-end. Backend: 12/13 tests passed (1 skipped because public registration is disabled — that branch is covered by the no-token 401/403 test). Frontend: 5 calendar mapping dropdowns + 5-row Email Routing panel render correctly on /settings/integrations, all GMAIL_FROM_ALIASES surface as <option>s, and a saved value survives a full page reload.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_email_routing.py",
+    "/app/test_reports/pytest/pytest_iter25.xml"
+  ],
+  "what_was_tested": [
+    "GET /api/settings/email-routing without auth → 401/403 (admin-gate enforced).",
+    "GET response shape: saved, resolved, categories=['assessments','scope','finance','projects','maintenance'], allowed_aliases contains all 5 role aliases + darren@.",
+    "PUT /api/settings/email-routing with 5 aliases persists and round-trips through subsequent GET.",
+    "PUT with a non-whitelisted From returns 400 with a clear 'whitelist' message.",
+    "email_routing.get_from_for_category returns saved value, falls back to env alias when blank (proved by clearing maintenance and re-reading).",
+    "email_sender.send_for_category, mocked at smtplib.SMTP, produces MIME with From header = scope@... for category 'scope' and finance@... for 'finance', plus a Message-ID on @sealtechsolutions.co.",
+    "GoogleCalendarSettings now exposes scope_calendar_id + finance_calendar_id; PUT /api/integrations/google/settings persists both and GET /api/integrations/google/status reflects them.",
+    "deal_events.push_event_to_gcal calendar picker: Roof Walk→ASSESS, Presentation→SCOPE, Meeting→SCOPE, Job Start→PROJECT, Other→ASSESS (verified by stubbing gcal.get_settings + upsert_event).",
+    "deal_events.send_due_reminders embeds the documented category map (Job Start→projects, Presentation/Meeting→scope, Roof Walk→assessments, Other→projects) — verified by source inspection.",
+    "Code-level confirmation of category routing at all send sites: server.py (scope email→'scope' via get_from_for_category; PO→'projects'; invoice→'finance'; statement→'finance'; payables→'finance'; library send→'projects' with explicit allowed-alias check; stale-deal digest→send_for_category 'scope'); assessment.py→'assessments'; coi_reminders.py→'projects'; scheduler.py daily-status→'projects'.",
+    "Frontend: /settings/integrations renders 5 map-* dropdowns and the email-routing-panel with 5 select rows; selects list all aliases; saving a change persists across reload (verified by reading select.value after page.reload())."
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "[minor] React console warning on the Integrations page: '<span> cannot be a child of <option>' — caused by emergent's runtime instrumentation injecting <span x-excluded> wrappers around the option text expression. Not a user-code bug, but worth knowing if hydration errors are ever reported in prod.",
+    "[nice-to-have] email_routing.EmailRoutingIn uses EmailStr but the whitelist check is case-insensitive — consistent. Consider returning the rejected category list in the 400 body as structured JSON (currently returned as detail string) for cleaner UI error display.",
+    "[nice-to-have] /settings/integrations does not currently visualize which category will fall back to env when a saved value is blank. Could surface the 'resolved' value as small helper text below each blank dropdown."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_email_routing.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 executed, 1 skipped due to disabled public registration)",
+    "frontend": "100%"
+  },
+  "test_credentials": "darren@sealtechsolutions.co / admin123 (admin)",
+  "seed_data_creation": "Final state of app_settings.email_routing doc has all 5 categories set to their matching role aliases; the test_put_saves_and_persists test wrote them as the canonical mapping. Google calendar settings on the admin user were updated with scope_calendar_id='scope_test_cal@group.calendar.google.com' and finance_calendar_id='finance_test_cal@group.calendar.google.com' — these are dummy IDs; main agent should overwrite via the UI when real calendars are picked.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Email routing is fully wired. If you touch send sites, re-run /app/backend/tests/test_email_routing.py — it inspects every call site in server.py / assessment.py / coi_reminders.py / scheduler.py / deal_events.py to make sure they keep routing by category. The push_event_to_gcal test stubs gcal.get_settings + upsert_event in place; if you refactor google_calendar.py, restore the original attrs after the test or duplicate the FakeSettings approach.",
+  "rca_of_the_issue": "n/a — no bugs to RCA. All flows worked on first run."
+}

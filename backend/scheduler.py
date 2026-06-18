@@ -160,7 +160,7 @@ async def _daily_status_email(db) -> Dict[str, Any]:
     on-demand `/api/reports/daily-status.pdf` endpoint, so the cron and the
     button output identical reports.
     """
-    from email_sender import send_email
+    from email_sender import send_email, send_for_category
     import daily_status_pdf as _dsp
     try:
         from server import collect_daily_status_data  # type: ignore
@@ -191,7 +191,8 @@ async def _daily_status_email(db) -> Dict[str, Any]:
     failed = 0
     for to in recipients:
         try:
-            send_email(
+            await send_for_category(
+                db, "projects",
                 to=to,
                 subject=subject,
                 body_text=body_text,

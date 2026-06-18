@@ -48,6 +48,8 @@ class GoogleCalendarSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
     enabled: bool = True
     assessment_calendar_id: Optional[str] = None
+    scope_calendar_id: Optional[str] = None
+    finance_calendar_id: Optional[str] = None
     project_calendar_id: Optional[str] = None
     maintenance_calendar_id: Optional[str] = None
 

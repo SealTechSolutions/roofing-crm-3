@@ -79,7 +79,20 @@ async def push_event_to_gcal(db, user_id: str, event: dict, public_base_url: str
     settings = await gcal.get_settings(db, user_id)
     if not settings.enabled:
         return
-    target_cal = settings.assessment_calendar_id or settings.project_calendar_id
+    # Pick the matching role calendar for each event type. Falls back through
+    # a sensible chain so a missing mapping never blocks the push.
+    cal_by_type = {
+        "Roof Walk":    settings.assessment_calendar_id,
+        "Presentation": settings.scope_calendar_id or settings.assessment_calendar_id,
+        "Meeting":      settings.scope_calendar_id or settings.assessment_calendar_id,
+        "Job Start":    settings.project_calendar_id,
+        "Other":        settings.assessment_calendar_id,
+    }
+    target_cal = (
+        cal_by_type.get(event.get("event_type") or "Other")
+        or settings.assessment_calendar_id
+        or settings.project_calendar_id
+    )
     if not target_cal:
         return
 
@@ -216,7 +229,7 @@ async def send_due_reminders(db) -> dict:
     """Find events starting in the next ~60 minutes that haven't had a reminder
     sent yet, and email the owner + invitees. Returns counts for logging."""
     try:
-        from email_sender import send_email
+        from email_sender import send_for_category
     except Exception:
         return {"sent": 0, "skipped": 0, "error": "email_sender not available"}
 
@@ -266,6 +279,16 @@ async def send_due_reminders(db) -> dict:
         recipients = [owner["email"]] + [e.strip() for e in (ev.get("invitees") or []) if e.strip()]
         emoji = EVENT_TYPE_EMOJI.get(ev.get("event_type") or "Other", "📅")
         subject = f"{emoji} Reminder in 1 hour: {ev.get('title') or ev.get('event_type')} — {deal.get('title') if deal else ''}"
+        # Pick the routing category from the event type so e.g. a "Job Start"
+        # reminder fires from projects@ and a "Presentation" reminder from scope@.
+        cat_by_type = {
+            "Roof Walk":    "assessments",
+            "Presentation": "scope",
+            "Meeting":      "scope",
+            "Job Start":    "projects",
+            "Other":        "projects",
+        }
+        category = cat_by_type.get(ev.get("event_type") or "Other", "projects")
         body_lines = [
             "You have an appointment in about 1 hour.",
             "",
@@ -282,7 +305,7 @@ async def send_due_reminders(db) -> dict:
         ok = True
         for to in recipients:
             try:
-                send_email(to=to, subject=subject, body_text=body_text)
+                await send_for_category(db, category, to=to, subject=subject, body_text=body_text)
             except Exception:
                 ok = False
         if ok:

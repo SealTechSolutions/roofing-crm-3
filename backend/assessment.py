@@ -556,17 +556,14 @@ def create_router(db, get_current_user) -> APIRouter:
             "Best regards,\nSealTech Building Solutions\n720-715-9955  ·  assessments@sealtechsolutions.co"
         )
 
-        from email_sender import send_email, get_from_aliases
-        aliases = get_from_aliases()
-        preferred = "assessments@sealtechsolutions.co"
-        from_email = preferred if preferred in aliases else (aliases[0] if aliases else None)
+        from email_sender import send_for_category, get_from_aliases
         try:
-            send_email(
+            await send_for_category(
+                db, "assessments",
                 to=to,
                 subject=subject,
                 body_text=body_text,
                 attachments=[{"filename": filename, "data": pdf_bytes, "mime": "application/pdf"}],
-                from_email=from_email,
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Email send failed: {type(e).__name__}: {e}")

@@ -2074,6 +2074,10 @@ async def email_purchase_order(deal_id: str, vendor_id: str, body: dict = Body(d
     to_email = (body.get("to_email") or po["vendor"].get("email") or "").strip()
     cc_email = (body.get("cc_email") or "").strip()
     from_email = (body.get("from_email") or "").strip() or None
+    if not from_email:
+        # Default to the "projects" Send-As alias for purchase orders.
+        from email_routing import get_from_for_category
+        from_email = await get_from_for_category(db, "projects") or None
     if not to_email:
         raise HTTPException(status_code=400, detail="No recipient email — please provide one or set the vendor's email.")
 
@@ -2616,6 +2620,10 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
     to_email = (body.get("to_email") or inv.get("bill_to_email") or "").strip()
     cc_email = (body.get("cc_email") or inv.get("cc_email") or "").strip()
     from_email = (body.get("from_email") or "").strip() or None
+    if not from_email:
+        # Default to the "finance" Send-As alias for invoices.
+        from email_routing import get_from_for_category
+        from_email = await get_from_for_category(db, "finance") or None
     if not to_email:
         raise HTTPException(status_code=400, detail="No recipient email — please provide one.")
 
@@ -2848,6 +2856,10 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
     to_email = (body.get("to_email") or contact.get("email") or "").strip()
     cc_email = (body.get("cc_email") or "").strip()
     from_email = (body.get("from_email") or "").strip() or None
+    if not from_email:
+        # Default to the "finance" Send-As alias for statements / late notices.
+        from email_routing import get_from_for_category
+        from_email = await get_from_for_category(db, "finance") or None
     if not to_email:
         raise HTTPException(status_code=400, detail="No recipient email — please provide one.")
 
@@ -3644,10 +3656,11 @@ async def email_payables_report(body: dict = Body(default={}), current=Depends(g
     report = await payables_report(current)
     # Build the email
     try:
-        from email_sender import send_email
+        from email_sender import send_for_category
         html = _render_payables_email_html(report)
         text = _render_payables_email_text(report)
-        result = send_email(
+        result = await send_for_category(
+            db, "finance",
             to=to_email,
             subject=f"SealTech Payables — Week of {report['today']} — {report['overdue_count']} overdue · {report['due_this_week_count']} due",
             body_text=text,
@@ -3828,8 +3841,10 @@ async def email_coi_renewal(vendor_id: str, body: CoiRenewalEmailIn, current=Dep
         "<p>Thanks,<br/>SealTech Commercial Roofing</p>"
     )
     try:
-        from email_sender import send_email
-        result = send_email(to=to, subject=subject, body_text=body_text, body_html=body_html, cc=body.cc)
+        from email_sender import send_for_category
+        result = await send_for_category(
+            db, "projects",
+            to=to, subject=subject, body_text=body_text, body_html=body_html, cc=body.cc)
         # Log a touchpoint on the vendor for visibility
         await db.vendors.update_one(
             {"id": vendor_id},
@@ -4075,13 +4090,16 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
     from_email = (body.get("from_email") or "").strip() or None
     custom_message = (body.get("message") or "").strip()
 
-    # Auto-pick FROM by deal type when caller didn't pin one
+    # Auto-pick FROM by deal type when caller didn't pin one — use the
+    # email-routing settings doc so it stays in sync with the Settings UI.
     is_assessment = (deal.get("deal_type") or "").lower() == "assessment"
     if not from_email:
+        from email_routing import get_from_for_category
         from email_sender import get_from_aliases
         allowed = set(get_from_aliases())
-        preferred = "assessments@sealtechsolutions.co" if is_assessment else "scope@sealtechsolutions.co"
-        from_email = preferred if preferred in allowed else (os.environ.get("GMAIL_FROM_EMAIL") or "").strip() or None
+        category = "assessments" if is_assessment else "scope"
+        resolved = await get_from_for_category(db, category)
+        from_email = resolved if (resolved and resolved in allowed) else (os.environ.get("GMAIL_FROM_EMAIL") or "").strip() or None
 
     if not to_email:
         # Auto-populate from primary contact if available
@@ -5921,9 +5939,10 @@ async def _build_and_send_owner_digest(
 
     if not dry_run:
         try:
-            from email_sender import send_email
+            from email_sender import send_for_category
             cc = cc_email if (cc_email and cc_email != owner_email) else None
-            send_email(
+            await send_for_category(
+                db, "scope",
                 to=owner_email, subject=subject,
                 body_text=body_text, body_html=body_html, cc=cc,
             )
@@ -6236,12 +6255,13 @@ def _start_payables_scheduler():
             if not admin:
                 logger.warning("No admin user found for scheduled payables email")
                 return
-            from email_sender import send_email
+            from email_sender import send_for_category
             report = await payables_report(admin)
             if report["overdue_count"] == 0 and report["due_this_week_count"] == 0:
                 logger.info("Friday payables: nothing due, skipping email")
                 return
-            send_email(
+            await send_for_category(
+                db, "finance",
                 to=admin_email,
                 subject=f"SealTech Payables — Week of {report['today']} — {report['overdue_count']} overdue · {report['due_this_week_count']} due",
                 body_text=_render_payables_email_text(report),
@@ -6342,11 +6362,13 @@ api_router.include_router(assessment_module.create_router(db, get_current_user))
 import google_calendar as gcal_module
 import tasks as tasks_module
 import deal_events as deal_events_module
+import email_routing as email_routing_module
 _PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL") or os.environ.get("GOOGLE_OAUTH_REDIRECT_URI", "").replace("/api/oauth/calendar/callback", "")
 api_router.include_router(gcal_module.make_google_calendar_router(db, get_current_user, _PUBLIC_BASE_URL))
 api_router.include_router(gcal_module.make_google_oauth_callback_router(db))
 api_router.include_router(tasks_module.make_tasks_router(db, get_current_user, push_task_fn=gcal_module.push_task, public_base_url=_PUBLIC_BASE_URL))
 api_router.include_router(deal_events_module.make_router(db, get_current_user, public_base_url=_PUBLIC_BASE_URL))
+api_router.include_router(email_routing_module.make_router(db, get_current_user))
 
 
 # ----- Public Proposal Signing (Sign Off link) ----------------------------

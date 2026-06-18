@@ -28,7 +28,7 @@ export default function Integrations() {
         const s = c.data.suggestion || {};
         const cur = r.data.settings || {};
         const patch = {};
-        for (const k of ["assessment_calendar_id", "project_calendar_id", "maintenance_calendar_id"]) {
+        for (const k of ["assessment_calendar_id", "scope_calendar_id", "finance_calendar_id", "project_calendar_id", "maintenance_calendar_id"]) {
           if (!cur[k] && s[k]) patch[k] = s[k];
         }
         if (Object.keys(patch).length) {
@@ -167,15 +167,19 @@ export default function Integrations() {
 
             <div className="border-t border-zinc-200 pt-5">
               <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">Calendar Mapping</div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <MapField label="📅 Assessments + Sales Follow-ups + Tasks" valueKey="assessment_calendar_id" value={s.assessment_calendar_id} calendars={calendars} onSave={saveMap} disabled={savingMap} testId="map-assessments" />
-                <MapField label="🛠 Projects + Material Orders" valueKey="project_calendar_id" value={s.project_calendar_id} calendars={calendars} onSave={saveMap} disabled={savingMap} testId="map-projects" />
-                <MapField label="🟢 Maintenance Visits" valueKey="maintenance_calendar_id" value={s.maintenance_calendar_id} calendars={calendars} onSave={saveMap} disabled={savingMap} testId="map-maintenance" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <MapField label="📅 Assessments" valueKey="assessment_calendar_id" value={s.assessment_calendar_id} calendars={calendars} onSave={saveMap} disabled={savingMap} testId="map-assessments" />
+                <MapField label="📝 Scopes" valueKey="scope_calendar_id" value={s.scope_calendar_id} calendars={calendars} onSave={saveMap} disabled={savingMap} testId="map-scope" />
+                <MapField label="💰 Finance" valueKey="finance_calendar_id" value={s.finance_calendar_id} calendars={calendars} onSave={saveMap} disabled={savingMap} testId="map-finance" />
+                <MapField label="🛠 Projects" valueKey="project_calendar_id" value={s.project_calendar_id} calendars={calendars} onSave={saveMap} disabled={savingMap} testId="map-projects" />
+                <MapField label="🟢 Maintenance" valueKey="maintenance_calendar_id" value={s.maintenance_calendar_id} calendars={calendars} onSave={saveMap} disabled={savingMap} testId="map-maintenance" />
               </div>
               <div className="text-[11px] text-zinc-500 mt-3">
-                Auto-detected by name. Change anytime — saved instantly.
+                Each kind of CRM event pushes to its matching shared calendar so your <b>darren@</b> stays clean for selling. Auto-detected by calendar name — change anytime, saved instantly.
               </div>
             </div>
+
+            <EmailRoutingPanel />
           </div>
         )}
       </div>
@@ -201,6 +205,122 @@ function MapField({ label, valueKey, value, calendars, onSave, disabled, testId 
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Email "Send As" routing — picks which alias each kind of outbound email
+// is sent FROM. Keeps the primary darren@ inbox clean for selling.
+// ---------------------------------------------------------------------------
+function EmailRoutingPanel() {
+  const [loading, setLoading] = React.useState(true);
+  const [data, setData] = React.useState({ saved: {}, resolved: {}, categories: [], allowed_aliases: [] });
+  const [draft, setDraft] = React.useState({});
+  const [saving, setSaving] = React.useState(false);
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const r = await api.get("/settings/email-routing");
+      setData(r.data);
+      setDraft(r.data.saved || {});
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    reload();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="border-t border-zinc-200 pt-5">
+        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">Email &ldquo;Send As&rdquo; Routing</div>
+        <div className="text-sm text-zinc-500 italic">Loading…</div>
+      </div>
+    );
+  }
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const r = await api.put("/settings/email-routing", draft);
+      setData((d) => ({ ...d, ...r.data }));
+      toast.success("Email routing saved — outbound emails will now use the matching alias.");
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const LABELS = {
+    assessments: { icon: "📅", label: "Assessments", help: "Assessment scheduling + assessment-report emails" },
+    scope:       { icon: "📝", label: "Scopes",      help: "Proposals + scope emails + sales follow-ups + stale-deal digests" },
+    finance:     { icon: "💰", label: "Finance",     help: "Invoices, statements, late notices, payables reports" },
+    projects:    { icon: "🛠", label: "Projects",    help: "Purchase orders, COI requests, project comms, daily status" },
+    maintenance: { icon: "🟢", label: "Maintenance", help: "Maintenance visit reminders" },
+  };
+
+  const dirty = (data.categories || []).some((cat) => (draft[cat] || "") !== (data.saved?.[cat] || ""));
+
+  return (
+    <div className="border-t border-zinc-200 pt-5 mt-5" data-testid="email-routing-panel">
+      <div className="flex items-end justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">Email &ldquo;Send As&rdquo; Routing</div>
+          <div className="text-[12px] text-zinc-600 mt-1 max-w-2xl">
+            Each kind of outbound CRM email is sent from the matching alias so replies land in the right inbox, not your selling one. Aliases must be verified as <em>Send As</em> on your primary Gmail account.
+          </div>
+        </div>
+        {dirty && (
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 h-9 px-4 bg-blue-700 text-white text-[10px] font-bold uppercase tracking-wider rounded-sm hover:bg-blue-800 disabled:opacity-50"
+            data-testid="email-routing-save"
+          >
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {(data.categories || []).map((cat) => {
+          const meta = LABELS[cat] || { icon: "✉️", label: cat, help: "" };
+          return (
+            <div key={cat} data-testid={`email-routing-row-${cat}`}>
+              <label className="block text-xs font-bold text-zinc-700 mb-1">
+                <span className="mr-1">{meta.icon}</span>{meta.label}
+              </label>
+              <select
+                value={draft[cat] || ""}
+                onChange={(e) => setDraft((d) => ({ ...d, [cat]: e.target.value }))}
+                className="w-full px-2 h-9 border border-zinc-300 bg-white rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-700"
+                data-testid={`email-routing-select-${cat}`}
+              >
+                <option value="">— Use primary ({data.resolved?.[cat] || "default"}) —</option>
+                {(data.allowed_aliases || []).map((alias) => (
+                  <option key={alias} value={alias}>{alias}</option>
+                ))}
+              </select>
+              <div className="text-[10px] text-zinc-500 mt-1 leading-snug">{meta.help}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {(!data.allowed_aliases || data.allowed_aliases.length === 0) && (
+        <div className="mt-4 px-3 py-2 bg-amber-50 border border-amber-300 text-amber-900 text-[11px] rounded-sm">
+          <b>No aliases configured.</b> Set <code>GMAIL_FROM_ALIASES</code> in the backend env to a comma-separated list of Gmail &ldquo;Send As&rdquo; addresses, then refresh.
+        </div>
+      )}
     </div>
   );
 }
