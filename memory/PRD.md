@@ -818,5 +818,5 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - In-app Scope Editor (override any spec-sheet bullet before PDF)
 - Admin Trash view (restore / hard-delete soft-deleted records, incl. inactive entities/accounts)
 - Google Calendar 2-way sync for project schedules
-- Smart auto-attachment suggestions in Email Scope modal (pre-select Library docs by proposed_roof_type)
+- Smart auto-attachment suggestions in Email Scope modal (pre-select Library docs by proposed_roof_type) — **cover photo only; NEVER the Material Take-Off**, which is internal pricing/margin info and must never be sent to customers (locked by Darren 2026-02-18).
 - Refactor `server.py` (~4,500 lines) into `/app/backend/routes/` modules
