@@ -777,6 +777,18 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
   tab focus + visibilitychange.
 - **Tests**: `/app/backend/tests/test_deal_events.py` (14 cases, 100% pass).
 
+## 2026-02-18 — P4: GPS + Foreman Stamp on Field Photos
+- **What it does**: Every photo captured via `/field` now has the foreman name, timestamp, project/address, and live GPS coordinates (± accuracy in meters) **burned into the JPEG pixels** at capture time. Undeniable proof-of-presence for insurance claims — survives every downstream pipeline.
+- **Backend** (`project_photos.py`): POST `/api/projects/{deal_id}/photos` now accepts `gps_lat`, `gps_lng`, `gps_accuracy`, `captured_at`, `stamped` form fields. All optional, persisted on the photo doc, returned by GET.
+- **Frontend** (`FieldCapture.jsx`):
+  - `navigator.geolocation.watchPosition` watches device location while in the camera view (high-accuracy, released on unmount/back).
+  - `paintStamp(canvas, ctx)` draws a translucent gradient bar at the bottom with cobalt accent stripe → foreman name • timestamp • address • GPS coords ±acc • SealTech watermark. Burned into pixels before JPEG encode.
+  - New status-strip widgets: **Stamp ON/OFF toggle** (persists in localStorage) + **GPS indicator** badge (emerald ≤25m, amber >25m, rose if denied).
+  - DOM **preview overlay** mirrors the burned-in stamp so the foreman sees exactly what's about to land on the photo.
+  - Offline queue (`flushQueue`) propagates GPS metadata so stamps + coords survive offline → online sync.
+- **Hardening**: `progress_timeline_pdf._photo_cell` now eagerly PIL-decodes each image — a single corrupt blob falls through to the "(image unavailable)" placeholder instead of crashing the whole timeline PDF.
+- **Tests**: `/app/backend/tests/test_photo_gps_stamp.py` (5 cases, 100% pass). Frontend E2E green — toggle, persistence, GPS indicator color thresholds, paintStamp call-site, offline-queue propagation all verified.
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics) — DONE
 - Statement of Account PDF (aging report per customer) — DONE

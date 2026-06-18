@@ -131,6 +131,13 @@ def _photo_cell(photo: dict, styles) -> Table:
     img_flow = None
     try:
         data, _ct = get_object(photo["storage_path"])
+        # Decode eagerly with PIL so a corrupt JPEG fails here (and falls
+        # through to the placeholder) instead of crashing the entire
+        # SimpleDocTemplate.build() pass at render time.
+        from PIL import Image as PILImage  # type: ignore
+        verify_buf = io.BytesIO(data)
+        with PILImage.open(verify_buf) as probe:
+            probe.load()
         bio = io.BytesIO(data)
         img = RLImage(bio, hAlign="CENTER")
         # Scale into the available cell while preserving aspect ratio. Guard
