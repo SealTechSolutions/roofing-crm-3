@@ -744,6 +744,15 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Re-renders live from the codebase on every download, so the docs evolve with the app — no stale Word docs.
 - Verified live: both endpoints return valid `%PDF`, quick=4 pages / full=11 pages.
 
+### Signature Canvas — HiDPI / Retina Sharpness (Feb 2026)
+- Upgraded `ProposalSign.jsx` signature canvas to render at **device-pixel resolution**:
+  - Bitmap is sized to `CSS pixels × window.devicePixelRatio` (so 990×420 on iPhone Pro at 3×, 660×280 on a regular iPhone at 2×, 330×140 on a 1× display).
+  - 2D context is `setTransform(dpr, 0, 0, dpr, 0, 0)`-scaled so draw calls use CSS-pixel coords (no more `width/rect.width` math needed in stroke handlers).
+- Wired as a **callback ref** (`setCanvasEl`) so the HiDPI setup fires the instant the `<canvas>` mounts. (A regular `useEffect` on mount missed it — the canvas only renders after the deal payload loads.)
+- **ResizeObserver** + `window.resize` + `orientationchange` listeners re-fit the bitmap on column-width changes and device rotation.
+- Cleanup teardown stored on a `useRef` so React re-mounting the canvas correctly disconnects the old observer.
+- Verified live: bitmap = `990×420` at DPR=3 (matches `CSS × DPR` exactly).
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

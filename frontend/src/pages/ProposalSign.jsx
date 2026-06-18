@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { CheckCircle2, FileText, ShieldCheck, AlertCircle, RotateCcw } from "lucide-react";
@@ -30,6 +30,51 @@ export default function ProposalSign() {
   const drawingRef = useRef(false);
   const [hasInk, setHasInk] = useState(false);
 
+  /**
+   * HiDPI / Retina-sharp canvas setup.
+   *
+   * Sizes the bitmap to (CSS pixels × devicePixelRatio) and scales the 2D
+   * context by DPR so all draw calls remain in CSS-pixel units. Wired as a
+   * callback ref so it fires the instant the <canvas> mounts (the canvas
+   * only renders AFTER the deal payload loads — a regular useEffect on mount
+   * would see canvasRef.current === null and bail). The ResizeObserver
+   * additionally re-fits on column-width changes and orientation flips.
+   */
+  const _hidpiCleanup = useRef(null);
+  const setCanvasEl = useCallback((c) => {
+    // Teardown of any prior observers when React swaps the canvas.
+    if (_hidpiCleanup.current) { _hidpiCleanup.current(); _hidpiCleanup.current = null; }
+    canvasRef.current = c;
+    if (!c) return;
+    const apply = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = c.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const targetW = Math.round(rect.width * dpr);
+      const targetH = Math.round(rect.height * dpr);
+      if (c.width === targetW && c.height === targetH) return;
+      c.width = targetW;
+      c.height = targetH;
+      const ctx = c.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      setHasInk(false);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(c);
+    const onResize = () => apply();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    _hidpiCleanup.current = () => {
+      ro.disconnect();
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
+
   useEffect(() => {
     axios
       .get(`${API_BASE}/api/public/proposal/${token}`)
@@ -47,12 +92,11 @@ export default function ProposalSign() {
     drawingRef.current = true;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    // Scale screen → canvas. CSS stretches the 620×140 bitmap to fill the
-    // column; without this the strokes get squashed onto the left side and
-    // end up overlapping (the "signature wrote on top of itself" bug).
+    // The 2D context is DPR-scaled (see the setup effect), so we draw in
+    // CSS-pixel units — no `c.width / rect.width` correction needed.
     const rect = c.getBoundingClientRect();
-    const x = (clientX - rect.left) * (c.width / rect.width);
-    const y = (clientY - rect.top) * (c.height / rect.height);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
     const ctx = c.getContext("2d");
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -68,8 +112,8 @@ export default function ProposalSign() {
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const rect = c.getBoundingClientRect();
-    const x = (clientX - rect.left) * (c.width / rect.width);
-    const y = (clientY - rect.top) * (c.height / rect.height);
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
     const ctx = c.getContext("2d");
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -81,7 +125,9 @@ export default function ProposalSign() {
   const clearInk = () => {
     const c = canvasRef.current;
     if (!c) return;
-    c.getContext("2d").clearRect(0, 0, c.width, c.height);
+    // The CTX is DPR-scaled, so clear in CSS-pixel units.
+    const rect = c.getBoundingClientRect();
+    c.getContext("2d").clearRect(0, 0, rect.width || c.width, rect.height || c.height);
     setHasInk(false);
   };
 
@@ -281,9 +327,8 @@ export default function ProposalSign() {
                 )}
               </label>
               <canvas
-                ref={canvasRef}
-                width={620}
-                height={140}
+                ref={setCanvasEl}
+                style={{ height: 140 }}
                 className="w-full border-2 border-dashed border-zinc-300 rounded-sm bg-zinc-50 cursor-crosshair touch-none"
                 onMouseDown={beginStroke}
                 onMouseMove={strokeMove}
