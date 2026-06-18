@@ -789,6 +789,26 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - **Hardening**: `progress_timeline_pdf._photo_cell` now eagerly PIL-decodes each image — a single corrupt blob falls through to the "(image unavailable)" placeholder instead of crashing the whole timeline PDF.
 - **Tests**: `/app/backend/tests/test_photo_gps_stamp.py` (5 cases, 100% pass). Frontend E2E green — toggle, persistence, GPS indicator color thresholds, paintStamp call-site, offline-queue propagation all verified.
 
+## 2026-02-18 — Daily Status Report PDF (the "morning standup")
+- **What it does**: One PDF that tells you exactly where every active deal is in the process, what's next, and who owns it.
+- **Delivery — two channels, same engine**:
+  - **On-demand**: amber "Today's Status Report" button in the sidebar → instantly downloads `Daily Status - YYYY-MM-DD.pdf`.
+  - **Auto-email**: APScheduler cron fires **7:00 AM MDT, Mon–Fri** (13:00 UTC) and emails the PDF to admin + every user who owns ≥1 active deal.
+- **PDF contents** (`daily_status_pdf.py`):
+  - Header KPIs: Active Deals · Pipeline Value · Today's Events · Overdue Items.
+  - TODAY · Scheduled Events — time, type, title, owner, location.
+  - WHAT'S NEXT · By Pipeline Stage — Lead / Quoted / Awaiting Signature / Sold-Order Materials / Scheduled / In Progress / Awaiting Final Invoice. Each row: deal title, customer, value, next action, owner, idle days color-coded (rose ≥7d, amber ≥3d).
+  - ATTENTION · Needs Action — overdue tasks + stale deals + COIs expiring ≤30d.
+  - TOMORROW · Heads-up — preview of next-day appointments.
+- **Stage derivation** (`derive_stage_and_next`) mirrors the on-screen Project Pipeline indicator so PDF and UI stay in sync. Next-action labels include context: *"Follow up on quote (sent 5d ago)"*, *"Job starts Mon Jun 22"*, *"On site — 3d to completion"*.
+- **Backend wiring**:
+  - `collect_daily_status_data()` in server.py — single-pass collector shared by the route and the cron.
+  - `GET /api/reports/daily-status.pdf` — on-demand download (any auth user).
+  - `GET /api/reports/daily-status/recipients` — admin-only inspector.
+  - `scheduler._daily_status_email` registered in JOB_DEFAULTS as `daily_status_email`; reschedulable from the existing `/scheduler/jobs/{id}/schedule` admin UI.
+- **Cleanup**: Soft-deleted the stale `admin@roofingcrm.com` stub that was still on the recipient list (per handoff note).
+- **Tests**: 10/10 pytest + frontend Playwright download test (`/app/backend/tests/test_daily_status.py`, iteration_24, both 100%).
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics) — DONE
 - Statement of Account PDF (aging report per customer) — DONE
