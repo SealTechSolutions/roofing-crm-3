@@ -717,6 +717,17 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Tests: `/app/backend/tests/test_final_invoice.py` (4/4 PASS — preview, create + idempotency, 400 on no contract total, 400 on already-fully-invoiced).
 - Verified live: temp Closed deal with $5,000 chosen_amount renders the green banner with correct math, click → POST 200 → Final invoice drafted → banner disappears → InvoiceEditor opens. Toast confirms creation with the new invoice number.
 
+### Deal Page — Invoices List Section (Feb 2026)
+- **User issue**: Manatt Ct deal had a Paid deposit invoice but the user couldn't find any indicator of payment on the Deal page; clicking `+ Invoice` opened a fresh draft creator (showing full project total) instead of the existing paid invoice. The "Outstanding $5,000 / $5,000 received of $10,000" tile compounded the confusion.
+- **Fix** (`/app/frontend/src/pages/DealDetail.jsx`): Added a new **"Invoices on this project"** table section above the P&L Comparison. Each row shows:
+  - Invoice #, Type, Status pill (color-coded: green Paid, blue Sent, amber Partial, red Overdue, zinc Draft/Void)
+  - Total, Received (emerald), Balance (orange when > 0, grey when $0)
+  - Paid On date + payment method
+  - "VIEW →" link — clicking the row fetches the full invoice via `GET /invoices/{id}` and opens the existing inline InvoiceEditor.
+- Renders only when the deal has at least one invoice (no empty state needed since `+ Invoice` covers the empty path).
+- Sorted newest invoice-date first.
+- Verified live: Manatt deal now shows the deposit row with `PAID`, `$5,000 / $5,000 / $0`, `2026-06-15 · ACH`, clickable to open.
+
 ## Backlog (P0)
 - _(empty — all P0 items complete)_
 

@@ -619,6 +619,76 @@ export default function DealDetail() {
         <KpiCard label="Outstanding" value={formatCurrency(totals.outstanding)} hint={`${formatCurrency(totals.received)} received of ${formatCurrency(totals.scheduled)}`} accent="text-orange-700" testId="kpi-outstanding" />
       </div>
 
+      {/* Invoices list — click a row to open the editor and see payment details. */}
+      {dealInvoices.length > 0 && (
+        <div className="bg-white border border-zinc-200 rounded-sm p-5 mb-8" data-testid="deal-invoices-section">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700">Invoices on this project</div>
+              <h3 className="font-heading text-lg font-bold tracking-tight">{dealInvoices.length} invoice{dealInvoices.length !== 1 ? "s" : ""}</h3>
+            </div>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider text-zinc-500">
+                <th className="py-2">Invoice #</th>
+                <th className="py-2">Type</th>
+                <th className="py-2">Status</th>
+                <th className="py-2 text-right">Total</th>
+                <th className="py-2 text-right">Received</th>
+                <th className="py-2 text-right">Balance</th>
+                <th className="py-2">Paid On</th>
+                <th className="py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...dealInvoices]
+                .sort((a, b) => String(b.invoice_date || b.created_at || "").localeCompare(String(a.invoice_date || a.created_at || "")))
+                .map((inv) => {
+                  const statusColor = {
+                    Paid: "bg-emerald-100 text-emerald-800",
+                    Sent: "bg-blue-100 text-blue-800",
+                    Partial: "bg-amber-100 text-amber-800",
+                    Overdue: "bg-red-100 text-red-800",
+                    Draft: "bg-zinc-200 text-zinc-700",
+                    Void: "bg-zinc-100 text-zinc-400 line-through",
+                  }[inv.status] || "bg-zinc-100 text-zinc-700";
+                  return (
+                    <tr
+                      key={inv.id}
+                      className="border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer"
+                      data-testid={`deal-invoice-row-${inv.id}`}
+                      onClick={async () => {
+                        try {
+                          const full = await api.get(`/invoices/${inv.id}`);
+                          setInvoiceEditor(full.data);
+                        } catch (e) {
+                          toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+                        }
+                      }}
+                    >
+                      <td className="py-3 font-mono font-bold">{inv.invoice_number}</td>
+                      <td className="py-3 text-xs">{inv.invoice_type || "—"}</td>
+                      <td className="py-3"><span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${statusColor}`}>{inv.status}</span></td>
+                      <td className="py-3 text-right font-mono">{formatCurrency(inv.total || 0)}</td>
+                      <td className="py-3 text-right font-mono text-emerald-700">{formatCurrency(inv.amount_paid || 0)}</td>
+                      <td className={`py-3 text-right font-mono font-bold ${Number(inv.balance_due || 0) > 0.005 ? "text-orange-700" : "text-zinc-400"}`}>
+                        {formatCurrency(inv.balance_due || 0)}
+                      </td>
+                      <td className="py-3 text-xs text-zinc-600">
+                        {inv.payment_date
+                          ? <span>{inv.payment_date} {inv.payment_method ? <span className="text-zinc-400">· {inv.payment_method}</span> : null}</span>
+                          : <span className="text-zinc-300">—</span>}
+                      </td>
+                      <td className="py-3 text-right text-[10px] font-bold uppercase tracking-wider text-blue-700">View →</td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* Estimated vs Actual P&L */}
       <div className="bg-white border border-zinc-200 rounded-sm p-5 mb-8" data-testid="pnl-comparison">
         <div className="flex items-center justify-between mb-4">
