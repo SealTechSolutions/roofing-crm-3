@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import {
@@ -25,9 +25,11 @@ const ROLE_BADGES = {
 
 export default function UserDetail() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") || "notes";
   const [me, setMe] = useState(null);
   const [data, setData] = useState(null);
-  const [activeTab, setActiveTab] = useState("notes");
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {

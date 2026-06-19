@@ -5619,6 +5619,69 @@ async def dashboard_today(current=Depends(get_current_user)):
     return {"today": today_iso, "events": events}
 
 
+@api_router.get("/dashboard/compliance-wall")
+async def dashboard_compliance_wall(current=Depends(get_current_user)):
+    """Every user certification expiring within 60 days — for the dashboard
+    widget. Sorted by days_until_expiration ascending (most urgent first).
+
+    Visible to admins only — payroll/HR adjacent. Non-admin returns 403 so
+    the widget hides itself.
+    """
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Admins only")
+
+    today = datetime.now(timezone.utc).date()
+    cutoff = (today + timedelta(days=60)).isoformat()
+
+    rows = await db.user_certifications.find(
+        {
+            "is_deleted": {"$ne": True},
+            "expiration_date": {"$ne": "", "$lte": cutoff},
+        },
+        {"_id": 0},
+    ).to_list(500)
+
+    # Join user info for each row (single batched query)
+    user_ids = list({r["user_id"] for r in rows})
+    users = await db.users.find(
+        {"id": {"$in": user_ids}, "is_deleted": {"$ne": True}},
+        {"_id": 0, "id": 1, "name": 1, "email": 1, "role": 1},
+    ).to_list(len(user_ids)) if user_ids else []
+    by_id = {u["id"]: u for u in users}
+
+    enriched = []
+    for r in rows:
+        try:
+            exp = datetime.fromisoformat(str(r["expiration_date"])[:10]).date()
+            days = (exp - today).days
+        except Exception:
+            continue
+        u = by_id.get(r["user_id"])
+        if not u:  # user deleted but cert still there — skip silently
+            continue
+        enriched.append({
+            "cert_id": r["id"],
+            "user_id": u["id"],
+            "user_name": u.get("name") or u.get("email") or "",
+            "user_email": u.get("email") or "",
+            "name": r["name"],
+            "issuer": r.get("issuer") or "",
+            "expiration_date": r["expiration_date"],
+            "days_until_expiration": days,
+        })
+    enriched.sort(key=lambda x: x["days_until_expiration"])
+    return {
+        "today": today.isoformat(),
+        "items": enriched,
+        "expired_count":   sum(1 for x in enriched if x["days_until_expiration"] < 0),
+        "due_7_count":     sum(1 for x in enriched if 0 <= x["days_until_expiration"] <= 7),
+        "due_30_count":    sum(1 for x in enriched if 7 < x["days_until_expiration"] <= 30),
+        "due_60_count":    sum(1 for x in enriched if 30 < x["days_until_expiration"] <= 60),
+    }
+
+
+
+
 
 @api_router.get("/dashboard/summary")
 async def dashboard_summary(current=Depends(get_current_user)):

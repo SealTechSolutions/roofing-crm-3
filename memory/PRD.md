@@ -833,6 +833,15 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - **Tests**: 12/12 pytest + frontend Playwright pass (iteration_25, 100/100).
 
 
+## 2026-02-19 — Compliance Wall (Dashboard widget)
+- **What it does**: On the main dashboard, a card surfaces every team-member certification expiring within 60 days, sorted most-urgent first. Each row has a "Renew →" button that deep-links to `/users/:id?tab=certs`.
+- **Auto-hidden when empty** or for non-admin viewers (403 → component returns null).
+- **Color-coded chips**: expired/≤7d → rose, ≤30d → amber, ≤60d → blue.
+- **Counter strip**: "X expired · X within 7d · X within 30d · X within 60d".
+- **Backend**: `GET /api/dashboard/compliance-wall` (admin-only) — single batched query, joins users in one pass. Lives in `server.py` right after `/dashboard/today`.
+- **Frontend**: New `ComplianceWall` component on `Dashboard.jsx`, follows same refresh-on-tab-focus pattern as `TodayEvents`. UserDetail page now also reads `?tab=certs` query param so the renew links land on the right tab.
+
+
 ## 2026-02-19 — User Profile (Notes / Certs / Equipment / Skills / Emergency / Employment)
 - **What it does**: Click any user from `/users` → routed detail page at `/users/:id` with 6 tabs surfacing everything an admin needs to track for each team member.
 - **Tabs**:

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { Link } from "react-router-dom";
-import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail, AlarmClock, Flame, Send, CalendarDays, Clock, MapPin } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail, AlarmClock, Flame, Send, CalendarDays, Clock, MapPin, GraduationCap, ArrowRight } from "lucide-react";
 import { ExportButtons } from "@/components/ExportImport";
 import { toast } from "sonner";
 
@@ -108,6 +108,9 @@ export default function Dashboard() {
 
       {/* Today + Next 48h — ad-hoc deal events */}
       <TodayEvents />
+
+      {/* Compliance Wall — team certifications expiring within 60 days */}
+      <ComplianceWall />
 
       {/* Materials In Motion */}
       <MaterialsInMotion motion={motion} />
@@ -951,3 +954,95 @@ function TodayEvents() {
     </div>
   );
 }
+
+function ComplianceWall() {
+  const [data, setData] = useState({ items: [] });
+  const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchIt = () => {
+      api.get("/dashboard/compliance-wall")
+        .then((r) => { if (!cancelled) { setData(r.data); setLoading(false); setForbidden(false); } })
+        .catch((e) => {
+          if (!cancelled) {
+            if (e?.response?.status === 403) setForbidden(true);
+            setLoading(false);
+          }
+        });
+    };
+    fetchIt();
+    const onVis = () => { if (document.visibilityState === "visible") fetchIt(); };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", fetchIt);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", fetchIt);
+    };
+  }, []);
+
+  if (loading || forbidden) return null;
+  if (!data.items || data.items.length === 0) return null;
+
+  const urgencyChip = (days) => {
+    if (days < 0)  return { label: `Expired ${-days}d`, className: "bg-rose-100 text-rose-800 border-rose-300" };
+    if (days === 0) return { label: "Expires today", className: "bg-rose-100 text-rose-800 border-rose-300" };
+    if (days <= 7)  return { label: `${days}d left`, className: "bg-rose-100 text-rose-800 border-rose-300" };
+    if (days <= 30) return { label: `${days}d left`, className: "bg-amber-100 text-amber-800 border-amber-300" };
+    return { label: `${days}d`, className: "bg-blue-100 text-blue-800 border-blue-300" };
+  };
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-sm mb-12" data-testid="compliance-wall">
+      <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-rose-700 mb-1">Compliance Wall</div>
+          <h2 className="font-heading text-lg font-bold tracking-tight flex items-center gap-2">
+            <GraduationCap className="w-5 h-5 text-rose-700" /> Certifications Expiring Within 60 Days
+          </h2>
+          <div className="text-[11px] text-zinc-500 mt-1">
+            {data.expired_count > 0 && <span className="text-rose-700 font-bold mr-3">{data.expired_count} expired</span>}
+            {data.due_7_count > 0 && <span className="text-rose-700 font-bold mr-3">{data.due_7_count} within 7d</span>}
+            {data.due_30_count > 0 && <span className="text-amber-700 font-bold mr-3">{data.due_30_count} within 30d</span>}
+            {data.due_60_count > 0 && <span className="text-blue-700 mr-3">{data.due_60_count} within 60d</span>}
+          </div>
+        </div>
+      </div>
+      <ul className="divide-y divide-zinc-100">
+        {data.items.map((it) => {
+          const chip = urgencyChip(it.days_until_expiration);
+          return (
+            <li key={it.cert_id} className="flex items-center justify-between gap-3 px-6 py-3 hover:bg-zinc-50" data-testid={`compliance-row-${it.cert_id}`}>
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="w-9 h-9 rounded-full bg-zinc-200 text-zinc-700 font-bold flex items-center justify-center flex-shrink-0">
+                  {(it.user_name || "?").slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${chip.className}`}>{chip.label}</span>
+                    <span className="font-bold text-sm truncate">{it.name}</span>
+                  </div>
+                  <div className="text-xs text-zinc-600 mt-0.5 flex flex-wrap gap-x-2">
+                    <Link to={`/users/${it.user_id}`} className="font-bold text-zinc-900 hover:text-blue-700 hover:underline">{it.user_name}</Link>
+                    {it.issuer && <span className="text-zinc-500">· {it.issuer}</span>}
+                    <span className="text-zinc-500 font-mono">· Exp {it.expiration_date}</span>
+                  </div>
+                </div>
+              </div>
+              <Link
+                to={`/users/${it.user_id}?tab=certs`}
+                className="inline-flex items-center gap-1 px-3 h-8 bg-rose-700 text-white text-[10px] font-bold uppercase tracking-wider rounded-sm hover:bg-rose-800 flex-shrink-0"
+                data-testid={`compliance-renew-${it.cert_id}`}
+              >
+                Renew <ArrowRight className="w-3 h-3" />
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
