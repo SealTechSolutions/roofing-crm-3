@@ -32,7 +32,83 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
   // Chronological grouping: "asc" = oldest-first (matches before → during →
   // after narrative); "desc" = newest-first.
   const [sortOrder, setSortOrder] = useState("asc");
+  // Multi-select: lets the user batch-move shots taken this morning into
+  // the right album in one click instead of editing each one individually.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkMoveTarget, setBulkMoveTarget] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
   const fileInputRef = useRef(null);
+
+  const toggleSelect = (id) => {
+    setSelectedIds((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => { setSelectedIds(new Set()); setSelectMode(false); setBulkMoveTarget(""); };
+
+  const selectAllVisible = (visible) => {
+    setSelectedIds(new Set(visible.map((p) => p.id)));
+  };
+
+  const bulkMove = async (targetAlbum) => {
+    if (!selectedIds.size) return;
+    if (!targetAlbum || !targetAlbum.trim()) { toast.error("Pick an album"); return; }
+    setBulkBusy(true);
+    const ids = Array.from(selectedIds);
+    try {
+      // Sequential to keep server load gentle on field-LTE connections.
+      let ok = 0;
+      for (const id of ids) {
+        try {
+          await api.patch(`/projects/${dealId}/photos/${id}`, { album_name: targetAlbum.trim() });
+          ok += 1;
+        } catch { /* swallow per-photo */ }
+      }
+      toast.success(`Moved ${ok} of ${ids.length} photo${ids.length === 1 ? "" : "s"} → ${targetAlbum}`);
+      clearSelection();
+      load();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkDelete = async () => {
+    if (!selectedIds.size) return;
+    if (!window.confirm(`Delete ${selectedIds.size} photo${selectedIds.size === 1 ? "" : "s"}?`)) return;
+    setBulkBusy(true);
+    const ids = Array.from(selectedIds);
+    let ok = 0;
+    for (const id of ids) {
+      try { await api.delete(`/projects/${dealId}/photos/${id}`); ok += 1; } catch { /* swallow */ }
+    }
+    toast.success(`Deleted ${ok} of ${ids.length}`);
+    clearSelection();
+    setBulkBusy(false);
+    load();
+  };
+
+  // Download a single photo to the user's hard drive (Paint / Macromedia /
+  // wherever) — uses the auth'd /download endpoint and triggers a browser
+  // save-as dialog via a hidden anchor.
+  const downloadPhoto = async (photo) => {
+    try {
+      const r = await api.get(`/projects/${dealId}/photos/${photo.id}/download`, { responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      const ext = (photo.content_type || "image/jpeg").split("/").pop().split("+")[0] || "jpg";
+      const base = (photo.display_name || photo.original_filename || "photo").replace(/\.[^.]+$/, "");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${base}.${ext}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    }
+  };
 
   const load = async () => {
     try {
@@ -235,6 +311,24 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
           {PRESET_TAGS.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <CustomAlbumInput onCreate={(name) => setAlbumFilter(name)} />
+        <button
+          type="button"
+          onClick={() => { if (selectMode) clearSelection(); else setSelectMode(true); }}
+          className={"h-8 px-3 text-[10px] font-bold uppercase tracking-wider rounded-sm border " + (selectMode ? "bg-blue-700 text-white border-blue-700" : "bg-white border-zinc-300 text-zinc-700 hover:bg-zinc-50")}
+          data-testid="photos-select-toggle"
+        >
+          {selectMode ? `Cancel (${selectedIds.size})` : "Select"}
+        </button>
+        {selectMode && (
+          <button
+            type="button"
+            onClick={() => selectAllVisible(filtered)}
+            className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider rounded-sm border bg-white border-zinc-300 text-zinc-700 hover:bg-zinc-50"
+            data-testid="photos-select-all"
+          >
+            Select all visible
+          </button>
+        )}
         <div className="ml-auto inline-flex items-center gap-1 border border-zinc-300 rounded-sm bg-white overflow-hidden">
           <span className="px-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Order</span>
           <button
@@ -258,6 +352,59 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
         </div>
       </div>
 
+      {/* Bulk-action bar — sticky just below filters when any photo selected */}
+      {selectMode && selectedIds.size > 0 && (
+        <div className="sticky top-0 z-20 mb-4 bg-blue-700 text-white rounded-sm px-4 py-2 flex items-center gap-3 flex-wrap shadow-md" data-testid="photos-bulk-bar">
+          <span className="text-[11px] font-bold uppercase tracking-wider">
+            {selectedIds.size} selected
+          </span>
+          <span className="text-blue-200 text-[10px]">Move to album →</span>
+          <select
+            value={bulkMoveTarget}
+            onChange={(e) => setBulkMoveTarget(e.target.value)}
+            className="h-8 px-2 text-xs text-zinc-900 bg-white border-0 rounded-sm font-bold"
+            data-testid="photos-bulk-target"
+          >
+            <option value="">— pick album —</option>
+            {albums.map((a) => <option key={a} value={a}>{a}</option>)}
+            <option value="__new__">+ New album…</option>
+          </select>
+          <button
+            type="button"
+            disabled={!bulkMoveTarget || bulkBusy}
+            onClick={async () => {
+              let target = bulkMoveTarget;
+              if (target === "__new__") {
+                const name = window.prompt("New album name:");
+                if (!name || !name.trim()) return;
+                target = name.trim();
+              }
+              await bulkMove(target);
+            }}
+            className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider bg-white text-blue-700 hover:bg-blue-50 disabled:opacity-50 rounded-sm"
+            data-testid="photos-bulk-move"
+          >
+            {bulkBusy ? "Moving…" : "Move"}
+          </button>
+          <button
+            type="button"
+            disabled={bulkBusy}
+            onClick={bulkDelete}
+            className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 rounded-sm"
+            data-testid="photos-bulk-delete"
+          >
+            <Trash2 className="w-3 h-3 inline -mt-0.5" /> Delete
+          </button>
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="ml-auto text-blue-200 hover:text-white text-[10px] uppercase tracking-wider"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Grid grouped by date */}
       {filtered.length === 0 ? (
         <div className="py-16 text-center text-sm text-zinc-500 border-2 border-dashed border-zinc-200 rounded-sm">
@@ -277,15 +424,19 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
                 </span>
                 <span className="flex-1 h-px bg-zinc-200" />
               </h3>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2">
+              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8 xl:grid-cols-9 2xl:grid-cols-10 gap-1.5" data-testid="photo-grid-row">
                 {group.photos.map((p) => (
                   <PhotoCard
                     key={p.id}
                     photo={p}
+                    selected={selectedIds.has(p.id)}
+                    selectMode={selectMode}
                     onView={() => setLightbox(p)}
                     onEdit={() => setEditing(p)}
                     onDelete={() => removePhoto(p)}
                     onToggleCover={() => setCover(p)}
+                    onToggleSelect={() => toggleSelect(p.id)}
+                    onDownload={() => downloadPhoto(p)}
                   />
                 ))}
               </div>
@@ -318,7 +469,7 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
 }
 
 // ============ Photo Card ============
-function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover }) {
+function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, selectMode, onToggleSelect, onDownload }) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     // Load via auth'd download endpoint; produces a blob URL we can put in <img>
@@ -334,43 +485,61 @@ function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover }) {
     return () => { mounted = false; if (url) URL.revokeObjectURL(url); };
   }, [photo.id, photo.deal_id]);
 
+  const handleClick = () => {
+    if (selectMode) { onToggleSelect && onToggleSelect(); }
+    else { onView(); }
+  };
+
   return (
-    <div className="group relative bg-zinc-50 border border-zinc-200 rounded-sm overflow-hidden" data-testid={`photo-card-${photo.id}`}>
-      <div className="aspect-[4/3] bg-zinc-200 cursor-pointer" onClick={onView}>
+    <div
+      className={"group relative bg-zinc-50 border rounded-sm overflow-hidden " + (selected ? "border-blue-700 ring-2 ring-blue-300" : "border-zinc-200")}
+      data-testid={`photo-card-${photo.id}`}
+    >
+      <div className="aspect-[4/3] bg-zinc-200 cursor-pointer" onClick={handleClick}>
         {src ? (
-          <img src={src} alt={photo.display_name} className="w-full h-full object-cover" />
+          <img src={src} alt={photo.display_name} className={"w-full h-full object-cover " + (selectMode && !selected ? "opacity-70" : "")} />
         ) : (
           <div className="w-full h-full animate-pulse bg-zinc-200" />
         )}
+        {selectMode && (
+          <div className={"absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-colors " + (selected ? "bg-blue-700 border-white text-white" : "bg-white/80 border-zinc-400 text-transparent")} aria-hidden>
+            ✓
+          </div>
+        )}
       </div>
-      <div className="p-2">
-        <div className="text-xs font-bold text-zinc-900 truncate" title={photo.display_name}>{photo.display_name}</div>
-        <div className="flex items-center justify-between mt-1">
+      <div className="p-1.5">
+        <div className="text-[11px] font-bold text-zinc-900 truncate" title={photo.display_name}>{photo.display_name}</div>
+        <div className="flex items-center justify-between mt-0.5">
           <div className="flex items-center gap-1 flex-wrap">
             {photo.tag && (
-              <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm ${TAG_TONES[photo.tag] || "bg-zinc-100 text-zinc-700"}`}>{photo.tag}</span>
+              <span className={`px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded-sm ${TAG_TONES[photo.tag] || "bg-zinc-100 text-zinc-700"}`}>{photo.tag}</span>
             )}
             {photo.is_cover && (
-              <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm bg-amber-200 text-amber-900 inline-flex items-center gap-0.5">
-                <Star className="w-2.5 h-2.5 fill-current" /> Cover
+              <span className="px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded-sm bg-amber-200 text-amber-900 inline-flex items-center gap-0.5">
+                <Star className="w-2 h-2 fill-current" /> Cover
               </span>
             )}
           </div>
-          <div className="text-[9px] text-zinc-400 font-mono">{((photo.size || 0) / 1024).toFixed(0)}KB</div>
+          <div className="text-[8px] text-zinc-400 font-mono">{((photo.size || 0) / 1024).toFixed(0)}KB</div>
         </div>
       </div>
       {/* Hover toolbar */}
-      <div className="absolute inset-0 bg-zinc-900/0 group-hover:bg-zinc-900/30 transition-colors flex items-end justify-end p-2 opacity-0 group-hover:opacity-100">
-        <div className="flex gap-1">
-          <button onClick={onToggleCover} className="w-7 h-7 bg-white rounded-sm flex items-center justify-center hover:bg-amber-100" title={photo.is_cover ? "Remove cover" : "Set as cover for PDFs"} data-testid={`photo-cover-${photo.id}`}>
-            <Star className={`w-3.5 h-3.5 ${photo.is_cover ? "text-amber-600 fill-amber-500" : "text-zinc-600"}`} />
-          </button>
-          <button onClick={onEdit} className="px-2 h-7 bg-white rounded-sm text-[10px] font-bold uppercase tracking-wider hover:bg-blue-100" data-testid={`photo-edit-${photo.id}`}>Edit</button>
-          <button onClick={onDelete} className="w-7 h-7 bg-white rounded-sm flex items-center justify-center hover:bg-rose-100" title="Delete" data-testid={`photo-delete-${photo.id}`}>
-            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-          </button>
+      {!selectMode && (
+        <div className="absolute inset-0 bg-zinc-900/0 group-hover:bg-zinc-900/30 transition-colors flex items-end justify-end p-1 opacity-0 group-hover:opacity-100">
+          <div className="flex gap-1">
+            <button onClick={(e) => { e.stopPropagation(); onDownload && onDownload(); }} className="w-6 h-6 bg-white rounded-sm flex items-center justify-center hover:bg-blue-100" title="Save to disk (Paint / Macromedia / etc.)" data-testid={`photo-download-${photo.id}`}>
+              <Download className="w-3 h-3 text-blue-700" />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onToggleCover(); }} className="w-6 h-6 bg-white rounded-sm flex items-center justify-center hover:bg-amber-100" title={photo.is_cover ? "Remove cover" : "Set as cover for PDFs"} data-testid={`photo-cover-${photo.id}`}>
+              <Star className={`w-3 h-3 ${photo.is_cover ? "text-amber-600 fill-amber-500" : "text-zinc-600"}`} />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="px-1.5 h-6 bg-white rounded-sm text-[9px] font-bold uppercase tracking-wider hover:bg-blue-100" data-testid={`photo-edit-${photo.id}`}>Edit</button>
+            <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="w-6 h-6 bg-white rounded-sm flex items-center justify-center hover:bg-rose-100" title="Delete" data-testid={`photo-delete-${photo.id}`}>
+              <Trash2 className="w-3 h-3 text-rose-600" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -573,6 +742,18 @@ function Lightbox({ dealId, photo, onClose }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={onClose} data-testid="photo-lightbox">
       <button onClick={onClose} className="absolute top-4 right-4 text-white hover:text-zinc-200"><X className="w-6 h-6" /></button>
+      {src && (
+        <a
+          href={src}
+          download={photo.display_name || photo.original_filename || "photo.jpg"}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-4 left-4 inline-flex items-center gap-1.5 px-3 h-9 text-[11px] font-bold uppercase tracking-wider bg-white text-zinc-900 hover:bg-zinc-100 rounded-sm"
+          data-testid="lightbox-download"
+          title="Save full-resolution photo to disk (Paint / Macromedia / etc.)"
+        >
+          <Download className="w-3.5 h-3.5" /> Download
+        </a>
+      )}
       <div className="max-w-6xl max-h-full" onClick={(e) => e.stopPropagation()}>
         {src ? <img src={src} alt={photo.display_name} className="max-h-[85vh] max-w-full" /> : <div className="text-white">Loading...</div>}
         <div className="mt-3 text-center text-white text-sm">

@@ -133,6 +133,35 @@ export default function FieldCapture() {
     if (dealId) localStorage.setItem("field_capture_last_deal_id", dealId);
   }, [dealId]);
 
+  // Lock browser viewport zoom while this page is mounted. Phones default
+  // to pinch-zooming the whole page, which makes the shutter button huge
+  // and pushes the camera frame off-screen. We swap the viewport meta tag
+  // on mount and restore the original on unmount so other pages aren't
+  // affected. iOS Safari requires maximum-scale=1 + user-scalable=no to
+  // actually honor this — both are set.
+  useEffect(() => {
+    const head = document.head;
+    let tag = head.querySelector('meta[name="viewport"]');
+    const created = !tag;
+    const previousContent = tag ? tag.getAttribute("content") : null;
+    if (!tag) {
+      tag = document.createElement("meta");
+      tag.setAttribute("name", "viewport");
+      head.appendChild(tag);
+    }
+    tag.setAttribute(
+      "content",
+      "width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover",
+    );
+    return () => {
+      if (created) {
+        head.removeChild(tag);
+      } else if (previousContent != null) {
+        tag.setAttribute("content", previousContent);
+      }
+    };
+  }, []);
+
   // Persist stamp toggle
   useEffect(() => {
     localStorage.setItem("field_stamp_enabled", String(stampEnabled));
@@ -390,22 +419,32 @@ export default function FieldCapture() {
     canvasRef.current = canvas;
     const vw = video.videoWidth || 1280;
     const vh = video.videoHeight || 720;
-    // Digital zoom: crop the centre 1/zoom of the frame and rescale to full
+    // Digital zoom: crop the centre 1/zoom of the frame and rescale to the
     // canvas size so the saved JPEG matches what the user saw on screen.
     const z = Math.max(1, zoom);
     const sw = vw / z;
     const sh = vh / z;
     const sx = (vw - sw) / 2;
     const sy = (vh - sh) / 2;
-    canvas.width = vw;
-    canvas.height = vh;
+    // Cap output dimensions: phones happily emit 4032×3024 frames which
+    // produce 3-6 MB JPEGs that are pointless to ship over LTE. Anything
+    // bigger than 2048px on the long side gets proportionally downscaled.
+    // This drops typical field shots from ~4 MB to ~600 KB while staying
+    // sharp enough for insurance documentation and PDF reports.
+    const MAX_DIM = 2048;
+    const longSide = Math.max(vw, vh);
+    const scale = longSide > MAX_DIM ? MAX_DIM / longSide : 1;
+    canvas.width = Math.round(vw * scale);
+    canvas.height = Math.round(vh * scale);
     const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     // Burn the GPS + foreman stamp BEFORE we encode the JPEG so it survives
     // every downstream pipeline (cloud storage, PDFs, insurance submission).
     paintStamp(canvas, ctx);
     const blob = await new Promise((resolve) =>
-      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85)
+      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.72)
     );
     if (!blob) return;
     const filename = `field-${Date.now()}.jpg`;
