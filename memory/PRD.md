@@ -833,6 +833,28 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - **Tests**: 12/12 pytest + frontend Playwright pass (iteration_25, 100/100).
 
 
+## 2026-02-19 — User Profile (Notes / Certs / Equipment / Skills / Emergency / Employment)
+- **What it does**: Click any user from `/users` → routed detail page at `/users/:id` with 6 tabs surfacing everything an admin needs to track for each team member.
+- **Tabs**:
+  - 📝 **Notes** *(admin-only)* — timestamped feed with author, pin-to-top, edit-own/delete-own. Empty body rejected. *Per Darren's explicit instruction (2026-02-19): notes area is admin-only; a separate non-admin notes surface can be added later if needed.*
+  - 🎓 **Certifications** — name, issuer, cert #, issue/expiration dates, **document upload** (object storage, 25 MB cap). Color-coded expiration badges (red expired, amber ≤30d, blue ≤60d, emerald otherwise). Datalist suggestions (OSHA 10/30, GAF Master, EPA Lead-Safe, CDL, etc.).
+  - 🔧 **Equipment** *(admin-only)* — item name, asset tag, serial, assigned-on date, notes. For trucks, tablets, ladders.
+  - ✨ **Skills** — chip-tag selector with suggestions (TPO/EPDM/Metal/Coatings/Foreman/etc.) + custom add. Used later for crew-to-job matching.
+  - 🚨 **Emergency Contact** — name + relationship + phone + alt phone + email + notes. Editable by admin OR self.
+  - 💼 **Employment Basics** *(admin-only)* — hire date, pay type (hourly/salary/1099), hourly_rate, salary, driver's license #/state/expiration, T-shirt size, birthday. **Auto-stripped when the user views their own profile** (hourly_rate + salary hidden).
+- **Cert expiration reminders**: APScheduler job runs daily at **13:30 UTC (≈ 7:30 AM MDT)**. For every cert with a future expiration date, fires the SMALLEST (= most urgent) un-sent reminder threshold from `(7, 30, 60)`. Idempotent via `reminders_sent` array. Emails go through the **projects** alias to both the admin pool + the cert holder.
+- **Backend**: New `/app/backend/user_profile.py` module + `make_router` mounted at `/api/users/{id}/…`. Storage in 3 new Mongo collections: `user_notes`, `user_certifications`, `user_equipment`. Indexes on `user_id` + `expiration_date`. Inline fields on `users` doc: `skills`, `emergency_contact`, `employment`.
+- **Frontend**: New `/app/frontend/src/pages/UserDetail.jsx` with tabbed UI, FieldStack form helper, datalist suggestions, and dirty-state save buttons throughout. Users page now links each user's name + adds a profile (IdCard) icon row action.
+- **Authorization rules locked**:
+  - Profile bundle GET → admin OR self
+  - Notes (all routes) → admin only
+  - Certs/Skills/Equipment write → admin only; read → admin OR self
+  - Emergency contact → admin OR self can read/write
+  - Employment → admin write; self read with hourly_rate + salary stripped
+- **Housekeeping**: Deleted the stale `admin@sealtechsolutions.co` user stub (per Darren's request) — duplicate of the primary `darren@` login.
+- **Tests**: 19/19 backend pytest + frontend Playwright (admin AND non-admin Emma manager flows) — iteration_26, 100% pass.
+
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics) — DONE
 - Statement of Account PDF (aging report per customer) — DONE

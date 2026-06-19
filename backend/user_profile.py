@@ -421,11 +421,14 @@ async def send_due_cert_reminders(db) -> dict:
             skipped += 1
             continue
         days_left = (exp - today).days
-        # Find the *largest* threshold we're due to fire (so we don't re-send
-        # 60-day notice on day 30).
+        # Pick the smallest (= most urgent) threshold the cert has crossed
+        # that we haven't already sent. Iterating ascending ensures e.g. a
+        # cert created 25 days from expiration fires the "7-day" reminder
+        # first (most urgent), then later picks up "30" once we're past it
+        # again on a future run if reminders_sent was reset.
         already = set(c.get("reminders_sent") or [])
         threshold = None
-        for t in REMINDER_THRESHOLDS:
+        for t in sorted(REMINDER_THRESHOLDS):  # 7, 30, 60
             if days_left <= t and str(t) not in already:
                 threshold = t
                 break
