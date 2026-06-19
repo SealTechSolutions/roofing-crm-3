@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Camera, Upload, CloudOff, CheckCircle2, AlertCircle, LogOut, Loader2, ChevronLeft, Search } from "lucide-react";
+import { toast } from "sonner";
+import { Camera, Upload, CloudOff, CheckCircle2, AlertCircle, LogOut, Loader2, ChevronLeft, Search, RefreshCcw } from "lucide-react";
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL;
 const QUEUE_DB = "field-photo-queue";
@@ -66,6 +67,14 @@ export default function FieldCapture() {
   const [dealId, setDealId] = useState("");
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  // iOS Safari occasionally hands back a "live" MediaStream that never paints
+  // any pixels (videoWidth=0, readyState<2). We poll the <video> element a
+  // second after start to detect that, and surface a recovery banner +
+  // RESTART CAMERA button so the user can re-acquire the stream instead of
+  // silently uploading black frames.
+  const [streamHealthy, setStreamHealthy] = useState(true);
+  const [restarting, setRestarting] = useState(false);
+  const autoRetryRef = useRef({ tries: 0, timer: null });
   const [uploadingShot, setUploadingShot] = useState(false);
   const [uploadedCount, setUploadedCount] = useState(0);
   const [queuedCount, setQueuedCount] = useState(0);
@@ -226,6 +235,7 @@ export default function FieldCapture() {
   const startCamera = useCallback(async () => {
     try {
       setCameraError("");
+      setStreamHealthy(true);
       // Tear down any prior stream so switching lenses cleanly releases it.
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
@@ -252,8 +262,36 @@ export default function FieldCapture() {
     } catch (e) {
       setCameraError(e.message || "Camera unavailable. Allow camera access in your browser settings.");
       setCameraReady(false);
+      setStreamHealthy(false);
     }
   }, [useUltrawide, ultrawideId]);
+
+  // Hard reset the camera pipeline. Used both by the visible RESTART CAMERA
+  // button and by the auto-retry that fires when iOS hands us a stream that
+  // never paints (the infamous "black screen" bug). Single source of truth
+  // so user-initiated and automatic recovery are identical.
+  const restartCamera = useCallback(async () => {
+    if (restarting) return;
+    setRestarting(true);
+    setStreamHealthy(true); // optimistic — health monitor will flip back if it stays dead
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      if (videoRef.current) {
+        try { videoRef.current.pause(); } catch { /* ignore */ }
+        videoRef.current.srcObject = null;
+      }
+      // Tiny delay lets iOS Safari actually release the camera before we
+      // re-request it. Without this, the second getUserMedia call frequently
+      // returns the same dead stream we just torn down.
+      await new Promise((r) => setTimeout(r, 250));
+      await startCamera();
+    } finally {
+      setRestarting(false);
+    }
+  }, [restarting, startCamera]);
 
   // Start the camera only when entering the camera view (dealId set). Stop
   // and release the device when returning to the list so the phone's LED
@@ -262,6 +300,7 @@ export default function FieldCapture() {
   // lens so the stream is re-acquired with the new deviceId.
   useEffect(() => {
     if (!dealId) return undefined;
+    autoRetryRef.current = { tries: 0, timer: null };
     startCamera();
     return () => {
       if (streamRef.current) {
@@ -269,8 +308,55 @@ export default function FieldCapture() {
         streamRef.current = null;
       }
       setCameraReady(false);
+      if (autoRetryRef.current.timer) {
+        clearTimeout(autoRetryRef.current.timer);
+        autoRetryRef.current.timer = null;
+      }
     };
   }, [dealId, startCamera]);
+
+  // ---------- Camera-health monitor (iOS black-screen detector) ----------
+  // Once startCamera resolves cameraReady=true, poll the <video> element
+  // every 1.2s. If after ~2.5s it still has no frame dimensions / readyState
+  // is below HAVE_CURRENT_DATA, mark the stream as dead. We auto-retry ONCE
+  // (3s after the first detection) before giving up and forcing the user to
+  // tap RESTART CAMERA manually.
+  useEffect(() => {
+    if (!dealId || !cameraReady) return undefined;
+    let alive = true;
+    let consecutiveDead = 0;
+    const id = setInterval(() => {
+      if (!alive) return;
+      const v = videoRef.current;
+      const dead = !v || !v.videoWidth || !v.videoHeight || v.readyState < 2;
+      if (dead) {
+        consecutiveDead += 1;
+        // After ~2.5s of dead frames, declare the stream unhealthy.
+        if (consecutiveDead >= 2 && streamHealthy) {
+          setStreamHealthy(false);
+          // Auto-retry once. If it still doesn't paint, the user has to tap.
+          if (autoRetryRef.current.tries < 1 && !autoRetryRef.current.timer) {
+            autoRetryRef.current.timer = setTimeout(() => {
+              autoRetryRef.current.tries += 1;
+              autoRetryRef.current.timer = null;
+              restartCamera();
+            }, 3000);
+          }
+        }
+      } else {
+        consecutiveDead = 0;
+        if (!streamHealthy) {
+          setStreamHealthy(true);
+          // Recovery: reset retry budget so a later failure can auto-retry again.
+          autoRetryRef.current.tries = 0;
+        }
+      }
+    }, 1200);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [dealId, cameraReady, streamHealthy, restartCamera]);
 
   // ---------- Online/offline listeners ----------
   useEffect(() => {
@@ -420,12 +506,12 @@ export default function FieldCapture() {
     // but Safari isn't painting frames → videoWidth/Height is 0, so we'd
     // ship a black canvas to the server and the user would never know.
     if (!video.videoWidth || !video.videoHeight || video.readyState < 2) {
+      setStreamHealthy(false);
       toast.error("Camera is black — tap RESTART CAMERA. Don't take more shots until this clears.");
       return;
     }
     if (uploadingShot) return;
 
-    const video = videoRef.current;
     const canvas = canvasRef.current || document.createElement("canvas");
     canvasRef.current = canvas;
     const vw = video.videoWidth || 1280;
@@ -589,6 +675,16 @@ export default function FieldCapture() {
           </span>
         )}
         <button
+          onClick={restartCamera}
+          disabled={restarting}
+          className="inline-flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[10px] font-bold uppercase tracking-wider rounded-sm disabled:opacity-50"
+          data-testid="field-restart-camera"
+          title="Restart the camera if the preview is black or stuck"
+        >
+          <RefreshCcw className={"w-3 h-3 " + (restarting ? "animate-spin" : "")} />
+          {restarting ? "Restarting" : "Restart"}
+        </button>
+        <button
           onClick={() => { localStorage.removeItem("crm_token"); nav("/login", { replace: true }); }}
           className="p-2 text-zinc-400 hover:text-white"
           data-testid="field-logout"
@@ -623,6 +719,34 @@ export default function FieldCapture() {
             className="max-w-full max-h-full object-contain"
             data-testid="field-video"
           />
+        )}
+        {/* Black-screen recovery banner — overrides the stamp/zoom UI when
+            iOS Safari hands us a stream that won't paint. Blocks the shutter
+            implicitly because the user will see this before tapping it. */}
+        {!cameraError && !streamHealthy && (
+          <div
+            className="absolute inset-x-0 top-0 z-30 bg-rose-700/95 border-b-2 border-rose-400 px-4 py-3 flex items-center gap-3"
+            data-testid="field-black-screen-banner"
+          >
+            <AlertCircle className="w-6 h-6 text-white flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-rose-100">
+                Camera is black — photos will not save
+              </div>
+              <div className="text-[11px] text-rose-50 leading-snug">
+                iOS Safari paused the live preview. Tap RESTART CAMERA to recover, then verify you can see the scene before shooting.
+              </div>
+            </div>
+            <button
+              onClick={restartCamera}
+              disabled={restarting}
+              className="inline-flex items-center gap-1 px-3 py-2 bg-white text-rose-700 text-[11px] font-bold uppercase tracking-wider rounded-sm hover:bg-rose-50 disabled:opacity-60"
+              data-testid="field-banner-restart"
+            >
+              <RefreshCcw className={"w-3 h-3 " + (restarting ? "animate-spin" : "")} />
+              {restarting ? "Restarting" : "Restart Camera"}
+            </button>
+          </div>
         )}
         {/* Live stamp preview overlay — mirrors what will be burned in. Tiny
             text in a translucent bar so the foreman knows the stamp is on
@@ -743,7 +867,7 @@ export default function FieldCapture() {
       <div className="bg-zinc-900 px-4 py-6 flex items-center justify-center border-t border-zinc-800">
         <button
           onClick={captureAndUpload}
-          disabled={!cameraReady || !dealId || uploadingShot}
+          disabled={!cameraReady || !dealId || uploadingShot || !streamHealthy || restarting}
           className="w-24 h-24 rounded-full bg-white hover:bg-zinc-200 active:scale-95 transition-all flex items-center justify-center shadow-2xl border-4 border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
           data-testid="field-shutter"
           aria-label="Capture photo"

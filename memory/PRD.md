@@ -895,6 +895,14 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - **Dashboard widget — `RecentlyDeleted`**: Auto-hidden when empty AND for non-admins. Shows "N items removed — click to restore" with per-row Restore buttons. Lives between Compliance Wall and Materials In Motion. Refetches on tab focus.
 - **Process change going forward**: Testing agent must operate on a self-created `TEST_*` deal — never touch deals containing real user content. The new audit widget will surface any test-agent collateral damage immediately on Darren's next dashboard visit.
 
+## 2026-02-19 — iOS Safari "Black Screen" Camera Recovery (FieldCapture)
+- **Build fix**: Removed duplicate `const video = videoRef.current;` declaration on `FieldCapture.jsx` line 428 and added the missing `toast` import from `sonner`. Frontend now compiles cleanly (one pre-existing eslint warning in `ProjectPhotos.jsx` is unrelated).
+- **Persistent RESTART button**: Always-visible "Restart" pill in the camera-view top bar (`data-testid="field-restart-camera"`). Hard-tears down the MediaStream, waits 250 ms for iOS to release the camera, then re-acquires it. Used by both the manual button and the auto-retry path.
+- **Black-stream health monitor**: New 1.2 s polling loop watches `video.videoWidth` / `videoHeight` / `readyState`. After ~2.5 s of dead frames the stream is flagged unhealthy, a red full-width banner takes over the camera area, and the shutter button is hard-disabled (`!streamHealthy` guard) so no more silent black uploads.
+- **Auto-retry once**: 3 s after the first unhealthy detection the camera is automatically restarted exactly one time. If it still won't paint, the banner stays up and the user must tap RESTART CAMERA. Retry budget resets the moment the stream paints a real frame.
+- **Capture-time guard preserved**: `captureAndUpload` still verifies frame dimensions before encoding so any race between the health monitor and a fast shutter tap still rejects the shot with an explicit toast instead of uploading black pixels.
+
+
 
 
 ## Backlog (P1)
