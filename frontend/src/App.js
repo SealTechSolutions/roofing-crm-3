@@ -12,6 +12,7 @@ import Deals from "@/pages/Deals";
 import DealDetail from "@/pages/DealDetail";
 import Vendors from "@/pages/Vendors";
 import UsersPage from "@/pages/Users";
+import UserDetailPage from "@/pages/UserDetail";
 import Maintenance from "@/pages/Maintenance";
 import Invoices from "@/pages/Invoices";
 import Payables from "@/pages/Payables";
@@ -124,6 +125,7 @@ function App() {
               <Route path="/settings/schedule" element={<Schedule />} />
               <Route path="/books" element={<BooksCOA />} />
               <Route path="/users" element={<UsersPage />} />
+              <Route path="/users/:id" element={<UserDetailPage />} />
               <Route path="/profile" element={<Profile />} />
             </Route>
           </Routes>

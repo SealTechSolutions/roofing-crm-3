@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
-import { Plus, Pencil, Trash2, KeyRound, Copy, ShieldCheck, X } from "lucide-react";
+import { Plus, Pencil, Trash2, KeyRound, Copy, ShieldCheck, X, IdCard } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -96,7 +97,9 @@ export default function Users() {
           <tbody>
             {items.map((u) => (
               <tr key={u.id} className="border-b border-zinc-100 hover:bg-zinc-50" data-testid={`user-row-${u.id}`}>
-                <td className="px-6 py-3 font-bold text-zinc-950">{u.name}</td>
+                <td className="px-6 py-3 font-bold text-zinc-950">
+                  <Link to={`/users/${u.id}`} className="hover:text-blue-700 hover:underline" data-testid={`user-name-${u.id}`}>{u.name}</Link>
+                </td>
                 <td className="px-6 py-3 text-zinc-700">{u.email}</td>
                 <td className="px-6 py-3">
                   <span className={`inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm ${u.role === "admin" ? "bg-zinc-950 text-white" : u.role === "manager" ? "bg-blue-100 text-blue-800" : "bg-zinc-200 text-zinc-800"}`}>
@@ -107,6 +110,7 @@ export default function Users() {
                 <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{formatPhoneDisplay(u.phone) || "—"}</td>
                 <td className="px-6 py-3">
                   <div className="flex items-center gap-1">
+                    <Link to={`/users/${u.id}`} title="Open profile (notes, certifications, equipment)" className="p-1.5 hover:bg-blue-100 text-blue-700 rounded-sm" data-testid={`profile-${u.id}`}><IdCard className="w-3.5 h-3.5" /></Link>
                     <button data-testid={`regen-${u.id}`} onClick={() => regen(u)} title="Regenerate password" className="p-1.5 hover:bg-zinc-200 rounded-sm"><KeyRound className="w-3.5 h-3.5" /></button>
                     <button data-testid={`edit-user-${u.id}`} onClick={() => openEdit(u)} title="Edit" className="p-1.5 hover:bg-zinc-200 rounded-sm"><Pencil className="w-3.5 h-3.5" /></button>
                     <button data-testid={`delete-user-${u.id}`} onClick={() => setConfirmTarget(u)} title="Delete" className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>

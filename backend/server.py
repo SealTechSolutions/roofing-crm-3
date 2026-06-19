@@ -6183,6 +6183,10 @@ async def on_startup():
         from apscheduler.triggers.cron import CronTrigger
         await db.deal_events.create_index("deal_id")
         await db.deal_events.create_index("date")
+        await db.user_notes.create_index("user_id")
+        await db.user_certifications.create_index("user_id")
+        await db.user_certifications.create_index("expiration_date")
+        await db.user_equipment.create_index("user_id")
         if not hasattr(app.state, "_deal_events_sched"):
             sched = AsyncIOScheduler(timezone="UTC")
 
@@ -6193,9 +6197,20 @@ async def on_startup():
                     logger.warning(f"deal_events reminder tick failed: {e}")
 
             sched.add_job(_tick, CronTrigger(minute="*/5"), id="deal_event_reminders", replace_existing=True)
+
+            # Cert-expiration reminders — daily at 13:30 UTC (≈ 7:30 AM MDT).
+            async def _cert_tick():
+                try:
+                    import user_profile as _up
+                    await _up.send_due_cert_reminders(db)
+                except Exception as e:
+                    logger.warning(f"cert reminder tick failed: {e}")
+
+            sched.add_job(_cert_tick, CronTrigger(hour=13, minute=30), id="cert_expiration_reminders", replace_existing=True)
             sched.start()
             app.state._deal_events_sched = sched
             logger.info("Deal-events reminder scheduler started (every 5 min)")
+            logger.info("Cert-expiration reminder scheduler started (daily 13:30 UTC)")
     except Exception as e:
         logger.warning(f"Deal-events reminder scheduler failed (non-fatal): {e}")
 
@@ -6363,12 +6378,14 @@ import google_calendar as gcal_module
 import tasks as tasks_module
 import deal_events as deal_events_module
 import email_routing as email_routing_module
+import user_profile as user_profile_module
 _PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL") or os.environ.get("GOOGLE_OAUTH_REDIRECT_URI", "").replace("/api/oauth/calendar/callback", "")
 api_router.include_router(gcal_module.make_google_calendar_router(db, get_current_user, _PUBLIC_BASE_URL))
 api_router.include_router(gcal_module.make_google_oauth_callback_router(db))
 api_router.include_router(tasks_module.make_tasks_router(db, get_current_user, push_task_fn=gcal_module.push_task, public_base_url=_PUBLIC_BASE_URL))
 api_router.include_router(deal_events_module.make_router(db, get_current_user, public_base_url=_PUBLIC_BASE_URL))
 api_router.include_router(email_routing_module.make_router(db, get_current_user))
+api_router.include_router(user_profile_module.make_router(db, get_current_user, require_admin, public_base_url=_PUBLIC_BASE_URL))
 
 
 # ----- Public Proposal Signing (Sign Off link) ----------------------------
