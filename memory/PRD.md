@@ -864,6 +864,19 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - **Tests**: 19/19 backend pytest + frontend Playwright (admin AND non-admin Emma manager flows) — iteration_26, 100% pass.
 
 
+## 2026-02-19 — P2: Smart Auto-Attach Cover Photo on Scope Emails
+- **What it does**: When the user opens the Email Scope modal, the deal's marked cover photo is automatically detected and pre-selected as an attachment. The bottom-bar summary now reads: `Will send scope PDF + N photo(s) + M library doc(s) = K total attachments`.
+- **Behavior matrix**:
+  - **Cover photo marked** (is_cover=true) → section labeled "Cover Photo (auto-attached)", checkbox pre-checked, ✓
+  - **No cover marked but photos exist** → section labeled "Cover Photo (suggested)", most-recent photo shown UNCHECKED with amber hint "No cover marked — using most recent photo as suggestion."
+  - **Zero photos** → section completely hidden
+- **Locked safety rule**: Material Take-Off documents live in a separate collection (`material_takeoffs`) and are **NEVER attached** by this endpoint — verified via 6/6 backend pytest including a code-level safety scan of `email_spec_sheet`. Internal pricing/margin info never leaks to customers.
+- **Backend** (`server.py` `email_spec_sheet`): New optional `cover_photo_ids: [str]` field on the request body. Empty list → no photos. Omitted → auto-finds is_cover=true photos. Explicit IDs → only those (matching the deal). Files attached with `original_filename` or fallback `{project_label}-cover.{ext}`.
+- **Frontend** (`DealDetail.jsx` EmailScopeModal): New `coverPhotos` + `selectedPhotoIds` state. Photos fetched from `/api/projects/{deal_id}/photos` on modal open. New "Cover Photo" section above Library Attachments with file-card style rows + amber COVER badge. Bottom-bar summary updated to count photos.
+- **Tests**: 6/6 backend pytest + 3/3 frontend Playwright (zero / cover-marked / cover-unmarked) — iteration_27, 100% pass.
+
+
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics) — DONE
 - Statement of Account PDF (aging report per customer) — DONE
