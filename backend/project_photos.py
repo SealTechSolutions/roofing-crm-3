@@ -25,9 +25,57 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
+from PIL import Image, ExifTags
 
 from storage import put_object, get_object, APP_NAME
 from progress_timeline_pdf import build_progress_timeline_pdf
+
+# EXIF tag ids we care about. Pillow exposes ExifTags.TAGS as {id: name} so we
+# invert to grab the IDs once at import.
+_EXIF_TAG_IDS = {name: tag_id for tag_id, name in ExifTags.TAGS.items()}
+_EXIF_DATETIME_TAGS = (
+    _EXIF_TAG_IDS.get("DateTimeOriginal"),     # the actual shutter timestamp
+    _EXIF_TAG_IDS.get("DateTimeDigitized"),    # fallback if Original is missing
+    _EXIF_TAG_IDS.get("DateTime"),             # last-resort: file's metadata stamp
+)
+
+
+def _exif_captured_at(image_bytes: bytes) -> Optional[str]:
+    """Read EXIF and return the photo's true capture timestamp as ISO 8601.
+
+    Returns None if the file has no EXIF or no parseable date. The EXIF spec
+    formats dates as "YYYY:MM:DD HH:MM:SS" (colon-separated date), so we have
+    to swap the first two colons to dashes before passing to fromisoformat.
+    Used by the upload endpoint so emailed/forwarded photos sort to their
+    real shutter date instead of the upload date.
+    """
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as im:
+            exif = im.getexif() if hasattr(im, "getexif") else None
+            if not exif:
+                return None
+            for tag_id in _EXIF_DATETIME_TAGS:
+                if not tag_id:
+                    continue
+                raw = exif.get(tag_id)
+                if not raw:
+                    continue
+                # Normalize "YYYY:MM:DD HH:MM:SS" → "YYYY-MM-DDTHH:MM:SS"
+                s = str(raw).strip()
+                if len(s) < 19:
+                    continue
+                normalized = s[:4] + "-" + s[5:7] + "-" + s[8:10] + "T" + s[11:19]
+                try:
+                    dt = datetime.fromisoformat(normalized)
+                    # EXIF datetimes are local-time without zone info. Treat as UTC
+                    # rather than guessing the device's timezone — keeps the value
+                    # JSON-roundtrippable and sortable.
+                    return dt.replace(tzinfo=timezone.utc).isoformat()
+                except Exception:
+                    continue
+    except Exception:
+        return None
+    return None
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg", "image/jpg", "image/png", "image/webp",
@@ -125,6 +173,18 @@ def create_router(db, get_current_user) -> APIRouter:
         if len(data) > MAX_BYTES:
             raise HTTPException(status_code=413, detail=f"Image too large (max {MAX_BYTES // (1024 * 1024)} MB)")
 
+        # If the client didn't pass an explicit capture timestamp, try to pull
+        # it from the JPEG's EXIF metadata. This makes the timeline correct
+        # for photos forwarded from a foreman's email days after they were
+        # actually taken — every iPhone/Android camera writes DateTimeOriginal.
+        resolved_captured_at = (captured_at or "").strip()
+        if not resolved_captured_at:
+            exif_ts = _exif_captured_at(data)
+            if exif_ts:
+                resolved_captured_at = exif_ts
+        if not resolved_captured_at:
+            resolved_captured_at = _now_iso()
+
         photo_id = str(uuid.uuid4())
         ext = _ext_for(file.filename or "photo.jpg")
         storage_path = f"{APP_NAME}/project_photos/{deal_id}/{photo_id}.{ext}"
@@ -156,7 +216,7 @@ def create_router(db, get_current_user) -> APIRouter:
             "gps_lat": gps_lat,
             "gps_lng": gps_lng,
             "gps_accuracy": gps_accuracy,
-            "captured_at": captured_at or _now_iso(),
+            "captured_at": resolved_captured_at,
             "stamped": bool(stamped),
         }
         await db.project_photos.insert_one(doc.copy())
@@ -188,6 +248,78 @@ def create_router(db, get_current_user) -> APIRouter:
             {"$set": {"is_deleted": True, "deleted_at": _now_iso(), "deleted_by": current["id"]}},
         )
         return {"ok": True}
+
+    # ---------- Bulk operations ----------
+    # Atomic, one-round-trip bulk update for selected photos. The frontend
+    # used to fire N parallel PATCH requests for tag/album moves which (a)
+    # caused partial-success states on flaky LTE and (b) made it possible for
+    # a CRUD test to leave half a gallery in an inconsistent state. This
+    # endpoint runs one update_many on a deal-scoped id filter so either all
+    # selected photos move or none do.
+    @router.patch("/photos-bulk")
+    async def bulk_update_photos(
+        deal_id: str,
+        body: dict = Body(...),
+        _=Depends(get_current_user),
+    ):
+        await _ensure_deal(deal_id)
+        ids = body.get("ids") or []
+        if not isinstance(ids, list) or not ids:
+            raise HTTPException(status_code=400, detail="ids[] is required")
+        if len(ids) > 500:
+            raise HTTPException(status_code=400, detail="Cannot update more than 500 photos at once")
+        patch: dict = {}
+        if "tag" in body:
+            tag = (body.get("tag") or "").strip()
+            if tag and tag not in PRESET_TAGS:
+                raise HTTPException(status_code=400, detail=f"Invalid tag. Allowed: {', '.join(PRESET_TAGS)}")
+            patch["tag"] = tag
+        if "album_name" in body:
+            patch["album_name"] = (body.get("album_name") or "Default").strip() or "Default"
+        if "captured_at" in body:
+            raw = (body.get("captured_at") or "").strip()
+            if raw:
+                # Accept "YYYY-MM-DD" (date-picker output) and normalize to noon
+                # UTC so re-dated photos cluster cleanly under the right day
+                # header without colliding with each other on minute precision.
+                try:
+                    if len(raw) == 10 and raw[4] == "-" and raw[7] == "-":
+                        dt = datetime.fromisoformat(raw + "T12:00:00").replace(tzinfo=timezone.utc)
+                    else:
+                        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                    patch["captured_at"] = dt.isoformat()
+                except Exception:
+                    raise HTTPException(status_code=400, detail=f"Invalid captured_at: {raw!r}")
+            else:
+                patch["captured_at"] = _now_iso()
+        if not patch:
+            raise HTTPException(status_code=400, detail="No supported fields to update (tag, album_name, captured_at)")
+        patch["updated_at"] = _now_iso()
+        result = await db.project_photos.update_many(
+            {"deal_id": deal_id, "id": {"$in": ids}, "is_deleted": {"$ne": True}},
+            {"$set": patch},
+        )
+        return {"matched": result.matched_count, "modified": result.modified_count, "applied": patch}
+
+    @router.post("/photos-bulk-delete")
+    async def bulk_delete_photos(
+        deal_id: str,
+        body: dict = Body(...),
+        current=Depends(get_current_user),
+    ):
+        await _ensure_deal(deal_id)
+        ids = body.get("ids") or []
+        if not isinstance(ids, list) or not ids:
+            raise HTTPException(status_code=400, detail="ids[] is required")
+        if len(ids) > 500:
+            raise HTTPException(status_code=400, detail="Cannot delete more than 500 photos at once")
+        result = await db.project_photos.update_many(
+            {"deal_id": deal_id, "id": {"$in": ids}, "is_deleted": {"$ne": True}},
+            {"$set": {"is_deleted": True, "deleted_at": _now_iso(), "deleted_by": current["id"]}},
+        )
+        return {"matched": result.matched_count, "deleted": result.modified_count}
 
     @router.get("/photos/{photo_id}/download")
     async def download_photo(deal_id: str, photo_id: str, _=Depends(get_current_user)):
