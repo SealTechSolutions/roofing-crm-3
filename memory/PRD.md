@@ -877,6 +877,16 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 
 
 
+## 2026-02-19 — Field Photo Workflow Polish (5 fixes from field test)
+- **(a) Image size**: `FieldCapture.captureAndUpload` now downscales captures to max 2048px on the long side and encodes JPEG quality 0.72. Drops 3-6 MB shots to ~400-1200 KB. Stamp is painted BEFORE the resize-encode pipeline so proof-of-presence pixels survive.
+- **(b) Viewport zoom hijack**: The `/field` route installs a viewport meta tag with `maximum-scale=1.0, user-scalable=no` on mount and restores the original on unmount. Pinch-zoom now only affects the camera digital-zoom handler — the page chrome (shutter button, camera frame) stays put.
+- **(c) Per-photo download**: PhotoCard hover toolbar now has a Download button (data-testid `photo-download-{id}`); Lightbox also has a Download anchor (`lightbox-download`). Triggers a native browser save-as so the user can open the photo in Paint / Macromedia / wherever.
+- **(d) Grid density**: Photo grid tightened to `grid-cols-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8 xl:grid-cols-9 2xl:grid-cols-10 gap-1.5`. ~8 photos per row at typical desktop widths.
+- **(e) Multi-select + bulk move**: New Select-mode toggle on the photos toolbar. In Select mode, tile clicks toggle selection (blue ring + ✓ badge). Sticky blue action bar appears with "Move to album →" select (existing albums + "+ New album…" option), Move + Delete buttons, and a clear control. Bulk move runs with **concurrency 4** so 30+ photos finish in seconds with live "Moving X/Y…" progress in the button label. Per-photo failures are logged + surfaced via "X moved · Y failed" warning toast.
+- **Tested**: iteration_28 — 100% spec compliance on all 5 fixes (code review + live UI test).
+
+
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics) — DONE
 - Statement of Account PDF (aging report per customer) — DONE

@@ -38,6 +38,7 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkMoveTarget, setBulkMoveTarget] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
   const fileInputRef = useRef(null);
 
   const toggleSelect = (id) => {
@@ -384,7 +385,7 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
             className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider bg-white text-blue-700 hover:bg-blue-50 disabled:opacity-50 rounded-sm"
             data-testid="photos-bulk-move"
           >
-            {bulkBusy ? "Moving…" : "Move"}
+            {bulkBusy ? (bulkProgress.total > 0 ? `Moving ${bulkProgress.done}/${bulkProgress.total}…` : "Moving…") : "Move"}
           </button>
           <button
             type="button"
