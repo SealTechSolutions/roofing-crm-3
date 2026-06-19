@@ -410,8 +410,19 @@ export default function FieldCapture() {
   }, [stampEnabled, me, deals, dealId, activeProperty, position, posError]);
 
   const captureAndUpload = useCallback(async () => {
-    if (!dealId) { alert("Pick a project first."); return; }
-    if (!cameraReady || !videoRef.current) return;
+    if (!dealId) { toast.error("Pick a project first."); return; }
+    if (!cameraReady || !videoRef.current) {
+      toast.error("Camera not ready — tap RESTART CAMERA to refresh.");
+      return;
+    }
+    const video = videoRef.current;
+    // Detect iOS Safari black-screen bug: camera stream is technically open
+    // but Safari isn't painting frames → videoWidth/Height is 0, so we'd
+    // ship a black canvas to the server and the user would never know.
+    if (!video.videoWidth || !video.videoHeight || video.readyState < 2) {
+      toast.error("Camera is black — tap RESTART CAMERA. Don't take more shots until this clears.");
+      return;
+    }
     if (uploadingShot) return;
 
     const video = videoRef.current;
