@@ -1455,6 +1455,8 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
   const [sending, setSending] = useState(false);
   const [smartMatches, setSmartMatches] = useState({ ids: new Set(), reasons: {}, tokens: [] });
   const [smartApplied, setSmartApplied] = useState(false);
+  const [coverPhotos, setCoverPhotos] = useState([]); // [{id, signed_url, display_name, is_cover}]
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState([]); // ids of project photos to attach
 
   const isAssessment = (dealType || "").toLowerCase() === "assessment";
   const docKind = isAssessment ? "assessment" : "scope";
@@ -1474,6 +1476,16 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
       setSelectedIds(Array.from(ids));
       setSmartApplied(true);
     }).catch(() => {});
+    // Fetch project photos so we can auto-attach the cover photo (Material
+    // Take-Off lives in a separate collection and is intentionally NOT
+    // offered here — internal pricing, never to customer).
+    api.get(`/projects/${dealId}/photos`).then((r) => {
+      const all = r.data || [];
+      const covers = all.filter((p) => p.is_cover);
+      const candidates = covers.length > 0 ? covers : all.slice(0, 1);
+      setCoverPhotos(candidates);
+      setSelectedPhotoIds(covers.map((p) => p.id));
+    }).catch(() => setCoverPhotos([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docKind, dealId]);
 
@@ -1508,6 +1520,7 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
         from_email: fromEmail,
         message: message.trim(),
         library_file_ids: selectedIds,
+        cover_photo_ids: selectedPhotoIds,
       });
       toast.success(r.data?.message || "Scope emailed");
       onClose(true);
@@ -1564,6 +1577,42 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
 
           {/* Right — library picker */}
           <div>
+            {coverPhotos.length > 0 && (
+              <div className="mb-3" data-testid="scope-cover-photos">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">
+                  Cover Photo {coverPhotos.some((p) => p.is_cover) ? "(auto-attached)" : "(suggested)"}
+                </div>
+                <div className="space-y-1.5">
+                  {coverPhotos.map((p) => {
+                    const checked = selectedPhotoIds.includes(p.id);
+                    const togglePhoto = () => setSelectedPhotoIds((s) => s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]);
+                    return (
+                      <label
+                        key={p.id}
+                        className={`flex items-center gap-2 px-3 py-2 border rounded-sm cursor-pointer transition-colors ${checked ? "border-blue-700 bg-blue-50/40" : "border-zinc-300 hover:bg-zinc-50"}`}
+                        data-testid={`scope-cover-photo-${p.id}`}
+                      >
+                        <input type="checkbox" checked={checked} onChange={togglePhoto} />
+                        <div className="text-xs flex-1 min-w-0 flex items-center gap-2">
+                          <span className="text-sm">🖼️</span>
+                          <span className="font-bold truncate">{p.display_name || p.original_filename || "Photo"}</span>
+                          {p.is_cover && (
+                            <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 px-1.5 py-0.5 rounded">Cover</span>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="text-[10px] text-zinc-500 mt-1">
+                  {selectedPhotoIds.length === 0 ? "No photo attached." : `Attaching ${selectedPhotoIds.length} photo${selectedPhotoIds.length === 1 ? "" : "s"}.`}
+                  {!coverPhotos.some((p) => p.is_cover) && coverPhotos.length > 0 && (
+                    <span className="text-amber-700 ml-1">No cover marked — using most recent photo as suggestion.</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between gap-2 mb-2">
               <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Library Attachments ({selectedIds.length} selected)</div>
               <select value={filterCat} onChange={(e) => setFilterCat(e.target.value)} className="h-7 px-2 border border-zinc-300 rounded-sm text-xs bg-white" data-testid="scope-lib-filter">
@@ -1610,7 +1659,9 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
         </div>
         <div className="px-6 py-4 border-t border-zinc-200 flex justify-between items-center gap-2">
           <div className="text-[11px] text-zinc-500">
-            Will send <b>scope PDF</b> + <b>{selectedIds.length}</b> library doc{selectedIds.length === 1 ? "" : "s"} = <b>{selectedIds.length + 1}</b> total attachment{selectedIds.length === 0 ? "" : "s"}
+            Will send <b>scope PDF</b>
+            {selectedPhotoIds.length > 0 && <> + <b>{selectedPhotoIds.length}</b> photo{selectedPhotoIds.length === 1 ? "" : "s"}</>}
+            {" "}+ <b>{selectedIds.length}</b> library doc{selectedIds.length === 1 ? "" : "s"} = <b>{selectedIds.length + selectedPhotoIds.length + 1}</b> total attachment{(selectedIds.length + selectedPhotoIds.length + 1) === 1 ? "" : "s"}
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50">Cancel</button>

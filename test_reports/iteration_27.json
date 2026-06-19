@@ -1,0 +1,30 @@
+{
+  "summary": "P2 Smart auto-attach cover photo on Scope emails verified end-to-end. Backend pytest 6/6 PASS — POST /api/deals/{id}/spec-sheet/email correctly: (1) omitted cover_photo_ids → auto-attaches every project_photo with is_cover=true; (2) explicit [] → no photos attached; (3) explicit ids → only those matching the deal attached; (4) bogus/other-deal id ignored. Code-level invariant guard confirms the email handler never reads `material_takeoff` (only mention is the inline safety comment) and never reads `db.material_takeoffs`. Frontend Playwright 3 scenarios PASS — (A) zero photos → cover section hidden (data-testid count=0); (B) 1 cover + 1 non-cover → 'Cover Photo (auto-attached)' section with cover row pre-checked, summary 'scope PDF + 1 photo + 6 library docs = 8 total attachments', unchecking decreases photo count to 0, network-intercepted POST body contains `cover_photo_ids: [<cover-id>]`; (C) photos but none marked cover → 'Cover Photo (suggested)' shows most-recent photo unchecked with amber hint 'No cover marked — using most recent photo as suggestion.'. Deal b2f4b511-09ee-411d-978f-44a02ac24d13 returned to 0 photos after cleanup.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_scope_cover_photos.py",
+    "/app/test_reports/pytest/pytest_iter27.xml"
+  ],
+  "what_was_tested": [
+    "Backend: 6 pytest cases covering all 4 cover_photo_ids contract permutations (omitted/[]/explicit/bogus) + material_takeoff code-level safety guard + takeoff endpoint sanity.",
+    "Frontend: 3 end-to-end Playwright scenarios (zero photos / 1 cover + 1 non-cover / photos w/o cover) — uses admin login darren@sealtechsolutions.co, the live test deal, real photo uploads via /api/projects/{id}/photos multipart, real PATCH to set is_cover, real network interception of the /api/deals/{id}/spec-sheet/email POST to verify cover_photo_ids on the wire.",
+    "Cleanup: all TEST_ui*.jpg photos deleted post-run; deal photo count back to zero."
+  ],
+  "critical_code_review_comments": [
+    "[nit] EmailScopeModal bottom summary line 1664: when N=1 it renders 'photo' (no plural) and when N=0 the whole '+ N photo' segment is suppressed — the spec wording reads 'N photo(s)' literally; the implemented pluralization is friendlier but a strict reviewer might flag the deviation. No functional impact.",
+    "[nit] Cover Photo row uses a native <input type=checkbox> without a data-testid on the input itself — selecting via descendant '[data-testid=scope-cover-photo-{id}] input[type=checkbox]' works, but a direct data-testid would be more robust.",
+    "[observation] In CASE_C (no photo marked cover, multiple photos exist) the frontend slices `all.slice(0, 1)` — but the /api/projects/{id}/photos endpoint sorts by created_at DESC, so 'most recent' is honored. This is correct, but a unit-test or comment locking the sort direction would prevent a silent regression if the sort ever flips.",
+    "[safety] Code-level scan confirms email_spec_sheet handler body (server.py lines 4075-4250) contains exactly ONE reference to `material_takeoff` and it is a `#` comment. There is no read from db.material_takeoffs in the handler. Material Take-Off cannot leak via this endpoint."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_scope_cover_photos.py (new)"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (3/3 scenarios)"},
+  "test_credentials": "Admin: darren@sealtechsolutions.co / admin123 — used as-is from /app/memory/test_credentials.md",
+  "seed_data_creation": "Test photos uploaded to deal b2f4b511-09ee-411d-978f-44a02ac24d13 (TEST_uifirst.jpg, TEST_uisecond.jpg) were soft-deleted at end of run. Deal photo count = 0 confirmed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable test file at /app/backend/tests/test_scope_cover_photos.py — first attempts os.environ.get('REACT_APP_BACKEND_URL'); falls back to reading /app/frontend/.env. Live SMTP send_email actually fires per request (no mocking) — each test triggers a real outbound email to TEST_dev_null@example.com via scope@sealtechsolutions.co. If rate-limiting becomes an issue, mock email_sender.send_email. The test deal id is hard-coded; if it is purged, update TEST_DEAL_ID at the top of the test file.",
+  "rca_of_the_issue": "n/a — P2 feature implementation matches spec and locked rule (Material Take-Off NEVER attached) is upheld."
+}
