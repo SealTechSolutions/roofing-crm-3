@@ -574,7 +574,35 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
 // ============ Photo Card ============
 function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, selectMode, onToggleSelect, onDownload }) {
   const [src, setSrc] = useState(null);
+  // Only fetch the JPEG once the card is actually visible (or about to be).
+  // Without this every card in the gallery fires a 0.5-1.2 MB blob download
+  // on mount, which on a project with 30+ photos saturates the user's LTE
+  // and makes the page feel "stuck". IntersectionObserver gives us native,
+  // zero-dependency lazy-load with a 200px pre-load margin so scrolling
+  // feels instant. Browsers that don't support IO (none in practice) fall
+  // back to the eager fetch.
+  const cardRef = useRef(null);
+  const [visible, setVisible] = useState(false);
   useEffect(() => {
+    if (visible) return undefined;
+    if (typeof IntersectionObserver === "undefined") { setVisible(true); return undefined; }
+    const el = cardRef.current;
+    if (!el) return undefined;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return undefined;
     // Load via auth'd download endpoint; produces a blob URL we can put in <img>
     let mounted = true;
     let url = null;
@@ -586,7 +614,7 @@ function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, s
       })
       .catch(() => { /* show broken-image placeholder */ });
     return () => { mounted = false; if (url) URL.revokeObjectURL(url); };
-  }, [photo.id, photo.deal_id]);
+  }, [visible, photo.id, photo.deal_id]);
 
   const handleClick = () => {
     if (selectMode) { onToggleSelect && onToggleSelect(); }
@@ -595,6 +623,7 @@ function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, s
 
   return (
     <div
+      ref={cardRef}
       className={"group relative bg-zinc-50 border rounded-sm overflow-hidden " + (selected ? "border-blue-700 ring-2 ring-blue-300" : "border-zinc-200")}
       data-testid={`photo-card-${photo.id}`}
     >
