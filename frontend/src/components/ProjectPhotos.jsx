@@ -332,8 +332,11 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
           className="h-8 px-2 border border-zinc-300 text-xs rounded-sm bg-white"
           data-testid="album-filter"
         >
-          <option value="">All Albums</option>
-          {albums.map((a) => <option key={a} value={a}>{a}</option>)}
+          <option value="">All Albums ({photos.length})</option>
+          {albums.map((a) => {
+            const n = photos.filter((p) => (p.album_name || "Default") === a).length;
+            return <option key={a} value={a}>{a} ({n})</option>;
+          })}
         </select>
         <select
           value={tagFilter}
@@ -342,7 +345,10 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
           data-testid="tag-filter"
         >
           <option value="">All Tags</option>
-          {PRESET_TAGS.map((t) => <option key={t} value={t}>{t}</option>)}
+          {PRESET_TAGS.map((t) => {
+            const n = photos.filter((p) => p.tag === t).length;
+            return <option key={t} value={t}>{t} ({n})</option>;
+          })}
         </select>
         <CustomAlbumInput onCreate={(name) => setAlbumFilter(name)} />
         <button
@@ -484,11 +490,31 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
 
       {/* Grid grouped by date */}
       {filtered.length === 0 ? (
-        <div className="py-16 text-center text-sm text-zinc-500 border-2 border-dashed border-zinc-200 rounded-sm">
+        <div className="py-16 text-center text-sm text-zinc-500 border-2 border-dashed border-zinc-200 rounded-sm" data-testid="photos-empty-state">
           <ImageIcon className="w-8 h-8 mx-auto text-zinc-300 mb-2" />
-          {photos.length === 0
-            ? "No photos uploaded yet. Drag-drop multiple images or use the Upload Photos button above."
-            : "No photos match the current filter."}
+          {photos.length === 0 ? (
+            "No photos uploaded yet. Drag-drop multiple images or use the Upload Photos button above."
+          ) : (
+            <>
+              <div className="mb-3">
+                No photos match the current filter
+                {albumFilter && <> in album <b className="text-zinc-700">{albumFilter}</b></>}
+                {tagFilter && <> tagged <b className="text-zinc-700">{tagFilter}</b></>}
+                .
+              </div>
+              <div className="text-[11px] text-zinc-500 mb-3">
+                {photos.length} total photo{photos.length === 1 ? "" : "s"} in this project.
+              </div>
+              <button
+                type="button"
+                onClick={() => { setAlbumFilter(""); setTagFilter(""); }}
+                className="inline-flex items-center gap-1.5 h-8 px-3 text-[11px] font-bold uppercase tracking-wider bg-blue-700 text-white rounded-sm hover:bg-blue-800"
+                data-testid="photos-clear-filters"
+              >
+                Clear filters → show all {photos.length}
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-6" data-testid="photo-grid">
