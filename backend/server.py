@@ -5650,6 +5650,91 @@ async def dashboard_today(current=Depends(get_current_user)):
         ev["deal_title"] = by_id.get(ev["deal_id"], "")
     return {"today": today_iso, "events": events}
 
+# ---------- Soft-delete audit (last 48h) ----------
+@api_router.get("/admin/recent-deletions")
+async def admin_recent_deletions(hours: int = 48, current=Depends(get_current_user)):
+    """Inventory of everything soft-deleted in the last `hours` hours across
+    the major collections. Use after running tests, or any time you suspect
+    something got removed by mistake.
+
+    Each row includes the collection name, document id, a human-readable
+    label, the timestamp it was deleted, and (for photos) the parent deal
+    so you can find your way back to it.
+    """
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Admins only")
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=max(1, hours))).isoformat()
+
+    out = []
+    # project_photos
+    cur = db.project_photos.find(
+        {"is_deleted": True, "updated_at": {"$gte": cutoff}},
+        {"_id": 0, "id": 1, "deal_id": 1, "display_name": 1, "album_name": 1, "updated_at": 1, "uploader_name": 1, "size": 1},
+    ).sort([("updated_at", -1)])
+    rows = await cur.to_list(500)
+    deal_ids = list({r["deal_id"] for r in rows})
+    deals = await db.deals.find({"id": {"$in": deal_ids}}, {"_id": 0, "id": 1, "title": 1}).to_list(len(deal_ids)) if deal_ids else []
+    deal_titles = {d["id"]: d.get("title") or "?" for d in deals}
+    for r in rows:
+        out.append({
+            "kind": "photo",
+            "id": r["id"],
+            "label": r.get("display_name") or "(untitled)",
+            "deleted_at": r.get("updated_at"),
+            "deleted_by": r.get("uploader_name") or "?",
+            "context": f"{deal_titles.get(r['deal_id'], '?')} · album {r.get('album_name','Default')}",
+            "deal_id": r["deal_id"],
+            "size_kb": (r.get("size") or 0) // 1024,
+            "restorable": True,
+        })
+
+    # deals
+    cur2 = db.deals.find(
+        {"is_deleted": True, "updated_at": {"$gte": cutoff}},
+        {"_id": 0, "id": 1, "title": 1, "status": 1, "updated_at": 1},
+    ).sort([("updated_at", -1)])
+    for d in await cur2.to_list(200):
+        out.append({
+            "kind": "deal",
+            "id": d["id"],
+            "label": d.get("title") or "?",
+            "deleted_at": d.get("updated_at"),
+            "deleted_by": "?",
+            "context": f"status {d.get('status','?')}",
+            "restorable": True,
+        })
+
+    # Sort newest first
+    out.sort(key=lambda x: x.get("deleted_at") or "", reverse=True)
+    return {
+        "hours": hours,
+        "cutoff": cutoff,
+        "total": len(out),
+        "by_kind": {k: sum(1 for x in out if x["kind"] == k) for k in {"photo", "deal"}},
+        "items": out,
+    }
+
+
+@api_router.post("/admin/restore/{kind}/{item_id}")
+async def admin_restore(kind: str, item_id: str, current=Depends(get_current_user)):
+    """One-click restore for a soft-deleted item. Supports kind in {photo, deal}."""
+    if current.get("role") != "admin":
+        raise HTTPException(403, "Admins only")
+    coll_map = {"photo": db.project_photos, "deal": db.deals}
+    coll = coll_map.get(kind)
+    if coll is None:
+        raise HTTPException(400, f"Unsupported kind: {kind}")
+    res = await coll.update_one(
+        {"id": item_id, "is_deleted": True},
+        {"$set": {"is_deleted": False, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Not found or not deleted")
+    return {"restored": True, "kind": kind, "id": item_id}
+
+
+
+
 
 @api_router.get("/dashboard/compliance-wall")
 async def dashboard_compliance_wall(current=Depends(get_current_user)):

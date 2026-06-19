@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { Link } from "react-router-dom";
-import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail, AlarmClock, Flame, Send, CalendarDays, Clock, MapPin, GraduationCap, ArrowRight } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail, AlarmClock, Flame, Send, CalendarDays, Clock, MapPin, GraduationCap, ArrowRight, RotateCcw, Trash2 as TrashIcon } from "lucide-react";
 import { ExportButtons } from "@/components/ExportImport";
 import { toast } from "sonner";
 
@@ -111,6 +111,9 @@ export default function Dashboard() {
 
       {/* Compliance Wall — team certifications expiring within 60 days */}
       <ComplianceWall />
+
+      {/* Recently-deleted audit — surfaces anything removed in the last 48h */}
+      <RecentlyDeleted />
 
       {/* Materials In Motion */}
       <MaterialsInMotion motion={motion} />
@@ -1041,6 +1044,86 @@ function ComplianceWall() {
             </li>
           );
         })}
+      </ul>
+    </div>
+  );
+}
+
+
+function RecentlyDeleted() {
+  const [data, setData] = useState({ items: [] });
+  const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
+  const [restoring, setRestoring] = useState(null);
+
+  const load = () => {
+    api.get("/admin/recent-deletions?hours=48")
+      .then((r) => { setData(r.data); setLoading(false); setForbidden(false); })
+      .catch((e) => { if (e?.response?.status === 403) setForbidden(true); setLoading(false); });
+  };
+
+  useEffect(() => {
+    load();
+    const onVis = () => { if (document.visibilityState === "visible") load(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
+  const restore = async (item) => {
+    setRestoring(item.id);
+    try {
+      await api.post(`/admin/restore/${item.kind}/${item.id}`);
+      toast.success(`Restored: ${item.label}`);
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setRestoring(null);
+    }
+  };
+
+  if (loading || forbidden) return null;
+  if (!data.items || data.items.length === 0) return null;
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-sm mb-12" data-testid="recently-deleted">
+      <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700 mb-1">Recently Deleted · Last 48h</div>
+          <h2 className="font-heading text-lg font-bold tracking-tight flex items-center gap-2">
+            <TrashIcon className="w-5 h-5 text-amber-700" /> {data.total} item{data.total === 1 ? "" : "s"} removed — click to restore
+          </h2>
+          <div className="text-[11px] text-zinc-500 mt-1">
+            {data.by_kind?.photo ? `${data.by_kind.photo} photo${data.by_kind.photo === 1 ? "" : "s"}` : ""}
+            {data.by_kind?.photo && data.by_kind?.deal ? " · " : ""}
+            {data.by_kind?.deal ? `${data.by_kind.deal} deal${data.by_kind.deal === 1 ? "" : "s"}` : ""}
+          </div>
+        </div>
+      </div>
+      <ul className="divide-y divide-zinc-100 max-h-80 overflow-y-auto">
+        {data.items.slice(0, 50).map((it) => (
+          <li key={`${it.kind}-${it.id}`} className="flex items-center justify-between gap-3 px-6 py-2 hover:bg-zinc-50" data-testid={`deleted-row-${it.id}`}>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-100 text-amber-800">{it.kind}</span>
+                <span className="font-bold text-sm truncate">{it.label}</span>
+              </div>
+              <div className="text-[11px] text-zinc-500 mt-0.5 truncate">
+                {it.context} · deleted {it.deleted_at ? new Date(it.deleted_at).toLocaleString() : "?"}
+                {it.size_kb ? ` · ${it.size_kb}KB` : ""}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => restore(it)}
+              disabled={restoring === it.id}
+              className="inline-flex items-center gap-1 px-3 h-8 bg-emerald-700 text-white text-[10px] font-bold uppercase tracking-wider rounded-sm hover:bg-emerald-800 disabled:opacity-50 flex-shrink-0"
+              data-testid={`restore-${it.id}`}
+            >
+              <RotateCcw className="w-3 h-3" /> {restoring === it.id ? "..." : "Restore"}
+            </button>
+          </li>
+        ))}
       </ul>
     </div>
   );

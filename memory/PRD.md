@@ -887,6 +887,16 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 
 
 
+## 2026-02-19 — Soft-Delete Audit + Restore (post-incident)
+- **Incident**: Testing agent iteration_28's bulk-delete CRUD test wiped Darren's real `Home Front Image.png` on deal `3401 S. Dexter Street_Res`. Cleanup script only purged its own test files; left Darren's photo soft-deleted. Recovered via manual DB script.
+- **Diagnostic finding**: Of Darren's reported 16 morning field-camera shots, **only the manual PNG upload reached the backend** — no field-camera POST requests were recorded today. Likely cause: photos stuck in the on-device IndexedDB offline queue and never flushed. Pending investigation if it recurs.
+- **New tooling — `/api/admin/recent-deletions`** (admin only): returns every soft-deleted item across `project_photos` + `deals` in the last N hours (default 48) with `{id, kind, label, deleted_at, deleted_by, context, restorable}`. Sortable + restorable in one click.
+- **New tooling — `POST /api/admin/restore/{kind}/{id}`**: one-click restore by flipping `is_deleted=false`. Supports `kind ∈ {photo, deal}`.
+- **Dashboard widget — `RecentlyDeleted`**: Auto-hidden when empty AND for non-admins. Shows "N items removed — click to restore" with per-row Restore buttons. Lives between Compliance Wall and Materials In Motion. Refetches on tab focus.
+- **Process change going forward**: Testing agent must operate on a self-created `TEST_*` deal — never touch deals containing real user content. The new audit widget will surface any test-agent collateral damage immediately on Darren's next dashboard visit.
+
+
+
 ## Backlog (P1)
 - Subcontractor scorecards (quality / on-time metrics) — DONE
 - Statement of Account PDF (aging report per customer) — DONE
