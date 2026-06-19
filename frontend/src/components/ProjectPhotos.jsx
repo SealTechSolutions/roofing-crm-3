@@ -55,6 +55,39 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
     setSelectedIds(new Set(visible.map((p) => p.id)));
   };
 
+  const bulkSetTag = async (newTag) => {
+    if (!selectedIds.size) return;
+    setBulkBusy(true);
+    const ids = Array.from(selectedIds);
+    setBulkProgress({ done: 0, total: ids.length });
+    let ok = 0;
+    let failed = 0;
+    const CONCURRENCY = 4;
+    const queue = ids.slice();
+    const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+      while (queue.length) {
+        const id = queue.shift();
+        try {
+          // Empty string clears the tag — backend accepts that
+          await api.patch(`/projects/${dealId}/photos/${id}`, { tag: newTag });
+          ok += 1;
+        } catch (err) {
+          failed += 1;
+          console.warn("[photos] bulk tag failed for", id, err?.response?.status);
+        }
+        setBulkProgress((p) => ({ done: p.done + 1, total: p.total }));
+      }
+    });
+    await Promise.all(workers);
+    const label = newTag ? `→ ${newTag}` : "(tag cleared)";
+    if (failed > 0) toast.warning(`Tagged ${ok} · ${failed} failed ${label}`);
+    else toast.success(`Tagged ${ok} photo${ok === 1 ? "" : "s"} ${label}`);
+    clearSelection();
+    setBulkBusy(false);
+    setBulkProgress({ done: 0, total: 0 });
+    load();
+  };
+
   const bulkMove = async (targetAlbum) => {
     if (!selectedIds.size) return;
     if (!targetAlbum || !targetAlbum.trim()) { toast.error("Pick an album"); return; }
@@ -355,54 +388,97 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
 
       {/* Bulk-action bar — sticky just below filters when any photo selected */}
       {selectMode && selectedIds.size > 0 && (
-        <div className="sticky top-0 z-20 mb-4 bg-blue-700 text-white rounded-sm px-4 py-2 flex items-center gap-3 flex-wrap shadow-md" data-testid="photos-bulk-bar">
-          <span className="text-[11px] font-bold uppercase tracking-wider">
-            {selectedIds.size} selected
-          </span>
-          <span className="text-blue-200 text-[10px]">Move to album →</span>
-          <select
-            value={bulkMoveTarget}
-            onChange={(e) => setBulkMoveTarget(e.target.value)}
-            className="h-8 px-2 text-xs text-zinc-900 bg-white border-0 rounded-sm font-bold"
-            data-testid="photos-bulk-target"
-          >
-            <option value="">— pick album —</option>
-            {albums.map((a) => <option key={a} value={a}>{a}</option>)}
-            <option value="__new__">+ New album…</option>
-          </select>
-          <button
-            type="button"
-            disabled={!bulkMoveTarget || bulkBusy}
-            onClick={async () => {
-              let target = bulkMoveTarget;
-              if (target === "__new__") {
-                const name = window.prompt("New album name:");
-                if (!name || !name.trim()) return;
-                target = name.trim();
-              }
-              await bulkMove(target);
-            }}
-            className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider bg-white text-blue-700 hover:bg-blue-50 disabled:opacity-50 rounded-sm"
-            data-testid="photos-bulk-move"
-          >
-            {bulkBusy ? (bulkProgress.total > 0 ? `Moving ${bulkProgress.done}/${bulkProgress.total}…` : "Moving…") : "Move"}
-          </button>
-          <button
-            type="button"
-            disabled={bulkBusy}
-            onClick={bulkDelete}
-            className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 rounded-sm"
-            data-testid="photos-bulk-delete"
-          >
-            <Trash2 className="w-3 h-3 inline -mt-0.5" /> Delete
-          </button>
-          <button
-            type="button"
-            onClick={clearSelection}
-            className="ml-auto text-blue-200 hover:text-white text-[10px] uppercase tracking-wider"
-          >
-            Clear
-          </button>
+        <div className="sticky top-0 z-20 mb-4 bg-blue-700 text-white rounded-sm px-4 py-3 shadow-md" data-testid="photos-bulk-bar">
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">
+              {selectedIds.size} selected
+            </span>
+
+            {/* Action 1: Move to album */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-blue-200 text-[10px] uppercase tracking-wider font-bold">Move to album →</span>
+              <select
+                value={bulkMoveTarget}
+                onChange={(e) => setBulkMoveTarget(e.target.value)}
+                disabled={bulkBusy}
+                className="h-8 px-2 text-xs text-zinc-900 bg-white border-0 rounded-sm font-bold disabled:opacity-50"
+                data-testid="photos-bulk-target"
+              >
+                <option value="">— pick album —</option>
+                {albums.map((a) => <option key={a} value={a}>{a}</option>)}
+                <option value="__new__">+ New album…</option>
+              </select>
+              <button
+                type="button"
+                disabled={!bulkMoveTarget || bulkBusy}
+                onClick={async () => {
+                  let target = bulkMoveTarget;
+                  if (target === "__new__") {
+                    const name = window.prompt("New album name:");
+                    if (!name || !name.trim()) return;
+                    target = name.trim();
+                  }
+                  await bulkMove(target);
+                }}
+                className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider bg-white text-blue-700 hover:bg-blue-50 disabled:opacity-50 rounded-sm"
+                data-testid="photos-bulk-move"
+              >
+                {bulkBusy ? (bulkProgress.total > 0 ? `Moving ${bulkProgress.done}/${bulkProgress.total}…` : "Moving…") : "Move"}
+              </button>
+            </div>
+
+            {/* Separator */}
+            <div className="h-6 w-px bg-blue-500/60" />
+
+            {/* Action 2: Set tag */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-blue-200 text-[10px] uppercase tracking-wider font-bold">Tag as →</span>
+              {PRESET_TAGS.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => bulkSetTag(t)}
+                  className={`h-7 px-2 text-[10px] font-bold uppercase tracking-wider rounded-sm border border-white/40 hover:bg-white hover:text-blue-700 disabled:opacity-50 ${TAG_TONES[t] ? "bg-white/15 text-white" : "bg-white/15 text-white"}`}
+                  data-testid={`photos-bulk-tag-${t.replace(/\s+/g, "-").toLowerCase()}`}
+                  title={`Tag all ${selectedIds.size} selected photos as ${t}`}
+                >
+                  {t}
+                </button>
+              ))}
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => bulkSetTag("")}
+                className="h-7 px-2 text-[10px] uppercase tracking-wider text-blue-200 hover:text-white disabled:opacity-50"
+                title="Clear tag from selected photos"
+                data-testid="photos-bulk-tag-clear"
+              >
+                Clear tag
+              </button>
+            </div>
+
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={bulkDelete}
+              className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 rounded-sm ml-auto"
+              data-testid="photos-bulk-delete"
+            >
+              <Trash2 className="w-3 h-3 inline -mt-0.5" /> Delete
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              disabled={bulkBusy}
+              className="text-blue-200 hover:text-white text-[10px] uppercase tracking-wider disabled:opacity-50"
+            >
+              Clear
+            </button>
+          </div>
+          {bulkBusy && bulkProgress.total > 0 && (
+            <div className="mt-2 text-[10px] text-blue-100">{bulkProgress.done} / {bulkProgress.total} photos updated</div>
+          )}
         </div>
       )}
 
