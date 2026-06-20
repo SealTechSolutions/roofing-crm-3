@@ -155,7 +155,7 @@ def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
         )
         for i, (_, _, lbl, rng, _, _) in enumerate(SCORE_BANDS)
     ]
-    band_w = (CONTENT_W - 1.9 * inch - 0.4 * inch) / 5
+    band_w = (CONTENT_W - 1.9 * inch - 0.6 * inch) / 5
     gauge = Table(
         [arrow_cells, band_label_cells],
         colWidths=[band_w] * 5,
@@ -201,10 +201,12 @@ def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
     )
 
     # Outer card binds everything in a single bordered container so the
-    # whole score "widget" reads as one element.
+    # whole score "widget" reads as one element. Width matches the
+    # interpretation table and Restoration-First Note below so all three
+    # boxes share a single right edge.
     card = Table(
         [[header_para], [score_row], [desc_para], [reason_para]],
-        colWidths=[CONTENT_W - 0.3 * inch],
+        colWidths=[CONTENT_W],
     )
     card.hAlign = "LEFT"
     card.setStyle(TableStyle([
@@ -214,8 +216,8 @@ def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
         ("RIGHTPADDING", (0, 0), (-1, -1), 14),
         ("TOPPADDING", (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        # Subtle top border in bronze to brand the card
-        ("LINEABOVE", (0, 0), (-1, 0), 2.0, BRONZE),
+        # No bronze top stripe — the section header above already provides
+        # one. Two bronze lines back-to-back looked over-stacked.
     ]))
     return card
 
