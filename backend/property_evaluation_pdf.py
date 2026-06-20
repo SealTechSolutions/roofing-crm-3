@@ -70,29 +70,184 @@ def _fit_box(img_bytes: bytes | None, max_w: float, max_h: float) -> tuple[float
         return max_w, max_h
 
 
+# Color stops for the 5-band score gauge — match the interpretation table
+# used elsewhere in the doc so readers visually anchor "amber = marginal".
+SCORE_BANDS = [
+    (0,  60,  "POOR",     "<60",    "#B91C1C", "Immediate restoration and possible replacement needed."),
+    (60, 70,  "MARGINAL", "60–69",  "#EA580C", "Significant repair or restoration needed."),
+    (70, 80,  "FAIR",     "70–79",  "#CA8A04", "Moderate findings. Restoration suitable with a proactive plan."),
+    (80, 90,  "GOOD",     "80–89",  "#65A30D", "Minor maintenance items. Restoration highly suitable."),
+    (90, 101, "EXCELLENT","90–100", "#15803D", "Roof in like-new condition. Minimal capital risk."),
+]
+
+
+def _band_for_score(score_val: int) -> tuple[int, str, str, str, str]:
+    """Return (idx, label, range_text, hex_color, description) for the given score."""
+    for i, (lo, hi, label, rng, hexc, desc) in enumerate(SCORE_BANDS):
+        if lo <= score_val < hi:
+            return i, label, rng, hexc, desc
+    # Above-100 edge case — clamp to Excellent
+    last = SCORE_BANDS[-1]
+    return len(SCORE_BANDS) - 1, last[2], last[3], last[4], last[5]
+
+
+def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
+    """The Evaluation's signature score card — replaces the assessment's blue
+    side-panel layout with a more visual presentation that fits a one-page
+    sales doc. Layout (left → right inside one bordered card):
+
+        ┌────────────────────────────────────────────────────────────┐
+        │ OVERALL ROOF ASSET SCORE™                                  │
+        │ ┌────────┐  ┌──────┬──────┬──────┬──────┬──────┐           │
+        │ │  50   │  │      │  ▼   │      │      │      │ (arrow)   │
+        │ │ /100  │  ├──────┼──────┼──────┼──────┼──────┤           │
+        │ │MARGIN.│  │ POOR │MARG. │ FAIR │ GOOD │ EXC. │ (bands)   │
+        │ └────────┘  │  <60 │60-69 │70-79 │80-89 │90-100│           │
+        │             └──────┴──────┴──────┴──────┴──────┘           │
+        │                                                            │
+        │ Significant repair or restoration needed.                  │
+        │                                                            │
+        │ REASONING — Not yet documented.                            │
+        └────────────────────────────────────────────────────────────┘
+    """
+    cat_idx, cat_label, cat_range, cat_hex, cat_desc = _band_for_score(score_val or 0)
+    cat_color = colors.HexColor(cat_hex)
+
+    # --- Left block: big score number + category pill ---
+    score_para = Paragraph(
+        f'<font color="{cat_hex}" size="44"><b>{score_val or 0}</b></font>'
+        f'<font color="#9CA3AF" size="18">&nbsp;/100</font>',
+        ParagraphStyle("score_num", alignment=TA_CENTER, fontSize=44, leading=48),
+    )
+    cat_pill = Paragraph(
+        f'<font color="white" size="9"><b>{cat_label}</b></font>',
+        ParagraphStyle("cat_pill", alignment=TA_CENTER, fontSize=9, leading=12),
+    )
+    pill_tbl = Table([[cat_pill]], colWidths=[1.6 * inch], rowHeights=[0.28 * inch])
+    pill_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), cat_color),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+    ]))
+    left_block = Table(
+        [[score_para], [pill_tbl]],
+        colWidths=[1.9 * inch],
+    )
+    left_block.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+        ("TOPPADDING", (0, 1), (0, 1), 4),
+    ]))
+
+    # --- Right block: 5-band gauge with arrow marker over active band ---
+    arrow_cells = [""] * 5
+    arrow_cells[cat_idx] = Paragraph(
+        f'<font color="{cat_hex}" size="16"><b>&#9660;</b></font>',
+        ParagraphStyle("arrow", alignment=TA_CENTER, fontSize=16, leading=16),
+    )
+    band_label_cells = [
+        Paragraph(
+            f'<font color="white" size="7.5"><b>{lbl}</b></font><br/>'
+            f'<font color="white" size="6.5">{rng}</font>',
+            ParagraphStyle(f"band{i}", alignment=TA_CENTER, fontSize=7, leading=10),
+        )
+        for i, (_, _, lbl, rng, _, _) in enumerate(SCORE_BANDS)
+    ]
+    band_w = (CONTENT_W - 1.9 * inch - 0.4 * inch) / 5
+    gauge = Table(
+        [arrow_cells, band_label_cells],
+        colWidths=[band_w] * 5,
+        rowHeights=[0.32 * inch, 0.5 * inch],
+    )
+    gauge_style = TableStyle([
+        ("VALIGN", (0, 0), (-1, 0), "BOTTOM"),
+        ("VALIGN", (0, 1), (-1, 1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
+        ("TOPPADDING", (0, 1), (-1, 1), 4),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 4),
+    ])
+    for i, (_, _, _, _, hexc, _) in enumerate(SCORE_BANDS):
+        gauge_style.add("BACKGROUND", (i, 1), (i, 1), colors.HexColor(hexc))
+    gauge.setStyle(gauge_style)
+
+    # --- Stack header + (left | gauge) + category description + reasoning ---
+    header_para = Paragraph(
+        '<font color="#A0703A" size="9"><b>OVERALL ROOF ASSET SCORE&trade;</b></font>',
+        ParagraphStyle("card_title", alignment=TA_LEFT, fontSize=9, leading=12),
+    )
+    score_row = Table([[left_block, gauge]], colWidths=[1.9 * inch, CONTENT_W - 1.9 * inch - 0.6 * inch])
+    score_row.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+
+    desc_para = Paragraph(
+        f'<font color="{cat_hex}" size="10"><b>{cat_label}</b></font>'
+        f'&nbsp;&nbsp;<font color="#52525B" size="9">{cat_desc}</font>',
+        ParagraphStyle("cat_desc", alignment=TA_LEFT, fontSize=9, leading=12),
+    )
+
+    reason_text = _esc(reasoning) or '<i>Not yet documented.</i>'
+    reason_para = Paragraph(
+        f'<font color="#A0703A" size="8"><b>REASONING</b></font>'
+        f'&nbsp;&nbsp;<font color="#3F3F46" size="9">{reason_text}</font>',
+        ParagraphStyle("reason", alignment=TA_LEFT, fontSize=9, leading=12),
+    )
+
+    # Outer card binds everything in a single bordered container so the
+    # whole score "widget" reads as one element.
+    card = Table(
+        [[header_para], [score_row], [desc_para], [reason_para]],
+        colWidths=[CONTENT_W - 0.3 * inch],
+    )
+    card.hAlign = "LEFT"
+    card.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.6, BORDER),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FAFAFA")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 14),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        # Subtle top border in bronze to brand the card
+        ("LINEABOVE", (0, 0), (-1, 0), 2.0, BRONZE),
+    ]))
+    return card
+
+
 # Content width = letter width 8.5" minus 0.6" margins on each side = 7.3"
 CONTENT_W = 7.3 * inch
 
 # Long-form copy that the salesperson asked us to lock in as the Evaluation
 # default. Stored as module-level constants so they're easy to tweak without
 # threading editor logic.
-PURPOSE_OF_EVALUATION = (
-    "The purpose of this Roof Evaluation is to conduct a evaluation of the existing "
-    "roofing system to determine its current condition, remaining service life, and "
-    "suitability for continued performance. Through an inspection, documentation of "
-    "deficiencies, and analysis of key performance factors&mdash;including membrane "
-    "integrity, insulation performance, drainage characteristics, flashing details, "
-    "and structural support&mdash;this evaluation identifies the most appropriate "
-    "course of action among targeted repairs, full restoration, or complete "
-    "replacement. The objective is to provide data-driven recommendations that "
-    "maximize asset longevity, minimize long-term costs, ensure compliance with "
-    "applicable codes and standards, and support informed decision-making aligned "
-    "with the property owner&rsquo;s operational and budgetary requirements. This "
-    "process follows a structured methodology that prioritizes sustainable "
-    "solutions, such as fluid-applied reinforced membrane systems, to extend roof "
-    "service life while mitigating risks associated with water intrusion, energy "
-    "inefficiency, and premature failure."
-)
+PURPOSE_OF_EVALUATION_PARTS = [
+    (
+        "The purpose of this Roof Evaluation is to conduct a evaluation of the existing "
+        "roofing system to determine its current condition, remaining service life, and "
+        "suitability for continued performance. Through an inspection, documentation of "
+        "deficiencies, and analysis of key performance factors&mdash;including membrane "
+        "integrity, insulation performance, drainage characteristics, flashing details, "
+        "and structural support&mdash;this evaluation identifies the most appropriate "
+        "course of action among targeted repairs, full restoration, or complete "
+        "replacement."
+    ),
+    (
+        "The objective is to provide data-driven recommendations that maximize asset "
+        "longevity, minimize long-term costs, ensure compliance with applicable codes "
+        "and standards, and support informed decision-making aligned with the property "
+        "owner&rsquo;s operational and budgetary requirements. This process follows a "
+        "structured methodology that prioritizes sustainable solutions, such as "
+        "fluid-applied reinforced membrane systems, to extend roof service life while "
+        "mitigating risks associated with water intrusion, energy inefficiency, and "
+        "premature failure."
+    ),
+]
 
 EXPECTED_OUTCOMES = [
     "Extended Service Life of Roof",
@@ -231,9 +386,10 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     purpose_style = ParagraphStyle(
         "eval_purpose", parent=s["body"], fontName="Helvetica",
         fontSize=10.5, leading=16, textColor=DARK, alignment=TA_LEFT,
-        spaceAfter=4,
+        spaceAfter=10,
     )
-    story.append(Paragraph(PURPOSE_OF_EVALUATION, purpose_style))
+    for para in PURPOSE_OF_EVALUATION_PARTS:
+        story.append(Paragraph(para, purpose_style))
     story.append(Spacer(1, 14))
 
     # Property image (starred cover photo on the linked deal). Pulled here on
@@ -287,7 +443,7 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
         # 2.5" photos fit two findings cleanly per page after removing the
         # SEVERITY row from the body table.
         await _render_finding(db, story, s, idx=idx, finding=fnd, photo_size=2.5 * inch, show_severity=False)
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 18))
     story.append(PageBreak())
 
     _section_header("Asset Condition Findings (continued)", story, s)
@@ -296,7 +452,7 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
         if not (fnd.get("component") or fnd.get("observations") or fnd.get("photo_ids")):
             continue
         await _render_finding(db, story, s, idx=idx, finding=fnd, photo_size=2.5 * inch, show_severity=False)
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 18))
         rendered += 1
     if rendered == 0:
         story.append(Paragraph(
@@ -311,11 +467,8 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     _section_header("Roof Score Analysis", story, s)
     overall = a.get("roof_asset_score", {})
     overall_val = int(overall.get("score") or 0) if isinstance(overall, dict) else 0
-    story.append(_score_box(
-        "Overall Roof Asset Score&trade;",
-        overall_val,
-        overall.get("reasoning", "") if isinstance(overall, dict) else "",
-    ))
+    overall_reasoning = overall.get("reasoning", "") if isinstance(overall, dict) else ""
+    story.append(_eval_score_card(s, overall_val, overall_reasoning))
 
     story.append(Spacer(1, 8))
     interp_data = [
