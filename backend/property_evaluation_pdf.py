@@ -195,9 +195,9 @@ def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
 
     reason_text = _esc(reasoning) or '<i>Not yet documented.</i>'
     reason_para = Paragraph(
-        f'<font color="#A0703A" size="8"><b>REASONING</b></font>'
-        f'&nbsp;&nbsp;<font color="#3F3F46" size="9">{reason_text}</font>',
-        ParagraphStyle("reason", alignment=TA_LEFT, fontSize=9, leading=12),
+        f'<font color="#A0703A" size="10"><b>REASONING</b></font><br/>'
+        f'<font color="#1F2937" size="11">{reason_text}</font>',
+        ParagraphStyle("reason", alignment=TA_LEFT, fontSize=11, leading=15, spaceBefore=2),
     )
 
     # Outer card binds everything in a single bordered container so the
