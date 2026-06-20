@@ -1396,28 +1396,58 @@ function YearOrUnknown({ value, onChange, testId }) {
 
 function PhotoThumb({ photo, large, tile }) {
   const token = localStorage.getItem("crm_token");
-  const url = `${process.env.REACT_APP_BACKEND_URL}/api/projects/${photo.deal_id}/photos/${photo.id}/download?token_qs=${encodeURIComponent(token || "")}`;
-  // The endpoint doesn't take token_qs; use img tag with crossOrigin won't work for auth headers.
-  // Instead, fetch and create blob URL on mount.
+  // Only fetch when this thumb actually scrolls near the viewport. Without
+  // this every photo in the picker (the Dexter deal alone has 30+) hits the
+  // download endpoint on modal-open and the user waits 30-120s on LTE while
+  // ~30 MB of full-res JPEGs stream in serially.
+  const wrapRef = React.useRef(null);
+  const [visible, setVisible] = React.useState(false);
   const [blobUrl, setBlobUrl] = React.useState("");
   React.useEffect(() => {
+    if (visible) return undefined;
+    if (typeof IntersectionObserver === "undefined") { setVisible(true); return undefined; }
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "300px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visible]);
+  React.useEffect(() => {
+    if (!visible) return undefined;
     let active = true;
+    let urlToRevoke = null;
     fetch(`${process.env.REACT_APP_BACKEND_URL}/api/projects/${photo.deal_id}/photos/${photo.id}/download`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.ok ? r.blob() : null)
-      .then((b) => { if (active && b) setBlobUrl(URL.createObjectURL(b)); })
+      .then((b) => {
+        if (active && b) {
+          urlToRevoke = URL.createObjectURL(b);
+          setBlobUrl(urlToRevoke);
+        }
+      })
       .catch(() => {});
-    return () => { active = false; };
+    return () => {
+      active = false;
+      if (urlToRevoke) URL.revokeObjectURL(urlToRevoke);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photo.id]);
+  }, [visible, photo.id]);
   // Three sizing modes:
   //   tile  — fills the parent grid cell as a square (used by PhotoPickerModal at 6-wide)
   //   large — fixed 192px preview (used for aerial cover photo)
   //   default — fixed 80×80 (used in finding blocks alongside text)
   const size = tile ? "w-full aspect-square" : large ? "h-48" : "h-20 w-20";
   return (
-    <div className={`${size} bg-zinc-100 overflow-hidden flex items-center justify-center`}>
+    <div ref={wrapRef} className={`${size} bg-zinc-100 overflow-hidden flex items-center justify-center`}>
       {blobUrl ? (
         <img src={blobUrl} alt={photo.display_name || ""} className="object-cover w-full h-full" />
       ) : (
