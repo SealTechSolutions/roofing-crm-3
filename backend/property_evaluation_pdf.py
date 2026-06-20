@@ -262,13 +262,26 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     story.append(PageBreak())
 
     # =====================================================================
-    # PAGE 3 — Findings R-1 + R-2
+    # PAGE 3 — Findings R-1 + R-2  (Roof Membrane + Roof Penetrations)
+    # PAGE 4 — Findings R-3 + R-4  (Drainage System + Rooftop Equipment)
+    #
+    # The Evaluation deliberately skips the assessment's "Flashings"
+    # (finding_r2) slot per Darren — flashings and penetrations are treated
+    # as the same component on small-project evaluations. Source mapping:
+    #   Evaluation R-1 ← assessment finding_r1  (Roof Membrane)
+    #   Evaluation R-2 ← assessment finding_r3  (Roof Penetrations)
+    #   Evaluation R-3 ← assessment finding_r4  (Drainage System)
+    #   Evaluation R-4 ← assessment finding_r5  (Rooftop Equipment)
     # =====================================================================
-    _section_header("Asset Condition Findings", story, s)
-    for idx, fnd in (
+    eval_findings = [
         (1, a.get("finding_r1") or {}),
-        (2, a.get("finding_r2") or {}),
-    ):
+        (2, a.get("finding_r3") or {}),
+        (3, a.get("finding_r4") or {}),
+        (4, a.get("finding_r5") or {}),
+    ]
+
+    _section_header("Asset Condition Findings", story, s)
+    for idx, fnd in eval_findings[:2]:
         if not (fnd.get("component") or fnd.get("observations") or fnd.get("photo_ids")):
             continue
         # 2.5" photos fit two findings cleanly per page after removing the
@@ -277,15 +290,9 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
         story.append(Spacer(1, 6))
     story.append(PageBreak())
 
-    # =====================================================================
-    # PAGE 4 — Findings R-3 + R-4
-    # =====================================================================
     _section_header("Asset Condition Findings (continued)", story, s)
     rendered = 0
-    for idx, fnd in (
-        (3, a.get("finding_r3") or {}),
-        (4, a.get("finding_r4") or {}),
-    ):
+    for idx, fnd in eval_findings[2:]:
         if not (fnd.get("component") or fnd.get("observations") or fnd.get("photo_ids")):
             continue
         await _render_finding(db, story, s, idx=idx, finding=fnd, photo_size=2.5 * inch, show_severity=False)
