@@ -332,7 +332,10 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     ]))
     story.append(cover_t)
 
-    # Restoration-eligibility stamp on the cover.
+    # Restoration-eligibility stamp on the cover. Replacement-required stays
+    # red so it reads as an alarm. The default "all clear" state uses the
+    # brand blue (BLUE) rather than green so the stamp matches the rest of
+    # the doc's palette.
     insulation_sat = bool(a.get("insulation_saturated"))
     deck_damaged = bool(a.get("structural_deck_damaged"))
     if insulation_sat or deck_damaged:
@@ -345,7 +348,7 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
             stamp_sub.append("Structural Deck Damaged")
         stamp_subline = " &nbsp;\u2022&nbsp; ".join(stamp_sub)
     else:
-        stamp_color = colors.HexColor("#15803D")
+        stamp_color = BLUE
         stamp_label = "RESTORATION PATH RECOMMENDED"
         stamp_subline = "Insulation dry &nbsp;\u2022&nbsp; Structural deck sound"
 
