@@ -240,14 +240,25 @@ function SystemsTab() {
     load();
   };
 
+  // Group by vendor (the vendor determines the system, per Darren). Systems
+  // missing a vendor land in a "(No vendor)" bucket at the end so they're
+  // still discoverable.
   const grouped = useMemo(() => {
     const g = {};
     rows.forEach((r) => {
-      const c = r.category || "Other";
-      (g[c] ||= []).push(r);
+      const v = (r.vendor || "(No vendor)").trim() || "(No vendor)";
+      (g[v] ||= []).push(r);
     });
     return g;
   }, [rows]);
+  const vendorOrder = useMemo(
+    () => Object.keys(grouped).sort((a, b) => {
+      if (a === "(No vendor)") return 1;
+      if (b === "(No vendor)") return -1;
+      return a.localeCompare(b);
+    }),
+    [grouped],
+  );
 
   return (
     <div className="space-y-4">
@@ -257,14 +268,18 @@ function SystemsTab() {
         </button>
       </div>
       {rows.length === 0 && <div className="text-zinc-400 text-sm text-center py-8 border border-dashed border-zinc-200">No systems yet — tap <b>Add System</b></div>}
-      {CATEGORIES.map((cat) => grouped[cat] && (
-        <div key={cat}>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">{cat}</div>
+      {vendorOrder.map((vendor) => (
+        <div key={vendor}>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">{vendor}</div>
           <div className="border border-zinc-200 rounded-sm overflow-hidden">
-            {grouped[cat].map((s, i) => (
+            {grouped[vendor].map((s, i) => (
               <div key={s.id} className={`flex items-center justify-between px-4 py-3 hover:bg-zinc-50 cursor-pointer ${i>0 ? "border-t border-zinc-200" : ""}`} onClick={()=>setEditingRecipe(s)} data-testid={`system-row-${s.id}`}>
-                <div>
-                  <div className="font-medium text-sm">{s.name}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm flex items-center gap-2">
+                    {s.name}
+                    {s.system_type && <span className="text-[10px] font-bold uppercase tracking-wider bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded-sm">{s.system_type}</span>}
+                    {s.warranty_years ? <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-sm">{s.warranty_years}-yr warranty</span> : null}
+                  </div>
                   {s.description && <div className="text-xs text-zinc-500 mt-0.5">{s.description}</div>}
                 </div>
                 <div className="flex items-center gap-2">
@@ -284,19 +299,27 @@ function SystemsTab() {
 }
 
 function AddSystemModal({ onClose }) {
-  const [draft, setDraft] = useState({ name:"", category:"FARM", description:"" });
+  const [draft, setDraft] = useState({ name:"", vendor:"", system_type:"FARM", warranty_years:10, description:"" });
   const submit = async () => {
-    if (!draft.name.trim()) { toast.error("Name required"); return; }
+    if (!draft.name.trim()) { toast.error("System name required"); return; }
+    if (!draft.vendor.trim()) { toast.error("Vendor required — vendor determines the system"); return; }
     try { await api.post("/systems", draft); toast.success("System added"); onClose(); }
     catch (e) { toast.error(e.response?.data?.detail || "Add failed"); }
   };
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white p-6 rounded-sm w-full max-w-md" onClick={(e)=>e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-4">Add System</h2>
+        <h2 className="text-lg font-bold mb-1">Add System</h2>
+        <p className="text-xs text-zinc-600 mb-4">A system is uniquely defined by <b>Vendor</b> + <b>Type</b> + <b>Warranty Period</b>. Coverage rates on the recipe change with the warranty.</p>
         <div className="space-y-3">
-          <div><label className={labelCls}>System name</label><input className={inputCls} value={draft.name} onChange={(e)=>setDraft({...draft,name:e.target.value})} autoFocus placeholder="e.g., FARM Standard, Hail-Rated FARM" /></div>
-          <div><label className={labelCls}>Category</label><select className={inputCls} value={draft.category} onChange={(e)=>setDraft({...draft,category:e.target.value})}>{CATEGORIES.map((c)=><option key={c} value={c}>{c}</option>)}</select></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Vendor *</label><input className={inputCls} value={draft.vendor} onChange={(e)=>setDraft({...draft,vendor:e.target.value})} placeholder="e.g., Gaco, Carlisle, GAF" /></div>
+            <div><label className={labelCls}>System type</label><select className={inputCls} value={draft.system_type} onChange={(e)=>setDraft({...draft,system_type:e.target.value})}>{CATEGORIES.map((c)=><option key={c} value={c}>{c}</option>)}</select></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Warranty (years)</label><input type="number" min="0" className={inputCls} value={draft.warranty_years} onChange={(e)=>setDraft({...draft,warranty_years:parseInt(e.target.value)||0})} placeholder="10, 15, 20…" /></div>
+            <div><label className={labelCls}>System name</label><input className={inputCls} value={draft.name} onChange={(e)=>setDraft({...draft,name:e.target.value})} autoFocus placeholder="e.g., S20 Silicone 20-yr" /></div>
+          </div>
           <div><label className={labelCls}>Description (optional)</label><input className={inputCls} value={draft.description} onChange={(e)=>setDraft({...draft,description:e.target.value})} /></div>
         </div>
         <div className="flex gap-2 justify-end mt-5">

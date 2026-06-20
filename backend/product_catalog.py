@@ -186,7 +186,7 @@ def create_router(db, get_current_user):
         rows = await db.roofing_systems.find(
             {"is_deleted": {"$ne": True}},
             {"_id": 0},
-        ).sort([("category", 1), ("name", 1)]).to_list(200)
+        ).sort([("vendor", 1), ("warranty_years", 1), ("name", 1)]).to_list(200)
         return rows
 
     @router.post("/systems")
@@ -197,7 +197,12 @@ def create_router(db, get_current_user):
         doc = {
             "id": str(uuid.uuid4()),
             "name": name,
-            "category": (body.get("category") or "Other").strip(),
+            "vendor": (body.get("vendor") or "").strip(),
+            "system_type": (body.get("system_type") or body.get("category") or "Other").strip(),
+            "warranty_years": int(body.get("warranty_years") or 0),
+            # Keep "category" mirrored to system_type for backward compat with
+            # any old client code expecting it on responses.
+            "category": (body.get("system_type") or body.get("category") or "Other").strip(),
             "description": (body.get("description") or "").strip(),
             "notes": (body.get("notes") or "").strip(),
             "is_deleted": False,
@@ -211,8 +216,17 @@ def create_router(db, get_current_user):
 
     @router.patch("/systems/{system_id}")
     async def update_system(system_id: str, body: dict = Body(...), _=Depends(get_current_user)):
-        allowed = {"name", "category", "description", "notes"}
+        allowed = {"name", "vendor", "system_type", "warranty_years",
+                   "category", "description", "notes"}
         patch = {k: body[k] for k in body if k in allowed}
+        if "warranty_years" in patch:
+            patch["warranty_years"] = int(patch["warranty_years"] or 0)
+        # Keep category mirrored if either side is updated, so consumers reading
+        # either field see the same value.
+        if "system_type" in patch and "category" not in patch:
+            patch["category"] = patch["system_type"]
+        if "category" in patch and "system_type" not in patch:
+            patch["system_type"] = patch["category"]
         patch["updated_at"] = _now()
         result = await db.roofing_systems.update_one(
             {"id": system_id, "is_deleted": {"$ne": True}},
