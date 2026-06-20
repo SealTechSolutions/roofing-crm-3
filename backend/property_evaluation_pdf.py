@@ -262,29 +262,29 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     story.append(PageBreak())
 
     # =====================================================================
-    # PAGE 3 — Finding R-1
+    # PAGE 3 — Findings R-1 + R-2
     # =====================================================================
     _section_header("Asset Condition Findings", story, s)
-    r1 = a.get("finding_r1") or {}
-    if r1.get("component") or r1.get("observations") or r1.get("photo_ids"):
-        # Photos bumped to 2.7" now that R-1 owns the whole page (aerial moved
-        # to page 2). Severity row removed → ~0.2" of additional headroom.
-        await _render_finding(db, story, s, idx=1, finding=r1, photo_size=2.7 * inch, show_severity=False)
-    else:
-        story.append(Paragraph(
-            "<i>No primary finding recorded for this property at the time of evaluation.</i>",
-            s["muted"],
-        ))
+    for idx, fnd in (
+        (1, a.get("finding_r1") or {}),
+        (2, a.get("finding_r2") or {}),
+    ):
+        if not (fnd.get("component") or fnd.get("observations") or fnd.get("photo_ids")):
+            continue
+        # 2.5" photos fit two findings cleanly per page after removing the
+        # SEVERITY row from the body table.
+        await _render_finding(db, story, s, idx=idx, finding=fnd, photo_size=2.5 * inch, show_severity=False)
+        story.append(Spacer(1, 6))
     story.append(PageBreak())
 
     # =====================================================================
-    # PAGE 4 — Findings R-2 + R-3
+    # PAGE 4 — Findings R-3 + R-4
     # =====================================================================
     _section_header("Asset Condition Findings (continued)", story, s)
     rendered = 0
     for idx, fnd in (
-        (2, a.get("finding_r2") or {}),
         (3, a.get("finding_r3") or {}),
+        (4, a.get("finding_r4") or {}),
     ):
         if not (fnd.get("component") or fnd.get("observations") or fnd.get("photo_ids")):
             continue
