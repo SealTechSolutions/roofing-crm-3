@@ -415,11 +415,27 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     if not property_bytes:
         property_bytes = await _load_photo(db, a.get("aerial_photo_id"))
     fit_w, fit_h = _fit_box(property_bytes, max_w=CONTENT_W, max_h=4.5 * inch)
-    story.append(_photo_flowable(
+    # Wrap in a width-locked single-cell table so the image's bounding box
+    # always starts at the left content margin — flush with the section
+    # header underline above it. Image is centered inside that cell, which
+    # avoids the "drifted left of alignment" look when the photo's aspect
+    # ratio makes it narrower than the full 7.3" content width.
+    img_flow = _photo_flowable(
         property_bytes, w=fit_w, h=fit_h,
         placeholder="Property image — star a photo in this deal's gallery to use it here",
         h_align="CENTER",
-    ))
+    )
+    img_wrap = Table([[img_flow]], colWidths=[CONTENT_W])
+    img_wrap.hAlign = "LEFT"
+    img_wrap.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(img_wrap)
     story.append(PageBreak())
 
     # =====================================================================
@@ -537,10 +553,23 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
 
     story.append(Spacer(1, 12))
     _section_header("SealTech Recommendation", story, s)
-    # 7-line blank text box for the salesperson to fill in by hand or in a
-    # subsequent edit pass. Row height tuned so the box looks like a real
-    # write-on field and matches the visual weight of the rest of the doc.
-    story.append(_text_box("", num_rows=7, row_height=0.30 * inch))
+    # 7-line blank write-on box for the salesperson. Wrapped in a width-locked
+    # outer table (CONTENT_W with zero padding) so the box's left/right edges
+    # sit flush with the section header underline above it — the underlying
+    # _text_box helper returns a KeepInFrame whose default centering caused
+    # the box to drift slightly outside the bronze line on both sides.
+    rec_box = _text_box("", num_rows=7, row_height=0.30 * inch)
+    rec_wrap = Table([[rec_box]], colWidths=[CONTENT_W])
+    rec_wrap.hAlign = "LEFT"
+    rec_wrap.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+    ]))
+    story.append(rec_wrap)
     story.append(PageBreak())
 
     # =====================================================================
