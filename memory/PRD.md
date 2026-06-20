@@ -895,6 +895,24 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - **Dashboard widget — `RecentlyDeleted`**: Auto-hidden when empty AND for non-admins. Shows "N items removed — click to restore" with per-row Restore buttons. Lives between Compliance Wall and Materials In Motion. Refetches on tab focus.
 - **Process change going forward**: Testing agent must operate on a self-created `TEST_*` deal — never touch deals containing real user content. The new audit widget will surface any test-agent collateral damage immediately on Darren's next dashboard visit.
 
+## 2026-02-20 — Material Calculator: Milestone 1 (Catalog Foundation)
+- **Backend** (`/app/backend/product_catalog.py`, ~280 lines) — New router exposing four collections:
+  - `product_catalog` (master price list): GET/POST/PATCH/DELETE `/api/products`, plus bulk `POST /api/products/import-csv` that upserts by (name, vendor) so re-uploads update prices instead of duplicating.
+  - `roofing_systems` (18 named assemblies): GET/POST/PATCH/DELETE `/api/systems` grouped by `category` (FARM / Silicone / TPO / EPDM / ModBit / PVC / Other).
+  - `system_recipes` (product+coverage per system): `GET /api/systems/{id}/recipe`, `PUT /api/systems/{id}/recipe` for atomic recipe replace. Each row: product_id, coverage_rate, coverage_basis ("per_100sf" / "per_sf" / "per_lf" / "per_each_optional"), optional flag, default_included flag.
+  - `calculator_settings` (singleton): markup_pct (default **15%**), handling_pct (default **10%**), handling_basis ("marked_up" or "raw"), waste_pct. `GET/PUT /api/calculator/settings`.
+- **Frontend** (`/app/frontend/src/pages/ProductCatalog.jsx`, ~340 lines) — Single page with three tabs:
+  - **Products** — inline-editable table, Add Product modal, Import CSV modal (paste-then-preview).
+  - **Systems** — grouped-by-category list; click a row to open the Recipe Editor drawer where you wire products + coverage rates and mark walk pad / granules as optional add-ons.
+  - **Calculator Settings** — markup %, handling %, basis ("marked-up total" vs "raw cost"), default waste factor. Live explainer block recalculates from the current values.
+- **Sidebar** — New `/catalog` route with a `Package` lucide icon, sitting between Assessments and Maintenance.
+- **Smoke tested** — Created `DeckShield Primer / National Waterproofing / FARM / 5-gal pail / $145` via curl, then verified all three tabs render correctly in the browser.
+
+### Pending — Milestone 2 (Calculator) + Milestone 3 (Deal integration)
+- M2: Standalone calculator page at `/calculator` — pick a system, enter total SF, toggle optional add-ons, get a BOM table with calculated qty rounded up to package size, line totals, and grand total (with markup + handling applied per the settings singleton). Save calculations as snapshots.
+- M3: "Pull from Calculator" button on the Vendor Cost section of a deal — imports a saved snapshot, pre-fills cost rows, links the calc to the deal.
+
+
 ## 2026-02-19 — Property Evaluation PDF (non-fee-based courtesy report)
 - **New 6–7 page PDF** at `GET /api/assessments/{id}/evaluation.pdf` — sibling of the 12-page Commercial Roof Assessment Report. Backed by `/app/backend/property_evaluation_pdf.py` which imports all helpers/colors/styles from `assessment_pdf.py` so the two outputs stay visually consistent without copy-paste drift.
 - **Section selection** confirmed by Darren: Cover (rebranded "PROPERTY EVALUATION · Non-Fee-Based Courtesy Evaluation"), Executive Summary, Aerial + up to 3 findings (R-1..R-3), Roof Score Analysis, Repair vs Restoration vs Replacement, SealTech Recommendation + Expected Outcome + Conclusion. Cover carries a footer disclaimer explaining the courtesy nature and pointing at the full Assessment Report as an upgrade path.

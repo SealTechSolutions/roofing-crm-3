@@ -6566,6 +6566,8 @@ api_router.include_router(tasks_module.make_tasks_router(db, get_current_user, p
 api_router.include_router(deal_events_module.make_router(db, get_current_user, public_base_url=_PUBLIC_BASE_URL))
 api_router.include_router(email_routing_module.make_router(db, get_current_user))
 api_router.include_router(user_profile_module.make_router(db, get_current_user, require_admin, public_base_url=_PUBLIC_BASE_URL))
+import product_catalog as _product_catalog
+api_router.include_router(_product_catalog.create_router(db, get_current_user))
 
 
 # ----- Public Proposal Signing (Sign Off link) ----------------------------
