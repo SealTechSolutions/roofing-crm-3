@@ -219,13 +219,27 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     story.append(PageBreak())
 
     # =====================================================================
-    # PAGE 3 — Aerial Image + Finding R-1
+    # PAGE 3 — Property Image (cover photo on the linked deal) + Finding R-1
     # =====================================================================
-    _section_header("Aerial Image of Roof", story, s)
-    aerial_bytes = await _load_photo(db, a.get("aerial_photo_id"))
+    _section_header("Property Image", story, s)
+    # Pull the photo the user "starred" as cover for this deal. Falls back to
+    # the assessment's aerial_photo_id and finally to a placeholder so the
+    # page layout never collapses if neither source is populated.
+    property_bytes: bytes | None = None
+    deal_id = a.get("deal_id")
+    if deal_id:
+        cover_doc = await db.project_photos.find_one(
+            {"deal_id": deal_id, "is_cover": True, "is_deleted": {"$ne": True}},
+            {"_id": 0, "id": 1, "storage_path": 1},
+        )
+        if cover_doc and cover_doc.get("id"):
+            property_bytes = await _load_photo(db, cover_doc["id"])
+    if not property_bytes:
+        property_bytes = await _load_photo(db, a.get("aerial_photo_id"))
     story.append(_photo_flowable(
-        aerial_bytes, w=CONTENT_W, h=2.7 * inch,
-        placeholder="Aerial roof image — upload in editor", h_align="LEFT",
+        property_bytes, w=CONTENT_W, h=2.7 * inch,
+        placeholder="Property image — star a photo in this deal's gallery to use it here",
+        h_align="LEFT",
     ))
     story.append(Spacer(1, 10))
 
