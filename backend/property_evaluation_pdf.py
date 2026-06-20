@@ -520,12 +520,28 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     story.append(note_t)
 
     story.append(Spacer(1, 12))
-    _section_header("SealTech Recommendation", story, s)
+    # Inline section header sized to FRAME_INNER_W so the bronze underline
+    # ends at exactly the same x as the rec_box below it. The shared
+    # `_section_header` helper uses CONTENT_W (7.3") which renders the
+    # bronze 12pt wider than fixed-height boxes (which max out at the
+    # frame's inner usable width). Using the same width here keeps the
+    # section header underline flush with the box's right edge.
+    seal_header = Table(
+        [[Paragraph("SEALTECH RECOMMENDATION", s["h1"])]],
+        colWidths=[FRAME_INNER_W],
+    )
+    seal_header.hAlign = "LEFT"
+    seal_header.setStyle(TableStyle([
+        ("LINEBELOW", (0, 0), (-1, -1), 2, BRONZE),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    story.append(seal_header)
+    story.append(Spacer(1, 4))
+
     # 7-line blank write-on box for the salesperson. Built inline (rather
     # than via _text_box) so we can force hAlign="LEFT" on the actual
-    # flowable that gets added to the story — _text_box returns a
-    # KeepInFrame whose default centering caused the box to drift slightly
-    # outside the bronze section-header underline on both sides.
+    # flowable that gets added to the story.
     rec_row_h = 0.30 * inch
     rec_rows = 7
     rec_placeholder = Paragraph(
