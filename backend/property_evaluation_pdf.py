@@ -531,20 +531,16 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     story.append(note_t)
 
     story.append(Spacer(1, 12))
-    _section_header("Overall Recommendation", story, s)
-    story.append(_text_box(a.get("overall_recommendation") or "", num_rows=5))
-    story.append(PageBreak())
-
-    # =====================================================================
-    # PAGE 6 — SealTech Recommendation (blank for sales) + Expected Outcomes + Conclusion
-    # =====================================================================
     _section_header("SealTech Recommendation", story, s)
     # 7-line blank text box for the salesperson to fill in by hand or in a
     # subsequent edit pass. Row height tuned so the box looks like a real
     # write-on field and matches the visual weight of the rest of the doc.
     story.append(_text_box("", num_rows=7, row_height=0.30 * inch))
+    story.append(PageBreak())
 
-    story.append(Spacer(1, 12))
+    # =====================================================================
+    # PAGE 6 — Expected Outcomes + Conclusion
+    # =====================================================================
     _section_header("Expected Outcome", story, s)
     # Single-column bullets per Darren's spec. Each bullet sits in its own
     # row of a 1-col 7.3" table so the green checkmarks align cleanly with
