@@ -37,6 +37,7 @@ from reportlab.platypus import (
     Image, PageBreak,
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from PIL import Image as PILImage
 
 # Reuse every helper / style / palette token from the full-assessment generator
 # so the two PDFs stay visually consistent without any copy-paste drift.
@@ -50,6 +51,23 @@ from assessment_pdf import (
     _text_box, _fmt_date,
     _render_finding,
 )
+
+
+def _fit_box(img_bytes: bytes | None, max_w: float, max_h: float) -> tuple[float, float]:
+    """Return (width, height) for the image that fits inside (max_w, max_h)
+    while preserving its natural aspect ratio. Falls back to a 4:3 landscape
+    box if the bytes can't be decoded (placeholder path will run anyway)."""
+    if not img_bytes:
+        return max_w, max_h
+    try:
+        with PILImage.open(BytesIO(img_bytes)) as im:
+            iw, ih = im.size
+        if iw <= 0 or ih <= 0:
+            return max_w, max_h
+        scale = min(max_w / iw, max_h / ih)
+        return iw * scale, ih * scale
+    except Exception:
+        return max_w, max_h
 
 
 # Content width = letter width 8.5" minus 0.6" margins on each side = 7.3"
@@ -164,8 +182,10 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
         stamp_color = colors.HexColor("#B91C1C")
         stamp_label = "REPLACEMENT REQUIRED"
         stamp_sub = []
-        if insulation_sat: stamp_sub.append("Insulation Saturated")
-        if deck_damaged: stamp_sub.append("Structural Deck Damaged")
+        if insulation_sat:
+            stamp_sub.append("Insulation Saturated")
+        if deck_damaged:
+            stamp_sub.append("Structural Deck Damaged")
         stamp_subline = " &nbsp;\u2022&nbsp; ".join(stamp_sub)
     else:
         stamp_color = colors.HexColor("#15803D")
@@ -205,26 +225,23 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     story.append(PageBreak())
 
     # =====================================================================
-    # PAGE 2 — Purpose of Evaluation
+    # PAGE 2 — Purpose of Evaluation + Property Image
     # =====================================================================
     _section_header("Purpose of Evaluation", story, s)
-    # Slightly larger leading + small left/right padding makes the long paragraph
-    # comfortable to read as the dominant element on the page.
     purpose_style = ParagraphStyle(
         "eval_purpose", parent=s["body"], fontName="Helvetica",
         fontSize=10.5, leading=16, textColor=DARK, alignment=TA_LEFT,
         spaceAfter=4,
     )
     story.append(Paragraph(PURPOSE_OF_EVALUATION, purpose_style))
-    story.append(PageBreak())
+    story.append(Spacer(1, 14))
 
-    # =====================================================================
-    # PAGE 3 — Property Image (cover photo on the linked deal) + Finding R-1
-    # =====================================================================
+    # Property image (starred cover photo on the linked deal). Pulled here on
+    # page 2 so it lives directly under the purpose paragraph and the rest of
+    # page 3 can be devoted entirely to R-1. Sized to preserve the photo's
+    # natural aspect ratio inside a 7.3" × 4.5" max box so it doesn't get
+    # stretched into an unnatural landscape strip.
     _section_header("Property Image", story, s)
-    # Pull the photo the user "starred" as cover for this deal. Falls back to
-    # the assessment's aerial_photo_id and finally to a placeholder so the
-    # page layout never collapses if neither source is populated.
     property_bytes: bytes | None = None
     deal_id = a.get("deal_id")
     if deal_id:
@@ -236,19 +253,23 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
             property_bytes = await _load_photo(db, cover_doc["id"])
     if not property_bytes:
         property_bytes = await _load_photo(db, a.get("aerial_photo_id"))
+    fit_w, fit_h = _fit_box(property_bytes, max_w=CONTENT_W, max_h=4.5 * inch)
     story.append(_photo_flowable(
-        property_bytes, w=CONTENT_W, h=2.7 * inch,
+        property_bytes, w=fit_w, h=fit_h,
         placeholder="Property image — star a photo in this deal's gallery to use it here",
-        h_align="LEFT",
+        h_align="CENTER",
     ))
-    story.append(Spacer(1, 10))
+    story.append(PageBreak())
 
+    # =====================================================================
+    # PAGE 3 — Finding R-1
+    # =====================================================================
     _section_header("Asset Condition Findings", story, s)
     r1 = a.get("finding_r1") or {}
     if r1.get("component") or r1.get("observations") or r1.get("photo_ids"):
-        # 2.5" photos — removing the SEVERITY row from the body table freed
-        # enough vertical space to bump from 2.1" without spilling.
-        await _render_finding(db, story, s, idx=1, finding=r1, photo_size=2.5 * inch, show_severity=False)
+        # Photos bumped to 2.7" now that R-1 owns the whole page (aerial moved
+        # to page 2). Severity row removed → ~0.2" of additional headroom.
+        await _render_finding(db, story, s, idx=1, finding=r1, photo_size=2.7 * inch, show_severity=False)
     else:
         story.append(Paragraph(
             "<i>No primary finding recorded for this property at the time of evaluation.</i>",
