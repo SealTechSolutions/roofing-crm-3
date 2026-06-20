@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { ClipboardCheck, Plus, Search, FileText, Mail, Trash2, ExternalLink, Filter } from "lucide-react";
+import { ClipboardCheck, Plus, Search, FileText, FileCheck, Mail, Trash2, ExternalLink, Filter } from "lucide-react";
 
 const STATUS_COLORS = {
   Draft: "bg-amber-100 text-amber-900 border-amber-300",
@@ -55,18 +55,18 @@ export default function Assessments() {
     }
   };
 
-  const onOpenPdf = (a) => {
+  // Opens any PDF endpoint for this assessment in a new tab. Synchronous
+  // window.open() preserves the user gesture so popup blockers don't swallow
+  // it; the blob URL is set once the async fetch resolves.
+  const openAssessmentPdf = (a, kind /* "pdf" | "evaluation.pdf" */, label /* "Assessment" | "Evaluation" */) => {
     const token = localStorage.getItem("crm_token");
-    const url = `${process.env.REACT_APP_BACKEND_URL}/api/assessments/${a.id}/pdf`;
-    // Open the placeholder tab SYNCHRONOUSLY (still inside the click gesture)
-    // so popup blockers don't silently swallow it. We update its URL after the
-    // async fetch resolves.
+    const url = `${process.env.REACT_APP_BACKEND_URL}/api/assessments/${a.id}/${kind}`;
     const newWin = window.open("", "_blank");
     if (!newWin) {
       toast.error("Browser blocked the pop-up. Allow pop-ups for this site, then try again.");
       return;
     }
-    newWin.document.write("<title>Loading PDF…</title><p style=\"font-family:sans-serif;color:#666;padding:20px;\">Generating Assessment PDF — please wait…</p>");
+    newWin.document.write(`<title>Loading ${label} PDF…</title><p style="font-family:sans-serif;color:#666;padding:20px;">Generating ${label} PDF — please wait…</p>`);
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => {
         if (!r.ok) throw new Error(`PDF generation failed (HTTP ${r.status})`);
@@ -80,6 +80,8 @@ export default function Assessments() {
         toast.error(`PDF generation failed: ${e.message}`);
       });
   };
+  const onOpenPdf = (a) => openAssessmentPdf(a, "pdf", "Assessment");
+  const onOpenEvaluationPdf = (a) => openAssessmentPdf(a, "evaluation.pdf", "Property Evaluation");
 
   const counts = useMemo(() => ({
     all: items.length,
@@ -217,11 +219,19 @@ export default function Assessments() {
                       </button>
                       <button
                         onClick={() => onOpenPdf(a)}
-                        title="View PDF"
+                        title="View full Assessment PDF (12 pages)"
                         className="p-1.5 text-zinc-500 hover:text-blue-700 hover:bg-blue-50 transition-colors rounded-sm"
                         data-testid={`pdf-${a.id}`}
                       >
                         <FileText className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => onOpenEvaluationPdf(a)}
+                        title="View Property Evaluation PDF — non-fee-based courtesy version (6–7 pages)"
+                        className="p-1.5 text-zinc-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors rounded-sm"
+                        data-testid={`evaluation-pdf-${a.id}`}
+                      >
+                        <FileCheck className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => onDelete(a)}

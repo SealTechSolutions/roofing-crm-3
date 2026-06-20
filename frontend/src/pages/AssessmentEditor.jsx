@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  ClipboardCheck, ChevronLeft, ChevronRight, Save, FileText, Mail, CheckCircle2,
+  ClipboardCheck, ChevronLeft, ChevronRight, Save, FileText, FileCheck, Mail, CheckCircle2,
   Plus, X, Trash2, Image as ImageIcon, Upload, AlertTriangle, ArrowRightCircle, ExternalLink,
 } from "lucide-react";
 import GrammarCheck from "@/components/GrammarCheck";
@@ -238,16 +238,25 @@ export default function AssessmentEditor() {
 
   const viewPdf = async () => {
     if (isNew) { toast.error("Save the assessment first"); return; }
+    await openPdf("pdf", "Assessment");
+  };
+
+  // Slim non-fee-based courtesy PDF — same source data, 6–7 pages.
+  const viewEvaluationPdf = async () => {
+    if (isNew) { toast.error("Save the assessment first"); return; }
+    await openPdf("evaluation.pdf", "Property Evaluation");
+  };
+
+  const openPdf = async (kind, label) => {
     const token = localStorage.getItem("crm_token");
-    // Open placeholder tab synchronously so popup blockers don't swallow it.
     const newWin = window.open("", "_blank");
     if (!newWin) {
       toast.error("Browser blocked the pop-up. Allow pop-ups for this site, then try again.");
       return;
     }
-    newWin.document.write("<title>Loading PDF…</title><p style=\"font-family:sans-serif;color:#666;padding:20px;\">Generating Assessment PDF — please wait…</p>");
+    newWin.document.write(`<title>Loading ${label} PDF…</title><p style="font-family:sans-serif;color:#666;padding:20px;">Generating ${label} PDF — please wait…</p>`);
     try {
-      const r = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/assessments/${id}/pdf`, {
+      const r = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/assessments/${id}/${kind}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) throw new Error(`PDF generation failed (HTTP ${r.status})`);
@@ -332,8 +341,11 @@ export default function AssessmentEditor() {
         <div className="flex gap-2 flex-wrap justify-end">
           {!isNew && (
             <>
-              <button onClick={viewPdf} className="inline-flex items-center gap-2 border border-zinc-300 px-3 h-9 text-xs font-bold uppercase tracking-wider hover:border-blue-700 hover:text-blue-700" data-testid="view-pdf-btn">
-                <FileText className="w-3.5 h-3.5" /> PDF
+              <button onClick={viewPdf} title="Full 12-page Commercial Roof Assessment Report" className="inline-flex items-center gap-2 border border-zinc-300 px-3 h-9 text-xs font-bold uppercase tracking-wider hover:border-blue-700 hover:text-blue-700" data-testid="view-pdf-btn">
+                <FileText className="w-3.5 h-3.5" /> Assessment PDF
+              </button>
+              <button onClick={viewEvaluationPdf} title="Slim 6–7 page non-fee-based Property Evaluation for small projects" className="inline-flex items-center gap-2 border border-zinc-300 px-3 h-9 text-xs font-bold uppercase tracking-wider hover:border-emerald-700 hover:text-emerald-700" data-testid="view-evaluation-pdf-btn">
+                <FileCheck className="w-3.5 h-3.5" /> Evaluation PDF
               </button>
               <button onClick={emailPdf} className="inline-flex items-center gap-2 border border-zinc-300 px-3 h-9 text-xs font-bold uppercase tracking-wider hover:border-blue-700 hover:text-blue-700" data-testid="email-pdf-btn">
                 <Mail className="w-3.5 h-3.5" /> Email

@@ -525,6 +525,23 @@ def create_router(db, get_current_user) -> APIRouter:
             headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
 
+    # ---------- Property Evaluation PDF (slim 6-page non-fee version) ----------
+    # Reuses the same assessment document as the full report — only the page
+    # selection and cover styling differ. Inspectors fill in one form and can
+    # produce either output from it.
+    @router.get("/{assessment_id}/evaluation.pdf")
+    async def get_evaluation_pdf(assessment_id: str, _=Depends(get_current_user)):
+        doc = await _ensure(assessment_id)
+        from property_evaluation_pdf import build_property_evaluation_pdf
+        pdf_bytes = await build_property_evaluation_pdf(db, doc)
+        property_label = (doc.get("property_name") or doc.get("property_address") or "evaluation").replace(" ", "_")
+        filename = f"sealtech-evaluation-{property_label[:40]}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+
     # ---------- Email ----------
     @router.post("/{assessment_id}/email")
     async def email_assessment(
