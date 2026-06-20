@@ -577,7 +577,7 @@ function StepCover({ doc, update, updateAndSave, contacts, deals, properties, li
           <AutocompleteInput
             value={doc.building_type}
             onChange={(v) => update({ building_type: v })}
-            options={["Warehouse", "Office", "Retail", "Industrial", "Manufacturing", "Healthcare", "Educational", "Multi-family", "Garage Condos", "Self-Storage", "Religious", "Government", "Mixed-Use"]}
+            options={["Warehouse", "Office", "Retail", "Shopping Center", "Industrial", "Manufacturing", "Healthcare", "Educational", "Multi-family", "Condos/Apartments", "Residential", "Garage Condos", "Self-Storage", "Religious", "Government", "Mixed-Use"]}
             className={inputCls}
             placeholder="Type to filter…  Warehouse, Office, Retail..."
             testId="building-type"
