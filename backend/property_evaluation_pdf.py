@@ -224,6 +224,11 @@ def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
 
 # Content width = letter width 8.5" minus 0.6" margins on each side = 7.3"
 CONTENT_W = 7.3 * inch
+# Frame inner width — SimpleDocTemplate's default Frame adds 6pt padding on
+# every side, leaving 7.3" - 12pt ≈ 7.133" of usable inner width. Any flowable
+# wider than this with strict rowHeights triggers a LayoutError, so fixed-height
+# tables (write-on boxes, score gauges, etc.) must use this constant instead.
+FRAME_INNER_W = CONTENT_W - 12  # 12pt = 6pt left padding + 6pt right padding
 
 # Long-form copy that the salesperson asked us to lock in as the Evaluation
 # default. Stored as module-level constants so they're easy to tweak without
@@ -483,35 +488,6 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     overall_reasoning = overall.get("reasoning", "") if isinstance(overall, dict) else ""
     story.append(_eval_score_card(s, overall_val, overall_reasoning))
 
-    story.append(Spacer(1, 8))
-    interp_data = [
-        ["SCORE", "INTERPRETATION"],
-        ["90 – 100", "Excellent — roof in like-new condition, minimal capital risk."],
-        ["80 – 89",  "Good — minor maintenance items; restoration highly suitable."],
-        ["70 – 79",  "Fair — moderate findings; restoration suitable with a proactive plan."],
-        ["60 – 69",  "Marginal — significant repair / restoration needed."],
-        ["Below 60", "Poor — immediate restoration and possible replacement needed."],
-    ]
-    # Column widths add to 7.3" so the table edges sit flush with the score
-    # box above and the recommendation box below — same content-frame width
-    # the section headers use.
-    interp_t = Table(interp_data, colWidths=[1.4 * inch, 5.9 * inch])
-    interp_t.hAlign = "LEFT"
-    interp_t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), BLUE),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]))
-    story.append(interp_t)
-
-    story.append(Spacer(1, 8))
     # Restoration-First Note — wrapped in a single-cell 7.3" table so the
     # blue tinted background and border align EXACTLY with the score box,
     # interp table, and section headers above and below it. Wrapping the
@@ -531,7 +507,7 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
         "impact of a tear-off.",
         note_para_style,
     )
-    note_t = Table([[note_para]], colWidths=[CONTENT_W])
+    note_t = Table([[note_para]], colWidths=[FRAME_INNER_W])
     note_t.hAlign = "LEFT"
     note_t.setStyle(TableStyle([
         ("BACKGROUND",   (0, 0), (-1, -1), colors.HexColor("#EFF6FF")),
@@ -545,10 +521,31 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
 
     story.append(Spacer(1, 12))
     _section_header("SealTech Recommendation", story, s)
-    # 7-line blank write-on box for the salesperson. _text_box already
-    # left-aligns its inner Table — adding an outer wrap to "lock" the
-    # width triggered a frame-padding LayoutError on dense pages.
-    story.append(_text_box("", num_rows=7, row_height=0.30 * inch))
+    # 7-line blank write-on box for the salesperson. Built inline (rather
+    # than via _text_box) so we can force hAlign="LEFT" on the actual
+    # flowable that gets added to the story — _text_box returns a
+    # KeepInFrame whose default centering caused the box to drift slightly
+    # outside the bronze section-header underline on both sides.
+    rec_row_h = 0.30 * inch
+    rec_rows = 7
+    rec_placeholder = Paragraph(
+        '<i><font color="#A0A0A0">—</font></i>',
+        ParagraphStyle("rec_box_body", parent=s["body"], fontSize=10,
+                       leading=rec_row_h * 72 / inch, textColor=DARK),
+    )
+    rec_box = Table([[rec_placeholder]], colWidths=[FRAME_INNER_W],
+                    rowHeights=[rec_rows * rec_row_h])
+    rec_box.hAlign = "LEFT"
+    rec_box.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.append(rec_box)
     story.append(PageBreak())
 
     # =====================================================================
