@@ -384,7 +384,7 @@ export default function AssessmentEditor() {
       </div>
 
       {/* Wizard step indicator */}
-      <div className="flex items-center gap-1 mb-6" data-testid="wizard-steps">
+      <div className="flex items-center gap-1 mb-3" data-testid="wizard-steps">
         {STEPS.map((sObj, i) => (
           <button
             key={sObj.key}
@@ -399,6 +399,16 @@ export default function AssessmentEditor() {
             <span className="opacity-60 mr-2">{i + 1}.</span>{sObj.label}
           </button>
         ))}
+      </div>
+
+      {/* Eval-vs-Assessment marker legend. Anything tagged EVAL prints on the
+          6-page Property Evaluation PDF; everything else only shows up on
+          the full 12-page Commercial Roof Assessment Report. Salesperson
+          doing a quick Evaluation only needs to fill in the EVAL-tagged
+          fields. */}
+      <div className="mb-6 px-4 py-2.5 text-xs bg-emerald-50/60 border border-emerald-200 text-zinc-700 flex items-center gap-2 rounded-sm" data-testid="eval-legend">
+        <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-300 rounded-sm">EVAL</span>
+        <span>Fields marked <b>EVAL</b> are the only ones needed for the Property Evaluation PDF. Skip the rest if you&apos;re only generating an Evaluation — the full Assessment Report uses every field on every tab.</span>
       </div>
 
       {/* Step content */}
@@ -514,16 +524,16 @@ function StepCover({ doc, update, updateAndSave, contacts, deals, properties, li
     <div className="space-y-5" data-testid="step-cover-body">
       <SectionTitle>Cover Block</SectionTitle>
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Prepared For (Client)">
+        <Field label="Prepared For (Client)" eval>
           <input value={doc.prepared_for} onChange={(e) => update({ prepared_for: e.target.value })} className={inputCls} data-testid="prepared-for" />
         </Field>
-        <Field label="Assessment Date">
+        <Field label="Assessment Date" eval>
           <input type="date" value={doc.assessment_date || ""} onChange={(e) => update({ assessment_date: e.target.value })} className={inputCls} data-testid="assessment-date" />
         </Field>
-        <Field label="Contact Name (point of contact at client)" full>
+        <Field label="Contact Name (point of contact at client)" full eval>
           <input value={doc.contact_name} onChange={(e) => update({ contact_name: e.target.value })} className={inputCls} placeholder="e.g., John Smith, Facilities Manager" data-testid="contact-name" />
         </Field>
-        <Field label="Property Name" full>
+        <Field label="Property Name" full eval>
           <div className="flex gap-2">
             <select
               value={doc.property_id || ""}
@@ -547,17 +557,17 @@ function StepCover({ doc, update, updateAndSave, contacts, deals, properties, li
             />
           </div>
         </Field>
-        <Field label="Property Address" full>
+        <Field label="Property Address" full eval>
           <input value={doc.property_address} onChange={(e) => update({ property_address: e.target.value })} className={inputCls} placeholder="Street, City, ST ZIP" data-testid="property-address" />
         </Field>
-        <Field label="Prepared By" full>
+        <Field label="Prepared By" full eval>
           <input value={doc.prepared_by} onChange={(e) => update({ prepared_by: e.target.value })} className={inputCls} data-testid="prepared-by" />
         </Field>
       </div>
 
       <SectionTitle>Link to Existing Records</SectionTitle>
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Linked Deal / Project (optional — enables photo attachments)">
+        <Field label="Linked Deal / Project (optional — enables photo attachments)" eval>
           <select value={doc.deal_id || ""} onChange={(e) => update({ deal_id: e.target.value })} className={inputCls} data-testid="link-deal">
             <option value="">— No project —</option>
             {deals.map((d) => <option key={d.id} value={d.id}>{d.title || d.id.slice(0, 8)}</option>)}
@@ -653,6 +663,12 @@ function StepCover({ doc, update, updateAndSave, contacts, deals, properties, li
       >
         <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-800 mb-2">
           Restoration Eligibility
+          <span
+            className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-300 rounded-sm ml-2"
+            title="Used by the Property Evaluation PDF cover stamp"
+          >
+            EVAL
+          </span>
         </div>
         <div className="text-xs text-zinc-700 mb-3 leading-relaxed">
           Restoration is the recommended pathway unless one of these disqualifiers is confirmed.
@@ -718,7 +734,7 @@ function StepScores({ doc, updateScore, update }) {
     <div className="space-y-5" data-testid="step-scores-body">
       <SectionTitle>Roof Asset Dashboard™ — 0-100 Scores</SectionTitle>
       <div className="text-xs text-zinc-500">
-        Slide each metric (or type the number) — the live band pill on the right shows how it'll read in the executive PDF (e.g., 75 → <span className="font-bold">Good</span>). Remaining Service Life is measured in years (0–50). Capital Risk is inverted: higher = worse.
+        Slide each metric (or type the number) — the live band pill on the right shows how it&apos;ll read in the executive PDF (e.g., 75 → <span className="font-bold">Good</span>). Remaining Service Life is measured in years (0–50). Capital Risk is inverted: higher = worse.
       </div>
       <div className="space-y-3">
         {SCORE_KEYS.map(([key, label]) => (
@@ -806,13 +822,16 @@ function StepFindings({ doc, updateFinding, update, dealPhotos, onPickPhoto }) {
       )}
 
       <SectionTitle>Asset Condition Findings (R-1 to R-5)</SectionTitle>
+      <div className="text-xs text-zinc-600 mb-2 -mt-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-sm">
+        <span className="font-bold uppercase tracking-wider text-emerald-700">Heads-up</span> — the Property Evaluation PDF includes <b>R-1, R-3, R-4, and R-5</b> only. R-2 (Flashings) prints on the full Assessment Report. The four Eval-bound rows are tagged with the <span className="font-bold text-emerald-700">EVAL</span> badge.
+      </div>
       {[
-        ["finding_r1", "R-1"],
-        ["finding_r2", "R-2"],
-        ["finding_r3", "R-3"],
-        ["finding_r4", "R-4"],
-        ["finding_r5", "R-5"],
-      ].map(([key, code]) => (
+        ["finding_r1", "R-1", true],
+        ["finding_r2", "R-2", false],
+        ["finding_r3", "R-3", true],
+        ["finding_r4", "R-4", true],
+        ["finding_r5", "R-5", true],
+      ].map(([key, code, isEval]) => (
         <FindingBlock
           key={key}
           code={code}
@@ -821,18 +840,27 @@ function StepFindings({ doc, updateFinding, update, dealPhotos, onPickPhoto }) {
           dealLinked={!!doc.deal_id}
           onChange={(patch) => updateFinding(key, patch)}
           onPickPhoto={() => onPickPhoto(key)}
+          isEval={isEval}
         />
       ))}
     </div>
   );
 }
 
-function FindingBlock({ code, finding, dealPhotos, dealLinked, onChange, onPickPhoto }) {
+function FindingBlock({ code, finding, dealPhotos, dealLinked, onChange, onPickPhoto, isEval }) {
   const photos = dealPhotos.filter((p) => (finding.photo_ids || []).includes(p.id));
   return (
     <div className="border border-zinc-200 p-4 rounded-sm" data-testid={`block-${code}`}>
       <div className="flex items-center gap-3 mb-3">
         <span className="font-mono font-black text-bronze-700 text-bronze-700" style={{ color: "#A0703A" }}>{code}</span>
+        {isEval && (
+          <span
+            className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-300 rounded-sm"
+            title="This finding prints on the Property Evaluation PDF"
+          >
+            EVAL
+          </span>
+        )}
         <input
           value={finding.component}
           onChange={(e) => onChange({ component: e.target.value })}
@@ -1200,11 +1228,22 @@ function SectionTitle({ children }) {
   );
 }
 
-function Field({ label, children, full, grammar }) {
+function Field({ label, children, full, grammar, eval: isEval }) {
   return (
     <div className={full ? "col-span-2" : ""}>
       <div className="flex items-end justify-between gap-2 mb-1.5">
-        <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500">{label}</label>
+        <div className="flex items-center gap-1.5">
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500">{label}</label>
+          {isEval && (
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-300 rounded-sm"
+              title="Used by the Property Evaluation PDF"
+              data-testid="eval-field-badge"
+            >
+              EVAL
+            </span>
+          )}
+        </div>
         {grammar && (
           <GrammarCheck text={grammar.text || ""} onChange={grammar.onChange} label="Check" />
         )}
@@ -1227,10 +1266,23 @@ function ScoreInput({ metricKey, label, value, reasoning, onChangeScore, onChang
   const band = bandFor(metricKey, value);
   const isRSL = metricKey === "remaining_service_life";
   const max = isRSL ? 50 : 100;
+  // Only the overall Roof Asset Score is consumed by the Evaluation PDF — the
+  // other 7 sub-metrics belong to the full Assessment Roof Asset Dashboard.
+  const isEval = metricKey === "roof_asset_score";
   return (
     <div className="border border-zinc-200 p-3" data-testid={testId}>
       <div className="flex items-center gap-3 mb-2">
-        <div className="text-sm font-bold flex-1">{label}</div>
+        <div className="text-sm font-bold flex-1 flex items-center gap-2">
+          {label}
+          {isEval && (
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-300 rounded-sm"
+              title="Used by the Property Evaluation PDF"
+            >
+              EVAL
+            </span>
+          )}
+        </div>
         {/* Live band pill */}
         <div
           className="inline-flex items-center px-2 py-0.5 rounded-sm text-[10px] font-bold uppercase tracking-wider text-white whitespace-nowrap"
