@@ -1019,34 +1019,42 @@ def _tint_bg(hex_color: str) -> colors.Color:
     return colors.Color(rr / 255.0, gg / 255.0, bb / 255.0)
 
 
-async def _render_finding(db, story: list, s: dict, idx: int, finding: dict, photo_size: float = None):
+async def _render_finding(db, story: list, s: dict, idx: int, finding: dict, photo_size: float = None, show_severity: bool = True):
     """Render one R-N finding block matching the original layout:
-       - Header with code + component name + severity badge
-       - 4-row info table (Observations / Severity / Risk / Recommendation)
+       - Header with code + component name + severity badge (badge hidden if show_severity=False)
+       - 4-row info table (Observations / Severity / Risk / Recommendation;
+         SEVERITY row dropped if show_severity=False)
        - 2 square photo slots side-by-side below
     `photo_size` controls the square photo edge length. Defaults to 2.7" — a safe
     size that handles longer text content without overflowing on dual-finding pages.
+    `show_severity` is set False by the Property Evaluation PDF where customers
+    don't need the inspector-facing risk classification.
     The full finding block is wrapped in KeepTogether so it never splits across pages.
     """
     if photo_size is None:
         photo_size = 2.7 * inch
     component = _esc(finding.get("component", f"Component {idx}"))
-    severity = _esc(finding.get("severity", ""))
-    severity_color = {"Critical": RED, "High": RED, "Moderate": AMBER, "Low": GREEN}.get(severity, GRAY).hexval()
 
     block: list = []
-    block.append(Paragraph(
-        f'<font color="#A0703A"><b>R-{idx}</b></font>  &nbsp; <b>{component}</b> '
-        f'&nbsp;&nbsp; <font color="{severity_color}"><b>[{severity or "—"}]</b></font>',
-        s["h2"],
-    ))
+    if show_severity:
+        severity = _esc(finding.get("severity", ""))
+        severity_color = {"Critical": RED, "High": RED, "Moderate": AMBER, "Low": GREEN}.get(severity, GRAY).hexval()
+        block.append(Paragraph(
+            f'<font color="#A0703A"><b>R-{idx}</b></font>  &nbsp; <b>{component}</b> '
+            f'&nbsp;&nbsp; <font color="{severity_color}"><b>[{severity or "—"}]</b></font>',
+            s["h2"],
+        ))
+    else:
+        block.append(Paragraph(
+            f'<font color="#A0703A"><b>R-{idx}</b></font>  &nbsp; <b>{component}</b>',
+            s["h2"],
+        ))
 
-    body_rows = [
-        ["OBSERVATIONS",   _esc(finding.get("observations")) or "—"],
-        ["SEVERITY",       _esc(finding.get("severity")) or "—"],
-        ["RISK",           _esc(finding.get("risk")) or "—"],
-        ["RECOMMENDATION", _esc(finding.get("recommendation")) or "—"],
-    ]
+    body_rows = [["OBSERVATIONS", _esc(finding.get("observations")) or "—"]]
+    if show_severity:
+        body_rows.append(["SEVERITY", _esc(finding.get("severity")) or "—"])
+    body_rows.append(["RISK", _esc(finding.get("risk")) or "—"])
+    body_rows.append(["RECOMMENDATION", _esc(finding.get("recommendation")) or "—"])
     body_data = [[
         Paragraph(f'<font color="#A0703A"><b>{k}</b></font>', s["label"]),
         Paragraph(v, s["body_sm"]),

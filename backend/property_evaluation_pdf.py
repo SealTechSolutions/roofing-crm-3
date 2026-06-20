@@ -7,13 +7,14 @@ overkill: the inspector still walks the roof and captures up to 3 findings,
 and the customer gets a credible-looking report that points them at the right
 restoration / repair / replacement path.
 
-Page layout (6 pages):
-    1. Cover — branded as "Property Evaluation" with the non-fee-based stamp
-    2. Executive Summary — purpose, executive conclusion, 4 score boxes, overall recommendation
-    3. Aerial Image + up to 3 Findings (R-1..R-3)
-    4. Roof Score Analysis — overall score box + interpretation table + restoration note + factors
-    5. Repair vs Restoration vs Replacement comparison
-    6. SealTech Recommendation + Expected Outcome + Conclusion (signature page)
+Page layout (6 pages) — updated 2026-02-19 per Darren's review:
+    1. Cover — branded as "Property Evaluation"
+    2. Purpose of Evaluation — single long paragraph defining the engagement
+    3. Aerial Image + Finding R-1 (severity hidden, larger photos)
+    4. Findings R-2 + R-3 (severity hidden, larger photos)
+    5. Roof Score Analysis + Overall Recommendation (Score Drivers removed)
+    6. SealTech Recommendation (7-line salesperson text box) +
+       Expected Outcomes (single column of 6 benefits) + Conclusion
 
 Public API:
     await build_property_evaluation_pdf(db, assessment_doc) -> bytes
@@ -33,7 +34,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    Image, KeepTogether, PageBreak,
+    Image, PageBreak,
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
@@ -41,14 +42,68 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 # so the two PDFs stay visually consistent without any copy-paste drift.
 from assessment_pdf import (
     LOGO_PATH,
-    BLUE, BRONZE, DARK, GRAY, BORDER, GREEN, AMBER, RED,
+    BLUE, BRONZE, DARK, GRAY, BORDER, GREEN,
     SOFT_BRONZE, BOX_BORDER,
     _styles, _make_footer,
     _load_photo, _photo_flowable,
     _score_box, _section_header, _check, _esc,
-    _text_box, _finding_box, _fmt_date,
+    _text_box, _fmt_date,
     _render_finding,
 )
+
+
+# Content width = letter width 8.5" minus 0.6" margins on each side = 7.3"
+CONTENT_W = 7.3 * inch
+
+# Long-form copy that the salesperson asked us to lock in as the Evaluation
+# default. Stored as module-level constants so they're easy to tweak without
+# threading editor logic.
+PURPOSE_OF_EVALUATION = (
+    "The purpose of this Roof Evaluation is to conduct a evaluation of the existing "
+    "roofing system to determine its current condition, remaining service life, and "
+    "suitability for continued performance. Through an inspection, documentation of "
+    "deficiencies, and analysis of key performance factors&mdash;including membrane "
+    "integrity, insulation performance, drainage characteristics, flashing details, "
+    "and structural support&mdash;this evaluation identifies the most appropriate "
+    "course of action among targeted repairs, full restoration, or complete "
+    "replacement. The objective is to provide data-driven recommendations that "
+    "maximize asset longevity, minimize long-term costs, ensure compliance with "
+    "applicable codes and standards, and support informed decision-making aligned "
+    "with the property owner&rsquo;s operational and budgetary requirements. This "
+    "process follows a structured methodology that prioritizes sustainable "
+    "solutions, such as fluid-applied reinforced membrane systems, to extend roof "
+    "service life while mitigating risks associated with water intrusion, energy "
+    "inefficiency, and premature failure."
+)
+
+EXPECTED_OUTCOMES = [
+    "Extended Service Life of Roof",
+    "Superior Waterproofing and Leak Prevention",
+    "Enhanced Durability and Impact Resistance (Potential 2&quot; Hail Rider on warranty)",
+    "New Warranty that is Renewable and Transferrable",
+    "Improved Energy Efficiency",
+    "Reduced Future Maintenance Requirements",
+]
+
+CONCLUSION_PARAGRAPHS = [
+    "Commercial roofing systems represent significant financial and operational "
+    "assets. The primary objective of this evaluation extends beyond the "
+    "identification of current deficiencies to deliver an understanding of the "
+    "roof&rsquo;s present condition, intrinsic value, remaining service life, "
+    "potential risks, and long-term performance capabilities. By providing "
+    "objective, data-driven insights, this evaluation equips property owners and "
+    "others responsible with the critical information necessary to make strategic, "
+    "cost-effective decisions regarding repair, restoration, or replacement.",
+
+    "SealTech Solutions stands ready to support your asset management objectives. "
+    "We would be pleased to conduct a full Commercial Roof Assessment Report&trade; "
+    "at your convenience, offering detailed scoring, lifecycle analysis, and "
+    "tailored recommendations&mdash;including the proven benefits of fluid-applied "
+    "reinforced membrane restoration&mdash;for your specific property.",
+
+    "Please contact us to schedule the next step toward preserving and optimizing "
+    "your roofing investment.",
+]
 
 
 async def build_property_evaluation_pdf(db, a: dict) -> bytes:
@@ -64,7 +119,7 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     story: list = []
 
     # =====================================================================
-    # PAGE 1 — Cover
+    # PAGE 1 — Cover (unchanged per spec)
     # =====================================================================
     if os.path.exists(LOGO_PATH):
         try:
@@ -102,8 +157,7 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     ]))
     story.append(cover_t)
 
-    # Same restoration-eligibility stamp as the full report — it's the most
-    # important up-front signal for the customer regardless of report tier.
+    # Restoration-eligibility stamp on the cover.
     insulation_sat = bool(a.get("insulation_saturated"))
     deck_damaged = bool(a.get("structural_deck_damaged"))
     if insulation_sat or deck_damaged:
@@ -125,7 +179,7 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
             f'<font color="#52525B" size="8">{stamp_subline}</font>',
             ParagraphStyle("stamp", fontName="Helvetica-Bold", fontSize=12, leading=16, alignment=TA_CENTER),
         )
-    ]], colWidths=[7.3 * inch], rowHeights=[0.7 * inch])
+    ]], colWidths=[CONTENT_W], rowHeights=[0.7 * inch])
     stamp_tbl.setStyle(TableStyle([
         ("BACKGROUND",   (0, 0), (-1, -1), colors.HexColor("#FAFAFA")),
         ("BOX",          (0, 0), (-1, -1), 1.2, stamp_color),
@@ -133,8 +187,6 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     ]))
     story.append(stamp_tbl)
 
-    # Cover disclaimer — makes the courtesy nature of the doc unambiguous so
-    # there's no confusion vs the full paid Commercial Roof Assessment Report.
     story.append(Spacer(1, 18))
     disclaimer_style = ParagraphStyle(
         "eval_disclaimer", parent=s["body_sm"], fontName="Helvetica-Oblique",
@@ -150,84 +202,69 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
         "Capital Planning Forecast, and detailed methodology.",
         disclaimer_style,
     ))
-
     story.append(PageBreak())
 
     # =====================================================================
-    # PAGE 2 — Executive Summary
+    # PAGE 2 — Purpose of Evaluation
     # =====================================================================
-    _section_header("Executive Summary", story, s)
-    story.append(Paragraph("<b>Purpose of Evaluation</b>", s["h3"]))
-    story.append(Paragraph(_esc(a.get("purpose")) or
-        "The purpose of this Property Evaluation is to provide an objective high-level review of "
-        "the current condition, observed deficiencies, and recommended next steps for the roofing "
-        "asset. Restoration is the primary recommendation pathway; replacement is reserved for the "
-        "limited cases where the insulation is saturated or the structural deck is damaged.",
-        s["body"]))
-    story.append(Spacer(1, 6))
-
-    story.append(Paragraph("<b>Executive Conclusion</b>", s["h3"]))
-    story.append(_text_box(a.get("executive_conclusion") or "", num_rows=6))
-    story.append(Spacer(1, 8))
-
-    story.append(Paragraph("<b>Roof Asset Score&trade;</b>", s["h3"]))
-    score_blocks = [
-        ("Condition Rating", a.get("condition_rating", {})),
-        ("Remaining Service Life", a.get("remaining_service_life", {})),
-        ("Restoration Suitability", a.get("restoration_suitability", {})),
-        ("Capital Risk&trade;", a.get("capital_risk", {})),
-    ]
-    for label, sc in score_blocks:
-        story.append(_score_box(
-            label,
-            sc.get("score") if isinstance(sc, dict) else 0,
-            sc.get("reasoning") if isinstance(sc, dict) else "",
-        ))
-        story.append(Spacer(1, 10))
-
-    story.append(Spacer(1, 4))
-    story.append(Paragraph("<b>Overall Recommendation</b>", s["h3"]))
-    story.append(_text_box(a.get("overall_recommendation") or "", num_rows=5))
+    _section_header("Purpose of Evaluation", story, s)
+    # Slightly larger leading + small left/right padding makes the long paragraph
+    # comfortable to read as the dominant element on the page.
+    purpose_style = ParagraphStyle(
+        "eval_purpose", parent=s["body"], fontName="Helvetica",
+        fontSize=10.5, leading=16, textColor=DARK, alignment=TA_LEFT,
+        spaceAfter=4,
+    )
+    story.append(Paragraph(PURPOSE_OF_EVALUATION, purpose_style))
     story.append(PageBreak())
 
     # =====================================================================
-    # PAGE 3 — Aerial Image + up to 3 Findings (R-1, R-2, R-3)
+    # PAGE 3 — Aerial Image + Finding R-1
     # =====================================================================
     _section_header("Aerial Image of Roof", story, s)
     aerial_bytes = await _load_photo(db, a.get("aerial_photo_id"))
     story.append(_photo_flowable(
-        aerial_bytes, w=7.3 * inch, h=2.7 * inch,
+        aerial_bytes, w=CONTENT_W, h=2.7 * inch,
         placeholder="Aerial roof image — upload in editor", h_align="LEFT",
     ))
     story.append(Spacer(1, 10))
 
     _section_header("Asset Condition Findings", story, s)
-    # Small jobs cap at 3 findings — render only the ones that have a
-    # component name. This keeps the doc tight even when the inspector left
-    # R-2/R-3 empty.
-    findings = [
-        a.get("finding_r1") or {},
-        a.get("finding_r2") or {},
-        a.get("finding_r3") or {},
-    ]
-    rendered = 0
-    for idx, fnd in enumerate(findings, start=1):
-        if not (fnd.get("component") or fnd.get("observations") or fnd.get("photo_ids")):
-            continue
-        # Tighter photo squares (2.1") so 3 findings fit comfortably on one
-        # page including the aerial image above. The full report uses 2.7".
-        await _render_finding(db, story, s, idx=idx, finding=fnd, photo_size=2.1 * inch)
-        story.append(Spacer(1, 8))
-        rendered += 1
-    if rendered == 0:
+    r1 = a.get("finding_r1") or {}
+    if r1.get("component") or r1.get("observations") or r1.get("photo_ids"):
+        # 2.5" photos — removing the SEVERITY row from the body table freed
+        # enough vertical space to bump from 2.1" without spilling.
+        await _render_finding(db, story, s, idx=1, finding=r1, photo_size=2.5 * inch, show_severity=False)
+    else:
         story.append(Paragraph(
-            "<i>No findings recorded for this property at the time of evaluation.</i>",
+            "<i>No primary finding recorded for this property at the time of evaluation.</i>",
             s["muted"],
         ))
     story.append(PageBreak())
 
     # =====================================================================
-    # PAGE 4 — Roof Score Analysis
+    # PAGE 4 — Findings R-2 + R-3
+    # =====================================================================
+    _section_header("Asset Condition Findings (continued)", story, s)
+    rendered = 0
+    for idx, fnd in (
+        (2, a.get("finding_r2") or {}),
+        (3, a.get("finding_r3") or {}),
+    ):
+        if not (fnd.get("component") or fnd.get("observations") or fnd.get("photo_ids")):
+            continue
+        await _render_finding(db, story, s, idx=idx, finding=fnd, photo_size=2.5 * inch, show_severity=False)
+        story.append(Spacer(1, 6))
+        rendered += 1
+    if rendered == 0:
+        story.append(Paragraph(
+            "<i>No additional findings recorded.</i>",
+            s["muted"],
+        ))
+    story.append(PageBreak())
+
+    # =====================================================================
+    # PAGE 5 — Roof Score Analysis + Overall Recommendation
     # =====================================================================
     _section_header("Roof Score Analysis", story, s)
     overall = a.get("roof_asset_score", {})
@@ -247,6 +284,9 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
         ["60 – 69",  "Marginal — significant repair / restoration needed."],
         ["Below 60", "Poor — immediate restoration and possible replacement needed."],
     ]
+    # Column widths add to 7.3" so the table edges sit flush with the score
+    # box above and the recommendation box below — same content-frame width
+    # the section headers use.
     interp_t = Table(interp_data, colWidths=[1.4 * inch, 5.9 * inch])
     interp_t.hAlign = "LEFT"
     interp_t.setStyle(TableStyle([
@@ -264,168 +304,78 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     story.append(interp_t)
 
     story.append(Spacer(1, 8))
-    note_style = ParagraphStyle(
+    # Restoration-First Note — wrapped in a single-cell 7.3" table so the
+    # blue tinted background and border align EXACTLY with the score box,
+    # interp table, and section headers above and below it. Wrapping the
+    # Paragraph in a width-locked table prevents the subtle "drifts left"
+    # rendering that ReportLab's Paragraph backColor produces when the frame
+    # width changes between flowables.
+    note_para_style = ParagraphStyle(
         "restore_note", parent=s["body_sm"], fontName="Helvetica",
-        fontSize=8, leading=11, textColor=colors.HexColor("#404040"),
-        backColor=colors.HexColor("#EFF6FF"), borderColor=BLUE,
-        borderWidth=0.5, borderPadding=6,
+        fontSize=9, leading=12, textColor=colors.HexColor("#1E3A8A"), alignment=TA_LEFT,
     )
-    story.append(Paragraph(
+    note_para = Paragraph(
         "<b>Restoration-First Note:</b> Virtually every low-slope roof system can be restored, "
         "including those scoring below 60. Roof replacement is only required when (a) the roof "
         "<b>insulation is saturated</b> beyond cost-effective drying / replacement, or (b) the "
         "<b>structural deck is damaged</b>. In all other cases, restoration is the recommended path "
         "\u2014 extending service life, preserving capital, and avoiding the disruption and landfill "
         "impact of a tear-off.",
-        note_style,
-    ))
-
-    story.append(Spacer(1, 10))
-    story.append(Paragraph("<b>Score Drivers</b>", s["h3"]))
-    story.append(Paragraph('<font color="#16A34A"><b>POSITIVE FACTORS</b></font>', s["label"]))
-    story.append(Spacer(1, 2))
-    # Tighter row count (2 slots vs 3) keeps Page 4 to one page for the Eval.
-    story.append(_finding_box(a.get("positive_factors", []), num_slots=2, row_height=0.26 * inch))
-    story.append(Spacer(1, 6))
-    story.append(Paragraph('<font color="#B91C1C"><b>NEGATIVE FACTORS</b></font>', s["label"]))
-    story.append(Spacer(1, 2))
-    story.append(_finding_box(a.get("negative_factors", []), num_slots=2, row_height=0.26 * inch))
-
-    story.append(PageBreak())
-
-    # =====================================================================
-    # PAGE 5 — Repair vs Restoration vs Replacement
-    # =====================================================================
-    _section_header("Repair vs. Restoration vs. Replacement Analysis", story, s)
-    repair = a.get("option_repair") or {}
-    restore = a.get("option_restoration") or {}
-    replace = a.get("option_replacement") or {}
-    comp = [
-        ["OPTION", "COST", "LIFE EXTENSION", "DISRUPTION"],
-        ["Repair",      repair.get("cost", ""), repair.get("life_extension", ""), repair.get("disruption", "")],
-        ["Restoration", restore.get("cost", ""), restore.get("life_extension", ""), restore.get("disruption", "")],
-        ["Replacement", replace.get("cost", ""), replace.get("life_extension", ""), replace.get("disruption", "")],
-    ]
-    comp_t = Table(comp, colWidths=[1.6 * inch, 1.9 * inch, 1.9 * inch, 1.9 * inch])
-    comp_t.hAlign = "LEFT"
-    comp_t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), BLUE),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, BOX_BORDER),
-        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("FONTNAME", (0, 1), (0, -1), "Helvetica-Bold"),
-    ]))
-    story.append(comp_t)
-
-    story.append(Spacer(1, 8))
-    elig_style = ParagraphStyle(
-        "elig", parent=s["body_sm"], fontName="Helvetica",
-        fontSize=8, leading=11, textColor=colors.HexColor("#404040"),
-        backColor=colors.HexColor("#F0FDF4"), borderColor=colors.HexColor("#16A34A"),
-        borderWidth=0.5, borderPadding=6,
+        note_para_style,
     )
-    story.append(Paragraph(
-        "<b>Restoration Eligibility:</b> Virtually every flat / low-slope roof system can be "
-        "restored. Replacement is only required when (1) the <b>insulation is saturated</b> beyond "
-        "cost-effective drying / replacement, or (2) the <b>structural deck is damaged</b>. Where "
-        "neither condition is present, restoration delivers comparable life extension at a fraction "
-        "of the cost and disruption of a full tear-off.",
-        elig_style,
-    ))
+    note_t = Table([[note_para]], colWidths=[CONTENT_W])
+    note_t.hAlign = "LEFT"
+    note_t.setStyle(TableStyle([
+        ("BACKGROUND",   (0, 0), (-1, -1), colors.HexColor("#EFF6FF")),
+        ("BOX",          (0, 0), (-1, -1), 0.6, BLUE),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING",   (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 8),
+    ]))
+    story.append(note_t)
 
-    for label, opt in [("Option 1 — Continue Repairs and Maintenance", repair),
-                       ("Option 2 — Restoration", restore),
-                       ("Option 3 — Replacement", replace)]:
-        block = [
-            Spacer(1, 4),
-            Paragraph(f"<b>{label}</b>", s["h3"]),
-            Paragraph('<font color="#16A34A"><b>ADVANTAGES</b></font>', s["label"]),
-            Spacer(1, 2),
-            _text_box(" • ".join(opt.get("advantages") or []), num_rows=2, row_height=0.24 * inch),
-            Spacer(1, 2),
-            Paragraph('<font color="#B91C1C"><b>DISADVANTAGES</b></font>', s["label"]),
-            Spacer(1, 2),
-            _text_box(" • ".join(opt.get("disadvantages") or []), num_rows=2, row_height=0.24 * inch),
-        ]
-        story.append(KeepTogether(block))
+    story.append(Spacer(1, 12))
+    _section_header("Overall Recommendation", story, s)
+    story.append(_text_box(a.get("overall_recommendation") or "", num_rows=5))
     story.append(PageBreak())
 
     # =====================================================================
-    # PAGE 6 — SealTech Recommendation + Expected Outcome + Conclusion
+    # PAGE 6 — SealTech Recommendation (blank for sales) + Expected Outcomes + Conclusion
     # =====================================================================
     _section_header("SealTech Recommendation", story, s)
-    rec_items = [
-        ("Restoration Program",    a.get("rec_restoration_program"),    a.get("rec_restoration_program_comment", "")),
-        ("Repair &amp; Monitor",   a.get("rec_repair_and_monitor"),     a.get("rec_repair_and_monitor_comment", "")),
-        ("Partial Replacement",    a.get("rec_partial_replacement"),    a.get("rec_partial_replacement_comment", "")),
-        ("Full Replacement",       a.get("rec_full_replacement"),       a.get("rec_full_replacement_comment", "")),
-        ("Maintenance Program",    a.get("rec_maintenance_program"),    a.get("rec_maintenance_program_comment", "")),
-        ("Drainage Improvements",  a.get("rec_drainage_improvements"),  a.get("rec_drainage_improvements_comment", "")),
-    ]
-    rec_rows = []
-    for label_text, checked, comment in rec_items:
-        check_cell = Paragraph(f'{_check(bool(checked))} &nbsp; <b>{label_text}</b>', s["body_sm"])
-        comment_box = _text_box(comment or "", num_rows=1, row_height=0.30 * inch, width=5.2 * inch, placeholder="Comments")
-        rec_rows.append([check_cell, comment_box])
-    rec_t = Table(rec_rows, colWidths=[2.1 * inch, 5.2 * inch])
-    rec_t.hAlign = "LEFT"
-    rec_t.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (0, -1), 8),
-        ("LEFTPADDING", (1, 0), (1, -1), 0),
-        ("RIGHTPADDING", (1, 0), (1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
-    story.append(rec_t)
+    # 7-line blank text box for the salesperson to fill in by hand or in a
+    # subsequent edit pass. Row height tuned so the box looks like a real
+    # write-on field and matches the visual weight of the rest of the doc.
+    story.append(_text_box("", num_rows=7, row_height=0.30 * inch))
 
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 12))
     _section_header("Expected Outcome", story, s)
-    outcomes = a.get("expected_outcomes") or []
-    if outcomes:
-        outcome_rows = []
-        for i in range(0, len(outcomes), 2):
-            left = outcomes[i]
-            right = outcomes[i + 1] if i + 1 < len(outcomes) else ""
-            outcome_rows.append([
-                Paragraph(f"✓  {left}", s["body_sm"]),
-                Paragraph(f"✓  {right}" if right else "", s["body_sm"]),
-            ])
-        o_t = Table(outcome_rows, colWidths=[3.65 * inch, 3.65 * inch])
-        o_t.hAlign = "LEFT"
-        o_t.setStyle(TableStyle([
-            ("LEFTPADDING", (0, 0), (-1, -1), 10),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("TEXTCOLOR", (0, 0), (-1, -1), GREEN),
-        ]))
-        story.append(o_t)
-    else:
-        story.append(Paragraph("<i>No expected outcomes recorded.</i>", s["muted"]))
+    # Single-column bullets per Darren's spec. Each bullet sits in its own
+    # row of a 1-col 7.3" table so the green checkmarks align cleanly with
+    # the section header underline above.
+    outcome_rows = [[
+        Paragraph(
+            f'<font color="{GREEN.hexval()}"><b>&#10003;</b></font>'
+            f'&nbsp;&nbsp;<font color="#404040">{item}</font>',
+            s["body"],
+        ),
+    ] for item in EXPECTED_OUTCOMES]
+    outcome_t = Table(outcome_rows, colWidths=[CONTENT_W])
+    outcome_t.hAlign = "LEFT"
+    outcome_t.setStyle(TableStyle([
+        ("LEFTPADDING",  (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING",   (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 3),
+    ]))
+    story.append(outcome_t)
 
     story.append(Spacer(1, 12))
     _section_header("Conclusion", story, s)
-    story.append(Paragraph("Commercial roofs are valuable assets.", s["body"]))
-    story.append(Spacer(1, 4))
-    story.append(Paragraph(
-        "The objective of this evaluation is not simply identifying deficiencies. The objective is to understand "
-        "the condition, value, remaining service life, future risks, and long-term potential of the roofing asset.",
-        s["body"],
-    ))
-    story.append(Spacer(1, 4))
-    story.append(Paragraph(
-        "The most informed roofing decisions begin with objective information. SealTech is happy to follow up "
-        "this courtesy evaluation with a full Commercial Roof Assessment Report&trade; whenever a deeper "
-        "review would be useful.",
-        s["body"],
-    ))
+    for para in CONCLUSION_PARAGRAPHS:
+        story.append(Paragraph(para, s["body"]))
+        story.append(Spacer(1, 6))
 
     # ---- Build PDF (two-pass for footer page count) ----
     pdf.build(list(story), onFirstPage=_make_footer(99), onLaterPages=_make_footer(99))
