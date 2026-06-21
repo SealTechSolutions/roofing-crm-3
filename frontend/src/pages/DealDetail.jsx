@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
 import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus, ClipboardCheck, Clock, Camera, CheckSquare, X as XIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import DealSchedulePanel from "@/components/DealSchedulePanel";
 
 export default function DealDetail() {
   const { id } = useParams();
+  const [sp] = useSearchParams();
   const nav = useNavigate();
   const [deal, setDeal] = useState(null);
   const [contact, setContact] = useState(null);
@@ -37,6 +38,14 @@ export default function DealDetail() {
   const [closedBannerDismissed, setClosedBannerDismissed] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
+
+  // Auto-open the scope editor when arriving from the Calculator's
+  // "Open Scope →" button (`/deals/<id>?openScope=1`).
+  useEffect(() => {
+    if (sp.get("openScope") === "1") {
+      setScopeEditorOpen(true);
+    }
+  }, [sp]);
 
   const reload = async () => {
     const r = await api.get(`/deals/${id}`);

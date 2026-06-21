@@ -580,16 +580,26 @@ export default function Calculator() {
         </div>
         {deal && (
           <div className="flex flex-col items-end gap-2">
-            <Link to={`/deals/${deal.id}`} className="inline-flex items-center gap-1 px-3 h-8 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 bg-white hover:bg-zinc-50 rounded-sm" data-testid="back-to-deal">
-              <ChevronLeft className="w-3 h-3" /> Back to Deal
-            </Link>
-            {/* Mode toggle — auto-set by scope_signed_at, overridable */}
+            <div className="flex items-center gap-2">
+              <Link to={`/deals/${deal.id}`} className="inline-flex items-center gap-1 px-3 h-8 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 bg-white hover:bg-zinc-50 rounded-sm" data-testid="back-to-deal">
+                <ChevronLeft className="w-3 h-3" /> Back to Deal
+              </Link>
+              <Link
+                to={`/deals/${deal.id}?openScope=1`}
+                className="inline-flex items-center gap-1 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-amber-600 text-white hover:bg-amber-700 rounded-sm"
+                data-testid="open-scope"
+                title="Jump to the scope editor on the deal so you can finalize the proposal text and send it to the customer for signature."
+              >
+                <FileText className="w-3 h-3" /> Open Scope →
+              </Link>
+            </div>
+            {/* Mode toggle — controls which action buttons appear in each compare column. */}
             <div className="inline-flex items-stretch border border-zinc-300 rounded-sm overflow-hidden" data-testid="mode-toggle">
               <button
                 onClick={() => setMode("estimate")}
                 className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${mode === "estimate" ? "bg-blue-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
                 data-testid="mode-estimate"
-                title="Pre-signature: compare systems and write their prices into Proposal Options A/B/C/D."
+                title="Pre-signature: per-column buttons WRITE prices into Proposal Options A/B/C/D. Use the orange ‘Open Scope →’ button when you’re ready to take the proposal to the customer."
               >
                 Estimate / Quote
               </button>
@@ -597,7 +607,7 @@ export default function Calculator() {
                 onClick={() => setMode("materials")}
                 className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${mode === "materials" ? "bg-emerald-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
                 data-testid="mode-materials"
-                title="Post-signature: push the chosen system's BoM to the deal's Material Take-off and generate a Purchase Order PDF."
+                title="Post-signature: per-column buttons push the BoM to the deal's Material Take-off and generate a Purchase Order PDF."
               >
                 Materials &amp; PO
               </button>
