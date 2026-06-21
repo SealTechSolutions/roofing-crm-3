@@ -73,6 +73,19 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _derive_sku(name: str) -> str:
+    """Derive a stable Everest SKU from a product name.
+    Group siblings by the part before the ' — ' separator (which is the size).
+    Falls back to the full name when no separator is present.
+        'Silkoxy EZ — 5 Gal Pail'        -> 'Silkoxy EZ'
+        'Silkoxy EZ — 55 Gal Drum'       -> 'Silkoxy EZ'
+        'EcoLevel — 2.5 Gallon Kit'      -> 'EcoLevel'
+        'EverStitch 272 — 4" x 300\''    -> 'EverStitch 272'
+        'Silkoxy Ever-Tread Walk Pad'    -> 'Silkoxy Ever-Tread Walk Pad'
+    """
+    return (name or "").split(" — ")[0].strip()
+
+
 def _parse_package_size(unit: str, name: str) -> tuple[float, str]:
     """Derive (package_size, normalised_unit) from a free-form unit/name.
     Everest materials are stored with unit strings like "5 Gal Pail" or
@@ -103,8 +116,10 @@ def main() -> None:
     }))
     mirrored = 0
     fixed_pkg = 0
+    fixed_sku = 0
     for m in materials:
         pkg_size, norm_unit = _parse_package_size(m.get("unit") or "", m.get("name") or "")
+        derived_sku = _derive_sku(m.get("name") or "")
         already = db.product_catalog.find_one({
             "$or": [
                 {"id": m.get("id")},
@@ -113,20 +128,26 @@ def main() -> None:
             "is_deleted": {"$ne": True},
         })
         if already:
+            patch = {}
             # Heal historical rows that were mirrored with package_size=1.0 —
             # back-fill the correct gallons-per-container from the name.
             if float(already.get("package_size") or 0) <= 1.0 and pkg_size > 1.0:
-                db.product_catalog.update_one(
-                    {"id": already["id"]},
-                    {"$set": {"package_size": pkg_size, "unit": norm_unit,
-                              "updated_at": _now()}},
-                )
+                patch.update(package_size=pkg_size, unit=norm_unit)
                 fixed_pkg += 1
+            # Heal historical empty SKUs so the calculator can group sibling
+            # container sizes (5-gal pail + 55-gal drum) without sweeping in
+            # unrelated products (EcoLevel, Walk Pad, etc.) as fake siblings.
+            if not (already.get("sku") or "").strip() and derived_sku:
+                patch["sku"] = derived_sku
+                fixed_sku += 1
+            if patch:
+                patch["updated_at"] = _now()
+                db.product_catalog.update_one({"id": already["id"]}, {"$set": patch})
             continue
         db.product_catalog.insert_one({
             "id": m.get("id") or str(uuid.uuid4()),
             "name": m.get("name", ""),
-            "sku": m.get("sku", ""),
+            "sku": derived_sku,
             "vendor": EVEREST,
             "category": "Silicone",
             "unit": norm_unit,
@@ -261,7 +282,7 @@ def main() -> None:
 
     print(
         f"Everest seed complete — mirrored {mirrored} product(s), "
-        f"healed {fixed_pkg} package-size(s), "
+        f"healed {fixed_pkg} package-size(s), {fixed_sku} sku(s), "
         f"+{granule_added} / ~{granule_healed} SESCO granule(s), "
         f"+{created_systems} system(s), "
         f"+{recipes_added} recipe row(s)."
