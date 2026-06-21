@@ -66,60 +66,77 @@ EXCLUSIONS = [
 
 
 SILICONE_TEMPLATE = {
-    "title": "RESTORATION ROOF SCOPE",
-    "spread_page_2": True,  # Silicone scopes have fewer bullets; spread page 2 to fill the sheet
-    "scope_1_title": "Inspection and Repairs",
+    # One unified silicone template — covers both smooth silicone and silicone
+    # with embedded protective granules (the granule application is an optional
+    # alt-row inside the tier table, picked up when the deal/calculator has a
+    # SESCO granule add-on). Structurally mirrors FARM_TEMPLATE so the existing
+    # build_spec_sheet tier_table renderer handles it without any code change.
+    "title": "SILICONE ROOF SCOPE",
+    "scope_1_title": "Inspection and Prep",
     "scope_1": [
-        "Inspect the roof for existing leaks, deterioration, and overall substrate condition.",
-        "Identify and document any membrane separations, blisters, ponding, and seam failures.",
-        "Cut, patch, and repair damaged areas of the existing single-ply membrane as required.",
-        "Re-seal seams, flashings, and penetrations to provide a sound substrate.",
+        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Identify wet insulation by infrared and/or core cuts; quantify replacement/ventilation areas.",
+        "Remove all roof debris, power wash existing membrane (if required), and allow to dry.",
+        "Re-seal seams, flashings, and penetrations to provide a sound substrate for coating.",
         "Verify drains, scuppers, and edge metal are functional and watertight.",
     ],
-    "scope_2_title": "Substrate Preparation and Coating",
+    "scope_2_title": "Silicone Coating Application",
     "scope_2": [
-        "Power-wash the entire roof surface to remove all dirt, oxidation, and loose debris.",
-        "Allow substrate to fully dry before application.",
-        "Apply manufacturer-approved primer where required.",
-        "Apply base coat of silicone roof coating to manufacturer's specified mil thickness.",
-        "Reinforce all seams, fasteners, and penetrations with polyester fabric set in silicone.",
-        "Apply top coat of silicone with embedded protective granules over walls and field as specified.",
-        "Final walk-through and quality inspection with the owner or owner's representative.",
+        "<b>Flashing:</b> All penetrations will be flashed with a 5-course system of mastic and fabric before and during application. Then one of the following Silkoxy silicone systems will be applied based on the selected warranty tier:",
     ],
+    "tier_table": {
+        "headers": ["20-YEAR SYSTEM", "15-YEAR SYSTEM", "10-YEAR SYSTEM", "5-YEAR SYSTEM"],
+        # Short labels used in the top "Base Investment" table on Page 1.
+        # Position 0→25-yr slot (unused for Everest silicone), 1→20, 2→15, 3→10.
+        # 5-yr has no proposal slot today so it is intentionally absent here.
+        "base_warranty_labels": [
+            "—",
+            "20-Year NDL or Standard Warranty",
+            "15-Year NDL or Standard Warranty",
+            "10-Year NDL or Standard Warranty",
+        ],
+        "rows": [
+            [
+                "Base coat of Silkoxy silicone at 1.5 GPS",
+                "Base coat of Silkoxy silicone at 1.25 GPS",
+                "Single coat of Silkoxy silicone at 2.0 GPS",
+                "Single coat of Silkoxy silicone at 1.5 GPS",
+            ],
+            [
+                "Top coat of Silkoxy silicone at 1.5 GPS",
+                "Top coat of Silkoxy silicone at 1.25 GPS",
+                "",
+                "",
+            ],
+            [
+                "Total: 3.0 GPS — two passes",
+                "Total: 2.5 GPS — two passes",
+                "Total: 2.0 GPS — single pass",
+                "Total: 1.5 GPS — single pass",
+            ],
+        ],
+        "alt_header": "Optional — Embedded Protective Granules",
+        "alt_rows": [
+            [
+                "Broadcast ceramic-coated granules into the wet top coat to full embedment for slip resistance and foot-traffic durability.",
+                "Broadcast ceramic-coated granules into the wet top coat to full embedment for slip resistance and foot-traffic durability.",
+                "Broadcast ceramic-coated granules into the wet coating to full embedment for slip resistance and foot-traffic durability.",
+                "Broadcast ceramic-coated granules into the wet coating to full embedment for slip resistance and foot-traffic durability.",
+            ],
+        ],
+        "warranty_row": [
+            "20-Yr NDL Warranty (3rd-Party Inspection) or 20-Yr Standard",
+            "15-Yr NDL Warranty (3rd-Party Inspection) or 15-Yr Standard",
+            "10-Yr NDL Warranty (3rd-Party Inspection) or 10-Yr Standard",
+            "5-Yr Standard Warranty",
+        ],
+    },
 }
 
-SILICONE_GRANULES_TEMPLATE = {
-    "title": "RESTORATION ROOF SCOPE — GRANULATED SILICONE",
-    "spread_page_2": True,
-    "scope_1_title": "Inspection and Repairs",
-    "scope_1": [
-        "Inspect the roof for existing leaks, deterioration, ponding, and overall substrate condition.",
-        "Identify and document membrane separations, blisters, fastener back-out, and seam failures.",
-        "Cut, patch, and repair damaged areas of the existing membrane to restore a sound substrate.",
-        "Re-seal seams, flashings, and penetrations using manufacturer-approved sealant.",
-        "Verify drains, scuppers, and edge metal are functional and watertight; replace as required.",
-        "Mark all field-found defects with chalk so the embedded granule layer remains a true visual record of the as-applied surface.",
-    ],
-    "scope_2_title": "Substrate Preparation and Granulated Silicone Application",
-    "scope_2": [
-        "Power-wash the entire roof surface to remove all dirt, oxidation, biological growth, and loose debris.",
-        "Allow substrate to fully dry, verifying moisture content with a calibrated meter prior to coating.",
-        "Apply manufacturer-approved primer where required by substrate type or manufacturer specification.",
-        "Apply base coat of silicone restoration coating at manufacturer's specified wet-mil thickness.",
-        "Reinforce all seams, fasteners, drains, and penetrations with polyester fabric set in silicone.",
-        "Apply finish coat of silicone, immediately broadcasting #11 (or specified) ceramic-coated roofing granules into the wet film at full embedment until refusal.",
-        "After cure, sweep and remove all loose / un-embedded granules from drains, scuppers, and gutters to prevent flow obstruction.",
-        "Provide owner with a sealed sample bottle of the granules used for any future spot repairs and warranty matching.",
-        "Final walk-through and quality inspection with the owner or owner's representative — emphasizing improved foot-traffic durability, slip resistance, and easier visual leak detection compared to a smooth silicone finish.",
-    ],
-    "key_advantages": [
-        "Slip resistance — granulated finish meets ASTM D2047 walking-surface conditions.",
-        "Leak detection — granule layer makes future damage and pinholes visually obvious.",
-        "Foot-traffic durability — protects the silicone film from dropped tools, HVAC service, and equipment routes.",
-        "UV reflectivity preserved — Cool Roof rating retained vs. dark gravel surfacings.",
-        "Manufacturer warranty parity — qualifies for the same restoration warranty terms as smooth silicone.",
-    ],
-}
+# Granulated-silicone scopes route to the unified silicone template above
+# (the protective-granule application lives as the optional alt-row inside
+# the tier table). One template covers both smooth and granulated jobs.
+SILICONE_GRANULES_TEMPLATE = SILICONE_TEMPLATE
 
 TPO_OVERLAY_TEMPLATE = {
     "title": "TPO OVER-LAY ROOF SYSTEM SCOPE",
@@ -937,6 +954,10 @@ def _pricing_table(s, doc, template: dict | None = None):
     elems = []
     has_tier_table = bool(template and template.get("tier_table"))
     is_dynamic = bool(template and template.get("dynamic_scope"))
+    # Surface the template's tier_table dict so the FARM/SILICONE base-
+    # investment label set can drive itself off the template (vs hardcoding).
+    if has_tier_table:
+        doc = {**doc, "_tier_table": template.get("tier_table") or {}}
     table_font = 9
     cell_pad = 7
     total_font = 10
@@ -983,12 +1004,23 @@ def _pricing_table(s, doc, template: dict | None = None):
         return [rows[0]] + [r for r in rows[1:] if (lambda v: v and v != "$0.00" and v != "$0")(r[1])]
 
     if has_tier_table:
+        # Allow each tier-table template to supply its own short warranty
+        # labels for the Base Investment table (FARM uses "Hail Rider"
+        # phrasing; SILICONE uses NDL/Standard). Falls back to the FARM
+        # labels when nothing is supplied so legacy templates keep working.
+        tt = (doc.get("_tier_table") or {})
+        tier_labels = tt.get("base_warranty_labels") or [
+            "25-Year Warranty w/Hail Rider",
+            "20-Year Warranty w/Hail Rider",
+            "15-Year Standard Warranty",
+            "10-Year Standard Warranty",
+        ]
         base = [
             ["Warranty Tier", "Base Investment"],
-            ["25-Year Warranty w/Hail Rider", _currency(doc.get("opt_25"))],
-            ["20-Year Warranty w/Hail Rider", _currency(doc.get("opt_20"))],
-            ["15-Year Standard Warranty", _currency(doc.get("opt_15"))],
-            ["10-Year Standard Warranty", _currency(doc.get("opt_10"))],
+            [tier_labels[0], _currency(doc.get("opt_25"))],
+            [tier_labels[1], _currency(doc.get("opt_20"))],
+            [tier_labels[2], _currency(doc.get("opt_15"))],
+            [tier_labels[3], _currency(doc.get("opt_10"))],
         ]
         base = _nonzero(base)
     else:
