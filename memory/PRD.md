@@ -922,6 +922,16 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - **Tested** (iteration_29): 7/7 pytest backend cases pass. Frontend Playwright verified: sidebar vendor grouping, 4-system compare limit (5th blocked), 25-yr Gravel math, container packing exact, Walk Pads $1,500 across 4 columns, Pull-from-Calculator button, Push-to-Deal flow (creates Materials cost_items, navigates back to deal). One header bug `deal.name → deal.title` fixed post-test. Final compare column saves only raw cost lines now (markup line removed — was inflating Total Costs).
 
 
+## 2026-02-21 (evening) — Calculator polish per Darren's review
+- **AA system_type fix**: 3 Western Colloid AA systems (20-Yr / 10-Yr All-Acrylic, 10-Yr Metal Roof) were tagged as "Silicone" — wrong. Updated DB + `CATEGORIES` constant (FE + BE) to include "All-Acrylic", so the sidebar now reads "ALL-ACRYLIC · 10-YR" etc.
+- **Per-SF price precision**: customer-facing $/SF line now shows two decimals (e.g. `$4.42/SF` instead of `$4/SF`) via inline `Intl.NumberFormat` — `formatCurrency` helper untouched so the rest of the app keeps whole-dollar formatting.
+- **Site Access — Allowed Containers toggle**: 3-button pill row in the controls bar (`data-testid="toggle-container-{tote|drum|pail}"`) lets the salesperson exclude container sizes the job site can't accept (no forklift, no truck access, residential alley, etc.). The greedy packer skips disabled sizes in real time and re-runs the math. Container kind ("tote" / "drum" / "pail") is now baked into the on-screen BoM AND the cost-item description pushed to the deal, so the resulting PO line for the vendor reads `Asphalt Emulsion Non-Fibered (47×55gal drum, 3×5gal pail) — 25-Year Gravel`.
+- **"Markup" → "Shipping" rename** everywhere in Calculator + Product Catalog Settings. Backend field `markup_pct` kept as-is (no migration).
+- **Fabric-layer recipes (final pass)**: After Darren provided the per-system layer counts and confirmed `rolls = ceil(layers × roof_sf / 1000)` (one 40"×330' roll covers ~1,000 sf incl. overlap = 10 squares), `scripts/set_fabric_layers.py` rewrote all 8 fabric recipe rows. Now: 25/20-Yr Gravel = 3 SOFT, 25/20-Yr Membrane = 3 FIRM, 20-Yr AA = 2 FIRM, 15-Yr Membrane = 2 FIRM, 10-Yr Membrane = 1 FIRM, 10-Yr AA = 1 FIRM, 10-Yr Metal = no fabric. Each recipe row carries a human-readable `notes` (e.g. *"3 layers of 40" firm fabric (~1,000 sf coverage per roll incl. overlap)"*) that the calculator now surfaces as an italic subtitle under each BoM line so the salesperson can see the assumption inline.
+- **Floating-point safety**: added `snap()` helper in `packContainers` so 5.000076 doesn't ceil to 6 anymore.
+- **Pending for Darren's tomorrow review**: AA systems (20-Yr/10-Yr) and 25-Yr Membrane fabric layers are inferred from the CSV — confirm those match field experience.
+
+
 
 ## 2026-02-19 — Property Evaluation PDF (non-fee-based courtesy report)
 - **New 6–7 page PDF** at `GET /api/assessments/{id}/evaluation.pdf` — sibling of the 12-page Commercial Roof Assessment Report. Backed by `/app/backend/property_evaluation_pdf.py` which imports all helpers/colors/styles from `assessment_pdf.py` so the two outputs stay visually consistent without copy-paste drift.
