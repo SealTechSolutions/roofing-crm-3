@@ -1,0 +1,55 @@
+{
+  "summary": "Comprehensive backend + frontend testing of Material Calculator Milestone 2 & 3 (Calculator.jsx + DealDetail Pull-from-Calculator). 7/7 backend pytest cases pass. Frontend: nav-calculator link, vendor grouping, 4-system compare limit (5th blocked with toast 'Compare up to 4 systems at a time'), 25-Yr Gravel E/A math, container packing greedy (9×275+2×55+3×5 exact), Walk Pads add-on across all 4 columns ($1,500 = 10×5), Pull-from-Calculator link, Push-to-Deal flow (creates 3 Materials + 1 Other cost_items with correct vendor_name/amount/description) ALL PASS. ONE BUG FOUND: Calculator header shows 'Estimate for undefined' instead of the deal title because Calculator.jsx reads deal.name but the backend deal model uses deal.title. Also a confirm() dialog says 'Push this Bill of Materials to deal \"undefined\"' for the same reason. Backend product count is 31 WC products vs the spec's 32 (off by one).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/products", "issue": "Only 31 Western Colloid products returned; spec said 32 (5 sizes × chemical SKUs). Off by one — verify the Western Colloid CSV import covered every chemical's full container ladder."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Calculator header (Calculator.jsx line 317)", "issue": "Renders `Estimate for ${deal.name}` but the deal API returns the deal name under the key `title` (not `name`). Result: header reads 'Estimate for undefined' when opened via Pull-from-Calculator. Same issue in window.confirm() at line 227 ('Push this Bill of Materials to deal \"undefined\"').", "selector": "h1 on /calculator?deal=<id>", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_flows": {
+    "nav_calculator_sidebar_link": "PASS — [data-testid=nav-calculator] present and routes to /calculator",
+    "vendor_grouping": "PASS — sidebar shows 'GACO' and 'WESTERN COLLOID' headers; 10 systems total",
+    "compare_limit": "PASS — picking a 5th system shows toast 'Compare up to 4 systems at a time'; only 4 compare-col-* render",
+    "25yr_gravel_packing": "PASS — Asphalt Emulsion Needs 2600.0 gal → 9×275 ($12,598) + 2×55 ($750) + 3×5 ($135) = $13,483 exact",
+    "elastahyde_900gal": "PASS — Needs 900.0 gal → 3×275 + 1×55 + 4×5 = $21,343",
+    "fabric_one_roll": "PASS — Standard Soft Fabric Needs 0.9 roll → 1×1 roll = $135 (NOT 300 rolls — lf→roll conversion works)",
+    "customer_price": "PASS — Raw $34,961 → +15% Markup $5,244 → +10% Handling $4,021 → Customer Price $44,226 (within spec range $44k–$48k)",
+    "walk_pads_addon": "PASS — addon-walk_pads_grey=50 → 10×5gal = $1,500, appears in ALL 4 active compare columns",
+    "pull_from_calculator_button": "PASS — DealDetail Vendor Cost card shows [data-testid=pull-from-calculator] with href=/calculator?deal=<id>",
+    "deal_context_prefill": "PARTIAL — Total SF only prefills if deal.property_sqft is truthy (TEST_Lead Deal has property_sqft=0 so it didn't prefill); BUG: header says 'Estimate for undefined' (see ui_bugs)",
+    "push_to_deal": "PASS — save-to-deal-0 click → 4 cost_items appended (3 Materials w/ vendor_name='Western Colloid' + 1 'Other' markup line $9,264.70). Each Materials line has category='Materials', non-zero amount, description='<product> (<container summary>) — 25-Year Gravel System (E/A)', the 'Other' line has category='Other' and description 'Markup 15% + Handling 10% — <system>'. Navigated back to deal; new lines persisted (Total Costs $44,226 visible)."
+  },
+  "critical_code_review_comments": [
+    "BUG: Calculator.jsx uses deal.name in two places (line 317 header, line 227 confirm dialog). The deals API model uses `title`. Fix: `${deal.title || deal.name}` to be safe with future renames, or just `deal.title`.",
+    "Calculator.jsx is 580 lines — still manageable, but CompareColumn could move into its own file.",
+    "Push-to-Deal silently swallows the calculator_only flag (line 270 comment says backend ignores it). Confirm whether downstream profit/margin math should also exclude the 'Other' markup line — currently it inflates Total Costs in the deal P&L (Total Costs $44,226 includes the $9,264.70 markup line, which is actually customer-side revenue uplift, not vendor cost). This may distort margin reporting.",
+    "settings.waste_pct is loaded but the calc only uses local `waste` state (good). No issue.",
+    "The 'No recipe assigned yet' fallback (line 487) renders for Gaco S20 Silicone 20-yr which has no recipe — expected.",
+    "saveColumnToDeal strips many fields from the body before PUT (line 276-280) — fine, but worth a comment that vendor_id is always null on calc-pushed lines."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_calculator.py",
+    "/app/test_reports/pytest/pytest_iter29.xml"
+  ],
+  "action_items": [
+    "Fix Calculator.jsx header + confirm dialog to use deal.title (or deal.title || deal.name). Currently shows 'Estimate for undefined' which Darren will see.",
+    "(Optional) Investigate why only 31/32 Western Colloid products are present — check import_western_colloid.py log for skipped rows.",
+    "(Optional) Decide whether the 'Other / Markup+Handling' cost line should be excluded from deal Total Costs / margin math so customer-facing price ≠ cost-side ledger."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_calculator.py (new file — 7 pytest cases for /api/products, /api/systems, /api/systems/{id}/recipe, /api/calculator/settings, packing math, TEST_ deals presence)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "~90% (all flows work; 1 cosmetic header bug)"},
+  "test_credentials": "darren@sealtechsolutions.co / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Pushed 4 cost_items to TEST_Lead Deal (640a9104-0bd5-44dd-9f13-51e4b8cd2e4e): 3× Materials (Western Colloid) + 1× Other (Markup). Per main agent's note ('Darren can clean up'), left them in place. No real deals or photos were touched.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Calculator math is rock-solid: 25-yr Gravel @ 10k SF returned exactly $13,483 (emulsion) + $21,343 (ElastaHyde) + $135 (fabric) = $34,961 raw → $44,226 customer. Container packing greedy works as specified. Walk Pads add-on $1,500 propagated correctly across 4 compare columns. The ONLY user-visible defect is the deal-name field mismatch in the calculator header (deal.name vs deal.title). After main agent fixes Calculator.jsx line 317 + 227, retest by opening /calculator?deal=640a9104-0bd5-44dd-9f13-51e4b8cd2e4e and verifying the h1 says 'Estimate for TEST_Lead Deal' (not 'Estimate for undefined'). Also note: 31 vs 32 WC products — minor data discrepancy worth a single SELECT on product_catalog with vendor='Western Colloid' to confirm the missing SKU."
+}

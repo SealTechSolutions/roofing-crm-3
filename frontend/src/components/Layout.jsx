@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise, Camera, Package } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise, Camera, Package, Calculator as CalcIcon } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 import { api } from "@/lib/api";
@@ -16,6 +16,7 @@ const ALL_NAV = [
   { to: "/field", label: "Field Camera", icon: Camera, testId: "nav-field" },
   { to: "/assessments", label: "Assessments", icon: ClipboardCheck, testId: "nav-assessments" },
   { to: "/catalog", label: "Product Catalog", icon: Package, testId: "nav-catalog" },
+  { to: "/calculator", label: "Calculator", icon: CalcIcon, testId: "nav-calculator" },
   { to: "/maintenance", label: "Maintenance", icon: Wrench, testId: "nav-maintenance" },
   { to: "/invoices", label: "Invoices", icon: Receipt, testId: "nav-invoices" },
   { to: "/payables", label: "Payables", icon: Wallet, testId: "nav-payables" },

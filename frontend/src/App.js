@@ -27,6 +27,7 @@ import TrashPage from "@/pages/Trash";
 import Profile from "@/pages/Profile";
 import Assessments from "@/pages/Assessments";
 import ProductCatalog from "@/pages/ProductCatalog";
+import Calculator from "@/pages/Calculator";
 import AssessmentEditor from "@/pages/AssessmentEditor";
 import Calendar from "@/pages/Calendar";
 import Tasks from "@/pages/Tasks";
@@ -119,6 +120,7 @@ function App() {
               <Route path="/library" element={<Library />} />
               <Route path="/assessments" element={<Assessments />} />
               <Route path="/catalog" element={<ProductCatalog />} />
+              <Route path="/calculator" element={<Calculator />} />
               <Route path="/assessments/new" element={<AssessmentEditor />} />
               <Route path="/assessments/:id" element={<AssessmentEditor />} />
               <Route path="/calendar" element={<Calendar />} />

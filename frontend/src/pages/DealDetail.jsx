@@ -824,9 +824,14 @@ export default function DealDetail() {
 
       {/* Cost Items */}
       <Card title="Vendor Cost Line Items" right={
-        <button data-testid="add-cost-item" onClick={addCostItem} className="inline-flex items-center gap-1 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm">
-          <Plus className="w-3 h-3" /> Add Line
-        </button>
+        <div className="flex items-center gap-2">
+          <Link to={`/calculator?deal=${deal.id}`} className="inline-flex items-center gap-1 px-3 h-8 text-[10px] font-bold uppercase tracking-wider border border-blue-700 text-blue-700 bg-white hover:bg-blue-50 rounded-sm" data-testid="pull-from-calculator">
+            <FileText className="w-3 h-3" /> Pull from Calculator
+          </Link>
+          <button data-testid="add-cost-item" onClick={addCostItem} className="inline-flex items-center gap-1 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm">
+            <Plus className="w-3 h-3" /> Add Line
+          </button>
+        </div>
       }>
         {(deal.cost_items || []).length === 0 ? (
           <div className="text-sm text-zinc-500 py-6 text-center">No cost items yet. Add materials, labor, or sub payments as they occur.</div>
