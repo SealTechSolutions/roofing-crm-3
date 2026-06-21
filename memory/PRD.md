@@ -24,9 +24,13 @@
 - ✅ Maintenance Plans with visit logs, auto next-due-date
 - ✅ Invoices (PDF + Gmail SMTP email, sequential INV-YYYY-NNNN)
 - ✅ Payables Module (Gemini Vision invoice parsing, weekly Friday report via APScheduler)
-- ✅ Materials Catalog (SKU, vendor cost, shipping %, markup %, loaded cost)
+- ✅ Materials Catalog (SKU, vendor cost, shipping %, handling %, loaded cost)
 - ✅ Vendor / Subcontractor management with contact name, title, website
 - ✅ Spec Sheet PDF generator with brand styling
+- ✅ Material Calculator — Western Colloid + Gaco + **Everest Systems** (2026-02-21)
+  - Everest NDL warranty pricing: $1,000 Standard / $3,500 NDL — auto-applied per Everest column via NDL toggle, persists on deal as `warranty_*_ndl` booleans
+  - Starter Everest systems: 5/10/15/20-yr Silkoxy Silicone (no 25-yr band)
+  - 36 Everest products mirrored into `product_catalog` from `materials`
 
 ## Recent Imports (2026-02)
 - ✅ Western Colloids Pricing 2023 — 48 items imported under **National Waterproofing and Supply**
