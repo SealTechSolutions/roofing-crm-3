@@ -27,10 +27,18 @@
 - ✅ Materials Catalog (SKU, vendor cost, shipping %, handling %, loaded cost)
 - ✅ Vendor / Subcontractor management with contact name, title, website
 - ✅ Spec Sheet PDF generator with brand styling
-- ✅ Material Calculator — Western Colloid + Gaco + **Everest Systems** (2026-02-21)
-  - Everest NDL warranty pricing: $1,000 Standard / $3,500 NDL — auto-applied per Everest column via NDL toggle, persists on deal as `warranty_*_ndl` booleans
-  - Starter Everest systems: 5/10/15/20-yr Silkoxy Silicone (no 25-yr band)
-  - 36 Everest products mirrored into `product_catalog` from `materials`
+- ✅ Material Calculator — Western Colloid + Gaco + **Everest Systems + SESCO** (2026-02-21)
+  - Everest NDL warranty pricing — **$3,000 inspection + per-SF rate** ($0.06/$0.09/$0.12 for 10/15/20-yr). Standard $1,000 flat. 5-yr has no NDL.
+  - Per-column NDL toggle persists to deal as `warranty_*_ndl` booleans
+  - Starter Everest systems with Silkoxy EZ recipes:
+    - 5-yr → 1.5 GPS, single pass
+    - 10-yr → 2.0 GPS, single pass
+    - 15-yr → 2.5 GPS, two passes
+    - 20-yr → 3.0 GPS, two passes
+  - 36 Everest products mirrored into `product_catalog` with healed `package_size` (5/55-Gal containers correctly priced per gallon)
+  - Everest Add-ons sidebar (EcoLevel, EverStitch fabric, Silkoxy Patch/Flashing, Walk Pad)
+  - SESCO granule colours (BUFF/BROWN/RAINBOW/6-10 White/Snow White) at LTL pricing
+  - Auto-applied SESCO LTL freight ($2,000 flat per order when any granule qty > 0)
 
 ## Recent Imports (2026-02)
 - ✅ Western Colloids Pricing 2023 — 48 items imported under **National Waterproofing and Supply**
