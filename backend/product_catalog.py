@@ -37,10 +37,12 @@ UNITS = ["gal", "pail", "roll", "sf", "lf", "ea", "bag", "tube", "box"]
 COVERAGE_BASIS = ["per_100sf", "per_sf", "per_lf", "per_each_optional"]
 
 DEFAULT_SETTINGS = {
-    "markup_pct": 15.0,        # 15% job-cost markup on raw material
+    "markup_pct": 15.0,        # 15% shipping markup on raw material
     "handling_pct": 10.0,      # 10% handling fee applied to the marked-up total
     "handling_basis": "marked_up",  # "marked_up" or "raw"
     "waste_pct": 0.0,          # optional waste factor added to qty
+    "overhead_pct": 10.0,      # Overhead % applied to (raw + shipping + handling + warranty + labor)
+    "profit_pct": 10.0,        # Profit % applied compounded after Overhead
 }
 
 
@@ -309,7 +311,7 @@ def create_router(db, get_current_user):
     @router.put("/calculator/settings")
     async def update_settings(body: dict = Body(...), _=Depends(get_current_user)):
         patch = {}
-        for k in ("markup_pct", "handling_pct", "waste_pct"):
+        for k in ("markup_pct", "handling_pct", "waste_pct", "overhead_pct", "profit_pct"):
             if k in body:
                 v = float(body[k] or 0)
                 if v < 0 or v > 100:

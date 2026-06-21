@@ -442,12 +442,16 @@ function SettingsTab() {
           </select>
         </div>
         <div><label className={labelCls}>Default waste factor %</label><input type="number" step="0.01" className={inputCls} value={s.waste_pct} onChange={(e)=>setS({...s,waste_pct:parseFloat(e.target.value)||0})} /></div>
+        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-200">
+          <div><label className={labelCls}>Overhead %</label><input type="number" step="0.01" data-testid="settings-overhead-pct" className={inputCls} value={s.overhead_pct ?? 10} onChange={(e)=>setS({...s,overhead_pct:parseFloat(e.target.value)||0})} /></div>
+          <div><label className={labelCls}>Profit %</label><input type="number" step="0.01" data-testid="settings-profit-pct" className={inputCls} value={s.profit_pct ?? 10} onChange={(e)=>setS({...s,profit_pct:parseFloat(e.target.value)||0})} /></div>
+        </div>
         <div className="flex justify-end">
           <button onClick={save} className="bg-blue-700 text-white px-3 h-9 text-xs font-bold uppercase tracking-wider">Save Settings</button>
         </div>
       </div>
       <div className="text-xs text-zinc-500 border border-zinc-200 p-3 rounded-sm bg-zinc-50">
-        <b>How the math works:</b> Raw material cost = Σ(qty × unit price). Shipping adds {s.markup_pct}% (covers freight from the vendor to the jobsite). Handling fee adds {s.handling_pct}% {s.handling_basis === "marked_up" ? "on the shipping-included total" : "on the raw cost only"}.
+        <b>How the math works:</b> Raw material cost = Σ(qty × unit price). Shipping adds {s.markup_pct}% (covers freight from the vendor to the jobsite). Handling fee adds {s.handling_pct}% {s.handling_basis === "marked_up" ? "on the shipping-included total" : "on the raw cost only"}. Then per-option Labor + Warranty are added, then Overhead ({s.overhead_pct ?? 10}%) and Profit ({s.profit_pct ?? 10}%) compound on top.
       </div>
     </div>
   );

@@ -139,7 +139,7 @@ export default function Calculator() {
   const [products, setProducts] = useState([]);
   const [systems, setSystems] = useState([]);
   const [recipes, setRecipes] = useState({}); // {system_id: [recipe_rows]}
-  const [settings, setSettings] = useState({ markup_pct: 15, handling_pct: 10, handling_basis: "marked_up", waste_pct: 0 });
+  const [settings, setSettings] = useState({ markup_pct: 15, handling_pct: 10, handling_basis: "marked_up", waste_pct: 0, overhead_pct: 10, profit_pct: 10 });
   const [loading, setLoading] = useState(true);
 
   // Persisted prefs (loaded once on mount via the lazy initialiser).
@@ -150,6 +150,10 @@ export default function Calculator() {
   const [allowedSizes, setAllowedSizes] = useState(initialPrefs.allowedSizes || { tote: true, drum: true, pail: true });
   const [selectedSystemIds, setSelectedSystemIds] = useState([]);
   const [addons, setAddons] = useState({});      // {addon_id: qty} (shared across compared systems)
+  // Per-warranty-band labor dollar amount. Rep types this per job — different
+  // every roof. Map: {25: 6300, 20: 5800, 15: 4500, 10: 3500}. Persisted to the
+  // deal as labor_25yr_add / _20yr_add / _15yr_add / _10yr_add when "Set" fires.
+  const [laborByWarranty, setLaborByWarranty] = useState({});
 
   const [deals, setDeals] = useState([]);
   const [selectedDealId, setSelectedDealId] = useState(initialDealId || "");
@@ -200,6 +204,14 @@ export default function Calculator() {
     }
     api.get(`/deals/${selectedDealId}`).then(async (r) => {
       setDeal(r.data);
+      // Pre-fill the per-warranty labor inputs from whatever the rep typed last
+      // time on this deal (mirrors how warranty_*_add is persisted).
+      setLaborByWarranty({
+        25: Number(r.data.labor_25yr_add || 0),
+        20: Number(r.data.labor_20yr_add || 0),
+        15: Number(r.data.labor_15yr_add || 0),
+        10: Number(r.data.labor_10yr_add || 0),
+      });
       // Auto-switch to Materials & PO mode if the customer has signed off
       // (Darren can manually toggle back to Estimate if needed).
       if (r.data.scope_signed_at) setMode("materials");
@@ -322,10 +334,17 @@ export default function Calculator() {
                                   15: "warranty_15yr_add", 10: "warranty_10yr_add" };
     const warrantyField = WARRANTY_ADD_FIELD[system.warranty_years];
     const warrantyAdd = (deal && warrantyField) ? Number(deal[warrantyField] || 0) : 0;
-    const customer = markedUp + handling + warrantyAdd;
+    // Labor — per-warranty input the rep types on each column. Stored in
+    // laborByWarranty state and persisted to deal.labor_*_add on save.
+    const laborAdd = Number(laborByWarranty[system.warranty_years] || 0);
+    // Subtotal before OH&P
+    const subtotal = markedUp + handling + warrantyAdd + laborAdd;
+    const overhead = subtotal * ((settings.overhead_pct || 0) / 100);
+    const profit   = (subtotal + overhead) * ((settings.profit_pct || 0) / 100);
+    const customer = subtotal + overhead + profit;
     const pricePerSf = sf > 0 ? customer / sf : 0;
 
-    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, customer, pricePerSf };
+    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, laborAdd, subtotal, overhead, profit, customer, pricePerSf };
   };
 
   const columns = useMemo(() => {
@@ -333,7 +352,7 @@ export default function Calculator() {
       .map((id) => systems.find((s) => s.id === id))
       .filter(Boolean)
       .map(computeBom);
-  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, allowedSizes, deal]);
+  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, allowedSizes, deal, laborByWarranty]);
 
   // ────────────────────────────────────────────────────────────────────
   //   Calculator → Deal action handlers (split by mode)
@@ -356,10 +375,13 @@ export default function Calculator() {
       toast.error(`No proposal slot for ${col.system.warranty_years}-yr warranty`);
       return;
     }
+    const LABOR_ADD_FIELD = { 25: "labor_25yr_add", 20: "labor_20yr_add", 15: "labor_15yr_add", 10: "labor_10yr_add" };
     const customerRounded = Math.round(col.customer * 100) / 100;
+    const laborField = LABOR_ADD_FIELD[col.system.warranty_years];
     setSavingToDeal(true);
     try {
       const body = { ...deal, [field]: customerRounded };
+      if (laborField) body[laborField] = Math.round((col.laborAdd || 0) * 100) / 100;
       ["id","created_at","updated_at","created_by",
        "materials_cost","labor_cost","subcontractor_cost","other_expenses_total",
        "total_costs","profit","margin_pct","is_deleted","deleted_at","deleted_by",
@@ -381,11 +403,14 @@ export default function Calculator() {
     if (columns.length === 0) { toast.warning("Pick at least one system to compare"); return; }
     const updates = {};
     const summary = [];
+    const LABOR_FIELDS = { 25: "labor_25yr_add", 20: "labor_20yr_add", 15: "labor_15yr_add", 10: "labor_10yr_add" };
     for (const col of columns) {
       const field = PROPOSAL_FIELD_BY_WARRANTY[col.system.warranty_years];
       const letter = OPTION_LETTER[col.system.warranty_years];
       if (!field) continue;
       updates[field] = Math.round(col.customer * 100) / 100;
+      const lf = LABOR_FIELDS[col.system.warranty_years];
+      if (lf) updates[lf] = Math.round((col.laborAdd || 0) * 100) / 100;
       summary.push(`Option ${letter} = ${formatCurrency(col.customer)}`);
     }
     if (!Object.keys(updates).length) {
@@ -858,6 +883,7 @@ export default function Calculator() {
                   onSetOption={deal ? () => setOptionOnDeal(col) : null}
                   onPushMaterials={deal ? () => pushMaterialsToDeal(col) : null}
                   onPushAndPo={deal ? () => pushMaterialsToDeal(col, { andDownloadPo: true }) : null}
+                  onLaborChange={(v) => setLaborByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
                   savingToDeal={savingToDeal}
                   testIdSuffix={idx}
                 />
@@ -896,8 +922,8 @@ export default function Calculator() {
   );
 }
 
-function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, onPushMaterials, onPushAndPo, savingToDeal, testIdSuffix }) {
-  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, customer, pricePerSf } = col;
+function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, onPushMaterials, onPushAndPo, savingToDeal, testIdSuffix, onLaborChange }) {
+  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, laborAdd, overhead, profit, customer, pricePerSf } = col;
   const hasRecipe = lines.length > 0;
   const optionLetter = { 25: "A", 20: "B", 15: "C", 10: "D" }[system.warranty_years];
   return (
@@ -1000,6 +1026,25 @@ function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, on
         <Row label={`+${settings.handling_pct}% Handling`} value={handling} />
         {warrantyAdd > 0 && (
           <Row label={`+ Warranty (${system.warranty_years}-yr)`} value={warrantyAdd} />
+        )}
+        {/* Labor — per-warranty input, free-form $ (per-SF or flat-project) */}
+        <div className="flex items-center justify-between gap-2 font-mono">
+          <label className="text-zinc-600 text-[11px]">+ Labor ($ for this option)</label>
+          <input
+            type="number" min="0" step="50"
+            value={laborAdd || ""}
+            onChange={(e) => onLaborChange?.(Number(e.target.value) || 0)}
+            placeholder="0"
+            data-testid={`labor-input-${testIdSuffix}`}
+            className="w-24 border border-zinc-300 px-2 h-7 text-xs font-mono text-right focus:outline-none focus:border-blue-700"
+            title="Enter total labor $ for this system on this job (per-SF × SF or flat-project). Saved on the deal."
+          />
+        </div>
+        {(settings.overhead_pct || 0) > 0 && (
+          <Row label={`+${settings.overhead_pct}% Overhead`} value={overhead} />
+        )}
+        {(settings.profit_pct || 0) > 0 && (
+          <Row label={`+${settings.profit_pct}% Profit`} value={profit} />
         )}
         <div className="border-t border-zinc-300 pt-1.5 mt-1.5 flex items-baseline justify-between">
           <div>
