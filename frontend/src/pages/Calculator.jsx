@@ -47,6 +47,42 @@ const ADDON_TEMPLATES = [
   { id: "fabric_20in",      label: 'Fabric 20" x 300\'',       sku: '20" x 300\'',    unit: "rolls", default_qty: 0 },
 ];
 
+// Everest-specific add-ons (Silkoxy Patch / Flashing Grade, EcoLevel, EverStitch
+// fabric strips, Silkoxy Ever-Tread Walk Pad) plus SESCO granules — only shown
+// in the sidebar when the selected vendor is Everest Systems. Each item maps to
+// a real product_catalog row by `match` (vendor + name contains). Granule rows
+// trigger a flat $2,000 SESCO freight surcharge on the column (added once if
+// any granule qty > 0).
+const EVEREST_ADDON_TEMPLATES = [
+  // EcoLevel (slope-correction kits)
+  { id: "ev_ecolevel_2_5",  label: "EcoLevel — 2.5 Gal Kit",   match: { vendor: "Everest Systems", name_includes: "EcoLevel — 2.5 Gallon Kit" }, unit: "kit",  default_qty: 0 },
+  { id: "ev_ecolevel_4",    label: "EcoLevel — 4 Gal Kit",     match: { vendor: "Everest Systems", name_includes: "EcoLevel — 4 Gallon Kit" },   unit: "kit",  default_qty: 0 },
+  // EverStitch reinforcing fabric (per roll)
+  { id: "ev_stitch_4",   label: 'EverStitch 272 — 4" x 300\'',  match: { vendor: "Everest Systems", name_includes: 'EverStitch 272 — 4"' },  unit: "roll", default_qty: 0 },
+  { id: "ev_stitch_6",   label: 'EverStitch 272 — 6" x 300\'',  match: { vendor: "Everest Systems", name_includes: 'EverStitch 272 — 6"' },  unit: "roll", default_qty: 0 },
+  { id: "ev_stitch_12",  label: 'EverStitch 272 — 12" x 300\'', match: { vendor: "Everest Systems", name_includes: 'EverStitch 272 — 12"' }, unit: "roll", default_qty: 0 },
+  { id: "ev_stitch_20",  label: 'EverStitch 272 — 20" x 300\'', match: { vendor: "Everest Systems", name_includes: 'EverStitch 272 — 20"' }, unit: "roll", default_qty: 0 },
+  { id: "ev_stitch_39",  label: 'EverStitch 272 — 39" x 300\'', match: { vendor: "Everest Systems", name_includes: 'EverStitch 272 — 39"' }, unit: "roll", default_qty: 0 },
+  { id: "ev_stitch_40",  label: 'EverStitch 272 — 40" x 324\'', match: { vendor: "Everest Systems", name_includes: 'EverStitch 272 — 40"' }, unit: "roll", default_qty: 0 },
+  // Silkoxy field add-ons
+  { id: "ev_flashing_2",  label: "Silkoxy Flashing Grade — 2 Gal", match: { vendor: "Everest Systems", name_includes: "Silkoxy Flashing Grade — 2 Gal" }, unit: "pail", default_qty: 0 },
+  { id: "ev_flashing_5",  label: "Silkoxy Flashing Grade — 5 Gal", match: { vendor: "Everest Systems", name_includes: "Silkoxy Flashing Grade — 5 Gal" }, unit: "pail", default_qty: 0 },
+  { id: "ev_patch_2",     label: "Silkoxy Patch — 2 Gal",          match: { vendor: "Everest Systems", name_includes: "Silkoxy Patch — 2 Gal" },          unit: "pail", default_qty: 0 },
+  { id: "ev_patch_5",     label: "Silkoxy Patch — 5 Gal",          match: { vendor: "Everest Systems", name_includes: "Silkoxy Patch — 5 Gal" },          unit: "pail", default_qty: 0 },
+  { id: "ev_ever_tread",  label: "Silkoxy Ever-Tread Walk Pad",    match: { vendor: "Everest Systems", name_includes: "Ever-Tread Walk Pad" },            unit: "roll", default_qty: 0 },
+  // SESCO granules (50 / 100 lb bags). Buying from SESCO but applied on Everest
+  // jobs — listed under Everest add-ons per the customer workflow.
+  { id: "sesco_buff",        label: "Granules — Buff (50 lb bag)",          match: { vendor: "SESCO", name_includes: "BUFF" },        unit: "bag", isGranule: true, default_qty: 0 },
+  { id: "sesco_brown",       label: "Granules — Brown (100 lb bag)",        match: { vendor: "SESCO", name_includes: "BROWN" },       unit: "bag", isGranule: true, default_qty: 0 },
+  { id: "sesco_rainbow",     label: "Granules — Rainbow (100 lb bag)",      match: { vendor: "SESCO", name_includes: "RAINBOW" },     unit: "bag", isGranule: true, default_qty: 0 },
+  { id: "sesco_6_10_white",  label: "Granules — 6/10 White (50 lb bag)",    match: { vendor: "SESCO", name_includes: "6/10 WHITE" },  unit: "bag", isGranule: true, default_qty: 0 },
+  { id: "sesco_snow_white",  label: "Granules — Snow White (50 lb bag)",    match: { vendor: "SESCO", name_includes: "SNOW WHITE" },  unit: "bag", isGranule: true, default_qty: 0 },
+];
+
+// Flat freight surcharge applied once per column when any SESCO granule line
+// has qty > 0. Set by SESCO's published LTL rate.
+const SESCO_GRANULE_FREIGHT = 2000;
+
 // One-click "stress points bundle" — typical fabric strip qty for a smaller
 // commercial roof (penetrations, edges, drains). Tweak via the inputs after.
 const STRESS_POINTS_PRESET = {
@@ -327,14 +363,29 @@ export default function Calculator() {
       });
     }
 
-    // Apply add-ons (shared across all systems)
+    // Apply add-ons (shared across all systems). Each entry in `addons` maps an
+    // addon-template id to a qty. Two template families exist:
+    //   - ADDON_TEMPLATES         → SKU-based (Western Colloid)
+    //   - EVEREST_ADDON_TEMPLATES → vendor+name-based (Everest + SESCO granules)
     const addonLines = [];
+    let granuleQtyTotal = 0;
     for (const [aid, qty] of Object.entries(addons)) {
       if (!qty || qty <= 0) continue;
-      const tpl = ADDON_TEMPLATES.find((a) => a.id === aid);
+      const evTpl = EVEREST_ADDON_TEMPLATES.find((a) => a.id === aid);
+      const tpl = evTpl || ADDON_TEMPLATES.find((a) => a.id === aid);
       if (!tpl) continue;
-      // Pick the cheapest product with matching SKU (any container)
-      const matching = products.filter((p) => p.sku === tpl.sku);
+      // Resolve the catalog row(s) backing this add-on.
+      let matching;
+      if (evTpl) {
+        const v = (evTpl.match.vendor || "").toLowerCase();
+        const n = (evTpl.match.name_includes || "").toLowerCase();
+        matching = products.filter(
+          (p) => (p.vendor || "").toLowerCase() === v &&
+                 (p.name   || "").toLowerCase().includes(n)
+        );
+      } else {
+        matching = products.filter((p) => p.sku === tpl.sku);
+      }
       if (matching.length === 0) continue;
       const filtered = matching.filter((c) => {
         const k = classifyContainer(c);
@@ -348,24 +399,43 @@ export default function Calculator() {
       addonLines.push({
         addon: tpl, qtyNeeded: Number(qty), qtyPacked: lineQty, packed, lineCost,
       });
+      if (evTpl && evTpl.isGranule) granuleQtyTotal += Number(qty);
+    }
+    // SESCO LTL freight — flat $2,000 per column when ANY granule is ordered.
+    if (granuleQtyTotal > 0) {
+      addonLines.push({
+        addon: { id: "sesco_freight", label: "SESCO Granule Freight (LTL)", unit: "flat" },
+        qtyNeeded: 1, qtyPacked: 1,
+        packed: [{ qty: 1, gallons: 0, cost: SESCO_GRANULE_FREIGHT,
+                   product: { name: "SESCO LTL Freight", vendor: "SESCO",
+                              unit: "flat", package_size: 1 } }],
+        lineCost: SESCO_GRANULE_FREIGHT,
+      });
     }
 
     const rawCost = lines.reduce((s, l) => s + l.lineCost, 0) + addonLines.reduce((s, l) => s + l.lineCost, 0);
     const markedUp = rawCost * (1 + settings.markup_pct / 100);
     const handlingBase = settings.handling_basis === "raw" ? rawCost : markedUp;
     const handling = handlingBase * (settings.handling_pct / 100);
-    // Warranty up-charge — most vendors persist a flat $ on the deal
-    // (warranty_*_add). Everest Systems is special: pricing is $1,000 for any
-    // Standard warranty and $3,500 for any NDL warranty, regardless of roof
-    // size or warranty length. The rep ticks the NDL toggle per column; the
-    // Everest tier overrides whatever was last saved on the deal.
+    // Warranty up-charge — Everest gets vendor-specific pricing; other vendors
+    // read the rep-entered flat $ from the deal.
+    //   Standard: $1,000 flat (any band — no inspection).
+    //   NDL: $3,000 third-party inspection + per-SF rate based on warranty band.
+    //        ($0.06/SF @ 10-yr, $0.09/SF @ 15-yr, $0.12/SF @ 20-yr.) 5-yr has
+    //        no NDL option — the toggle is hidden for that band.
     const WARRANTY_ADD_FIELD = { 25: "warranty_25yr_add", 20: "warranty_20yr_add",
                                   15: "warranty_15yr_add", 10: "warranty_10yr_add" };
+    const NDL_PER_SF = { 10: 0.06, 15: 0.09, 20: 0.12 };  // no 5-yr / 25-yr NDL
     const isEverest = (system.vendor || "").toLowerCase().includes("everest");
-    const isNdl = !!ndlByWarranty[system.warranty_years];
+    const ndlAvailable = isEverest && (system.warranty_years in NDL_PER_SF);
+    const isNdl = ndlAvailable && !!ndlByWarranty[system.warranty_years];
     let warrantyAdd;
     if (isEverest) {
-      warrantyAdd = isNdl ? 3500 : 1000;
+      if (isNdl) {
+        warrantyAdd = 3000 + (NDL_PER_SF[system.warranty_years] || 0) * sf;
+      } else {
+        warrantyAdd = 1000;
+      }
     } else {
       const warrantyField = WARRANTY_ADD_FIELD[system.warranty_years];
       warrantyAdd = (deal && warrantyField) ? Number(deal[warrantyField] || 0) : 0;
@@ -385,7 +455,7 @@ export default function Calculator() {
     const customer = subtotal + overhead + profit;
     const pricePerSf = sf > 0 ? customer / sf : 0;
 
-    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, isNdl, laborAdd, subtotal, overhead, profit, ohPct, prPct, customer, pricePerSf };
+    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, laborAdd, subtotal, overhead, profit, ohPct, prPct, customer, pricePerSf };
   };
 
   const columns = useMemo(() => {
@@ -890,22 +960,25 @@ export default function Calculator() {
             </div>
           </div>
 
-          {/* Add-ons */}
+          {/* Add-ons — switches between Western Colloid SKUs and Everest +
+              SESCO granule SKUs based on the currently selected manufacturer. */}
           <div className="bg-white border border-zinc-200 rounded-sm shadow-sm">
             <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500 border-b border-zinc-200 flex items-center justify-between">
-              <span>Optional Add-ons</span>
-              <button
-                type="button"
-                onClick={() => setAddons({ ...addons, ...STRESS_POINTS_PRESET })}
-                data-testid="apply-stress-points-preset"
-                className="text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:underline"
-                title="Drops 1×4&quot;, 2×6&quot;, 1×12&quot; reinforcing fabric in the add-on row — typical stress-point bundle for a small commercial roof."
-              >
-                + Stress Points
-              </button>
+              <span>{selectedVendor === "Everest Systems" ? "Everest Add-ons" : "Optional Add-ons"}</span>
+              {selectedVendor !== "Everest Systems" && (
+                <button
+                  type="button"
+                  onClick={() => setAddons({ ...addons, ...STRESS_POINTS_PRESET })}
+                  data-testid="apply-stress-points-preset"
+                  className="text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:underline"
+                  title="Drops 1×4&quot;, 2×6&quot;, 1×12&quot; reinforcing fabric in the add-on row — typical stress-point bundle for a small commercial roof."
+                >
+                  + Stress Points
+                </button>
+              )}
             </div>
-            <div className="p-3 space-y-2.5">
-              {ADDON_TEMPLATES.map((a) => (
+            <div className="p-3 space-y-2.5 max-h-[55vh] overflow-y-auto">
+              {(selectedVendor === "Everest Systems" ? EVEREST_ADDON_TEMPLATES : ADDON_TEMPLATES).map((a) => (
                 <div key={a.id} className="grid grid-cols-[1fr_70px] gap-2 items-center">
                   <span className="text-xs">{a.label}</span>
                   <input
@@ -918,6 +991,11 @@ export default function Calculator() {
                   />
                 </div>
               ))}
+              {selectedVendor === "Everest Systems" && (
+                <div className="pt-2 text-[10px] text-zinc-500 italic border-t border-zinc-100">
+                  Adding any granule qty auto-applies the SESCO LTL freight ($2,000 flat per order).
+                </div>
+              )}
             </div>
           </div>
         </aside>
@@ -993,7 +1071,7 @@ export default function Calculator() {
 }
 
 function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, onPushMaterials, onPushAndPo, savingToDeal, testIdSuffix, onLaborChange, onOverheadChange, onProfitChange, onNdlChange }) {
-  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, isNdl, laborAdd, overhead, profit, ohPct, prPct, customer, pricePerSf } = col;
+  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, laborAdd, overhead, profit, ohPct, prPct, customer, pricePerSf } = col;
   const hasRecipe = lines.length > 0;
   const optionLetter = { 25: "A", 20: "B", 15: "C", 10: "D" }[system.warranty_years];
   return (
@@ -1095,7 +1173,29 @@ function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, on
         <Row label={`+${settings.markup_pct}% Shipping`} value={markedUp - rawCost} />
         <Row label={`+${settings.handling_pct}% Handling`} value={handling} />
         {warrantyAdd > 0 && (
-          <Row label={`+ Warranty (${system.warranty_years}-yr)`} value={warrantyAdd} />
+          <Row
+            label={isEverest
+              ? `+ Warranty (${isNdl ? "NDL" : "Standard"}, ${system.warranty_years}-yr)`
+              : `+ Warranty (${system.warranty_years}-yr)`}
+            value={warrantyAdd}
+          />
+        )}
+        {/* NDL toggle — Everest Systems only, and only for warranty bands
+            where NDL is offered (10/15/20-yr). 5-yr Everest has no NDL. */}
+        {isEverest && ndlAvailable && (
+          <label
+            className="flex items-center justify-between gap-2 text-[11px] cursor-pointer select-none"
+            data-testid={`ndl-toggle-${testIdSuffix}`}
+            title="NDL = No-Dollar-Limit warranty. $3,000 third-party inspection + $0.06/SF (10-yr), $0.09/SF (15-yr) or $0.12/SF (20-yr). Standard warranty is $1,000 flat with no inspection."
+          >
+            <span className="text-zinc-600">NDL warranty <span className="text-zinc-400 font-mono">($3,000 + per-SF)</span></span>
+            <input
+              type="checkbox"
+              checked={!!isNdl}
+              onChange={(e) => onNdlChange?.(e.target.checked)}
+              className="h-4 w-4"
+            />
+          </label>
         )}
         {/* Labor — per-warranty input, free-form $ (per-SF or flat-project) */}
         <div className="flex items-center justify-between gap-2 font-mono">

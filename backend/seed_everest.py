@@ -1,5 +1,4 @@
-"""Idempotent seeding helper — adds Everest Systems to product_catalog +
-roofing_systems so the Material Calculator can quote Everest jobs.
+"""Idempotent seeding helper — Everest Systems + SESCO granules.
 
 Run with:  python3 /app/backend/seed_everest.py
 
@@ -8,10 +7,18 @@ What it does:
    vendor_name == "Everest Systems" into the `product_catalog` collection
    (using the material's id so cross-references stay stable). Skips rows
    already present.
-2. Creates four starter Everest systems in `roofing_systems` covering the
-   5 / 10 / 15 / 20-year warranty bands (Silkoxy silicone tier). Recipe
-   contents are left empty — the rep fine-tunes coverage rates per system
-   inside /catalog. Skips bands that already have an Everest system.
+2. Seeds SESCO granules (5 colours) directly into `product_catalog` using
+   the published LESS-THAN-HALF-TRUCKLOAD price.
+3. Creates four starter Everest systems in `roofing_systems` covering the
+   5 / 10 / 15 / 20-year warranty bands (Silkoxy silicone tier).
+4. Writes the base-coat recipe for each starter system — Silkoxy EZ at the
+   vendor-published GPS rate, mapped to per_100sf coverage:
+       5-yr : 1.5 GPS, single pass
+      10-yr : 2.0 GPS, single pass
+      15-yr : 2.5 GPS, two passes (1.25 + 1.25)
+      20-yr : 3.0 GPS, two passes (1.5 + 1.5)
+   Recipe rows are skipped if a row already exists for the same system_id +
+   product_id combo so re-runs don't duplicate.
 """
 from __future__ import annotations
 
@@ -27,8 +34,8 @@ from dotenv import load_dotenv
 from pymongo import MongoClient
 
 
-VENDOR = "Everest Systems"
-DEFAULT_CATEGORY = "Silicone"  # all starter Everest systems use this category
+EVEREST = "Everest Systems"
+SESCO   = "SESCO"
 
 # (warranty_years, name, system_type)
 STARTER_SYSTEMS = [
@@ -38,9 +45,48 @@ STARTER_SYSTEMS = [
     (20, "20-Year Silkoxy Silicone System", "Silicone"),
 ]
 
+# Silkoxy EZ base-coat recipe per warranty band. Each tuple = (gps, passes,
+# note). 1 GPS = 1 gallon per 100 sf, mapped via coverage_basis="per_100sf".
+RECIPE_BY_BAND = {
+    5:  (1.5, 1, "Single coat at 1.5 GPS"),
+    10: (2.0, 1, "Single coat at 2.0 GPS"),
+    15: (2.5, 2, "Two coats — 1.25 + 1.25 GPS"),
+    20: (3.0, 2, "Two coats — 1.5 + 1.5 GPS"),
+}
+
+# SESCO granules — LTL "LESS THAN HALF A TRUCKLOAD" price per bag. Source:
+# SESCO PRICE LIST Jan 2026.
+SESCO_GRANULES = [
+    # (name, bag_lb, bags_per_pallet, unit_price)
+    ("BUFF Granules — 50 lb bag",        50,  56, 8.00),
+    ("BROWN Granules — 100 lb bag",      100, 30, 10.50),
+    ("RAINBOW Granules — 100 lb bag",    100, 30, 13.75),
+    ("6/10 WHITE Granules — 50 lb bag",  50,  56, 11.25),
+    ("SNOW WHITE Granules — 50 lb bag",  50,  63, 11.25),
+]
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_package_size(unit: str, name: str) -> tuple[float, str]:
+    """Derive (package_size, normalised_unit) from a free-form unit/name.
+    Everest materials are stored with unit strings like "5 Gal Pail" or
+    "55 Gal Drum" instead of a numeric package size, so we recover it here.
+    """
+    import re
+    s = f"{unit} {name}".lower()
+    m = re.search(r"(\d+(?:\.\d+)?)\s*gal", s)
+    if m:
+        return float(m.group(1)), "gal"
+    if "tote" in s: return 275.0, "gal"
+    if "drum" in s: return 55.0,  "gal"
+    if "pail" in s: return 5.0,   "gal"
+    if "roll" in s: return 1.0,   "roll"
+    if "bag"  in s: return 1.0,   "bag"
+    if "kit"  in s: return 1.0,   "kit"
+    return 1.0, (unit or "ea")
 
 
 def main() -> None:
@@ -48,32 +94,40 @@ def main() -> None:
     client = MongoClient(os.environ["MONGO_URL"])
     db = client[os.environ["DB_NAME"]]
 
-    # 1. Mirror Everest materials -> product_catalog (so they can be picked in
-    #    a system recipe). Idempotent on (id) and (name, vendor).
+    # 1. Mirror Everest materials -> product_catalog
     materials = list(db.materials.find({
-        "vendor_name": VENDOR, "is_deleted": {"$ne": True},
+        "vendor_name": EVEREST, "is_deleted": {"$ne": True},
     }))
     mirrored = 0
+    fixed_pkg = 0
     for m in materials:
-        # Skip if a product_catalog row already exists with the same id OR the
-        # same (name, vendor) pair (handles re-runs after either flow).
+        pkg_size, norm_unit = _parse_package_size(m.get("unit") or "", m.get("name") or "")
         already = db.product_catalog.find_one({
             "$or": [
                 {"id": m.get("id")},
-                {"name": m.get("name"), "vendor": VENDOR},
+                {"name": m.get("name"), "vendor": EVEREST},
             ],
             "is_deleted": {"$ne": True},
         })
         if already:
+            # Heal historical rows that were mirrored with package_size=1.0 —
+            # back-fill the correct gallons-per-container from the name.
+            if float(already.get("package_size") or 0) <= 1.0 and pkg_size > 1.0:
+                db.product_catalog.update_one(
+                    {"id": already["id"]},
+                    {"$set": {"package_size": pkg_size, "unit": norm_unit,
+                              "updated_at": _now()}},
+                )
+                fixed_pkg += 1
             continue
         db.product_catalog.insert_one({
             "id": m.get("id") or str(uuid.uuid4()),
             "name": m.get("name", ""),
             "sku": m.get("sku", ""),
-            "vendor": VENDOR,
-            "category": "Silicone",  # all known Everest products today are silicone
-            "unit": m.get("unit", "gal"),
-            "package_size": 1.0,  # rep can edit in /catalog if needed
+            "vendor": EVEREST,
+            "category": "Silicone",
+            "unit": norm_unit,
+            "package_size": pkg_size,
             "unit_price": float(m.get("default_price") or 0),
             "notes": m.get("notes", ""),
             "is_deleted": False,
@@ -83,27 +137,58 @@ def main() -> None:
         })
         mirrored += 1
 
-    # 2. Create starter systems for each warranty band that doesn't exist yet.
-    created = 0
-    for years, name, system_type in STARTER_SYSTEMS:
-        exists = db.roofing_systems.find_one({
-            "vendor": VENDOR,
-            "warranty_years": years,
-            "is_deleted": {"$ne": True},
+    # 2. SESCO granules
+    granule_added = 0
+    for name, bag_lb, bags_per_pallet, price in SESCO_GRANULES:
+        already = db.product_catalog.find_one({
+            "name": name, "vendor": SESCO, "is_deleted": {"$ne": True},
         })
-        if exists:
+        if already:
             continue
-        db.roofing_systems.insert_one({
+        db.product_catalog.insert_one({
             "id": str(uuid.uuid4()),
             "name": name,
-            "vendor": VENDOR,
+            "sku": "",
+            "vendor": SESCO,
+            "category": "Granules",
+            "unit": "bag",
+            "package_size": 1.0,  # one bag per "container"; freight is flat $2k/order
+            "unit_price": price,
+            "notes": (
+                f"{bag_lb} lb bag, {bags_per_pallet} bags/pallet. "
+                "Less-than-half-truckload pricing (1–6 pallets). "
+                "Flat $2,000 LTL freight per order applied separately."
+            ),
+            "is_deleted": False,
+            "created_at": _now(),
+            "created_by": "seed-everest",
+            "updated_at": _now(),
+        })
+        granule_added += 1
+
+    # 3. Starter Everest systems (and capture ids for the recipe pass)
+    system_ids_by_band: dict[int, str] = {}
+    created_systems = 0
+    for years, name, system_type in STARTER_SYSTEMS:
+        existing = db.roofing_systems.find_one({
+            "vendor": EVEREST, "warranty_years": years,
+            "is_deleted": {"$ne": True},
+        })
+        if existing:
+            system_ids_by_band[years] = existing["id"]
+            continue
+        sid = str(uuid.uuid4())
+        db.roofing_systems.insert_one({
+            "id": sid,
+            "name": name,
+            "vendor": EVEREST,
             "system_type": system_type,
             "category": system_type,
             "warranty_years": years,
             "description": (
-                "Starter system — adjust products + coverage rates in "
-                "/catalog. Warranty pricing auto-applies ($1,000 Standard / "
-                "$3,500 NDL) based on the NDL toggle in the calculator."
+                "Starter Everest system. Base coat = Silkoxy EZ at the band's "
+                "GPS rate. Warranty pricing auto-applies in the calculator "
+                "($1,000 Standard / $3,000 + per-SF for NDL)."
             ),
             "notes": "",
             "is_deleted": False,
@@ -111,11 +196,49 @@ def main() -> None:
             "created_by": "seed-everest",
             "updated_at": _now(),
         })
-        created += 1
+        system_ids_by_band[years] = sid
+        created_systems += 1
+
+    # 4. Recipe rows — Silkoxy EZ base coat at the published GPS.
+    #    We reference any Silkoxy EZ container so the calculator's container-
+    #    packing logic can choose between pail / drum / tote per the rep's
+    #    "allowed sizes" toggles. Pick the 5-Gal Pail row as the anchor.
+    silkoxy_ez_pail = db.product_catalog.find_one({
+        "vendor": EVEREST,
+        "name": {"$regex": r"^Silkoxy EZ — 5 Gal Pail", "$options": "i"},
+        "is_deleted": {"$ne": True},
+    })
+    recipes_added = 0
+    if silkoxy_ez_pail:
+        anchor_product_id = silkoxy_ez_pail["id"]
+        for band, sid in system_ids_by_band.items():
+            gps, passes, note = RECIPE_BY_BAND[band]
+            already = db.system_recipes.find_one({
+                "system_id": sid, "product_id": anchor_product_id,
+            })
+            if already:
+                continue
+            db.system_recipes.insert_one({
+                "id": str(uuid.uuid4()),
+                "system_id": sid,
+                "product_id": anchor_product_id,
+                "coverage_basis": "per_100sf",
+                "coverage_rate": gps,
+                "is_optional": False,
+                "layers": passes,
+                "sort_order": 10,
+                "notes": note,
+                "created_at": _now(),
+                "updated_at": _now(),
+            })
+            recipes_added += 1
 
     print(
         f"Everest seed complete — mirrored {mirrored} product(s), "
-        f"created {created} system(s)."
+        f"healed {fixed_pkg} package-size(s), "
+        f"+{granule_added} SESCO granule(s), "
+        f"+{created_systems} system(s), "
+        f"+{recipes_added} recipe row(s)."
     )
 
 
