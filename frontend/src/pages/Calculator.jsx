@@ -558,9 +558,15 @@ function CompareColumn({ col, settings, totalSf, onRemove, onSaveToDeal, savingT
       <div className="flex-1 p-3 space-y-3 text-xs">
         {lines.map((ln, i) => {
           const baseName = (ln.product.name || "").split(" — ")[0];
+          const note = ln.recipe_row?.notes || "";
           return (
             <div key={i} className="pb-2 border-b border-zinc-100">
               <div className="font-bold truncate" title={baseName}>{baseName}</div>
+              {note && (
+                <div className="text-[10px] text-zinc-500 mt-0.5 italic truncate" title={note}>
+                  {note}
+                </div>
+              )}
               <div className="text-[10px] text-zinc-500 mt-0.5">
                 Needs {ln.qtyNeeded.toFixed(1)} {ln.product.unit}
               </div>
