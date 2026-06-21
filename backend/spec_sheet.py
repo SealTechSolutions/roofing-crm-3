@@ -1100,13 +1100,13 @@ def _pricing_table(s, doc, template: dict | None = None):
             t2 = Table(row, colWidths=[col_w] * col_count)
             t2.setStyle(TableStyle([
                 ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), table_font + 1),
+                ("FONTSIZE", (0, 0), (-1, -1), table_font),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
                 ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
-                ("TOPPADDING", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ]))
             elems.append(t2)
             elems.append(Spacer(1, gap_after))
@@ -1500,13 +1500,13 @@ def build_spec_sheet(
         story.append(Spacer(1, 0.02 * inch))
         if cover_photo_bytes:
             try:
-                img = Image(BytesIO(cover_photo_bytes), width=7.5 * inch, height=2.0 * inch, kind="proportional")
+                img = Image(BytesIO(cover_photo_bytes), width=7.5 * inch, height=2.3 * inch, kind="proportional")
                 img.hAlign = "CENTER"
                 story.append(img)
             except Exception:
                 story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
         else:
-            ph = Table([[" "]], colWidths=[7.5 * inch], rowHeights=[2.0 * inch])
+            ph = Table([[" "]], colWidths=[7.5 * inch], rowHeights=[2.3 * inch])
             ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
             story.append(ph)
             story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))
