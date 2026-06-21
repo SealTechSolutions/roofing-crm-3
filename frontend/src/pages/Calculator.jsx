@@ -42,6 +42,16 @@ const ADDON_TEMPLATES = [
 
 const MAX_COMPARE = 4;
 
+/** Classify a product's package size into a coarse "container kind" so we
+ *  can let the user veto tote / drum / pail delivery based on site access. */
+function classifyContainer(p) {
+  if ((p.unit || "").toLowerCase() === "roll") return "roll";
+  const s = Number(p.package_size || 0);
+  if (s >= 200) return "tote";
+  if (s >= 30)  return "drum";
+  return "pail";
+}
+
 /** Group products by their (vendor, sku) — each "logical" product can have
  *  multiple container-size SKUs (5-gal pail / 55-gal drum / 275-gal tote). */
 function groupBySku(products) {
@@ -100,6 +110,7 @@ export default function Calculator() {
 
   const [totalSf, setTotalSf] = useState("");
   const [waste, setWaste] = useState(0);
+  const [allowedSizes, setAllowedSizes] = useState({ tote: true, drum: true, pail: true });
   const [selectedSystemIds, setSelectedSystemIds] = useState([]);
   const [addons, setAddons] = useState({});      // {addon_id: qty} (shared across compared systems)
   const [deal, setDeal] = useState(null);
@@ -173,10 +184,20 @@ export default function Calculator() {
       else if (r.coverage_basis === "per_lf") qtyNeeded = Number(r.coverage_rate || 0);
       qtyNeeded = qtyNeeded * waste_factor;
 
-      // Container packing across sibling SKUs (same vendor + sku)
+      // Container packing across sibling SKUs (same vendor + sku), filtered
+      // by what containers the site can physically accept.
       const key = `${product.vendor}||${product.sku}`;
-      const containers = groupedBySku.get(key) || [product];
-      const packed = packContainers(qtyNeeded, containers);
+      const siblings = groupedBySku.get(key) || [product];
+      const containers = siblings.filter((c) => {
+        const k = classifyContainer(c);
+        if (k === "roll") return true;        // fabric is unaffected by tote/drum/pail toggles
+        return allowedSizes[k];
+      });
+      // Safety net: if every allowed size was filtered out (e.g. only pails
+      // available but pails disabled), fall back to siblings so we still
+      // surface a number rather than silently dropping the line.
+      const useContainers = containers.length > 0 ? containers : siblings;
+      const packed = packContainers(qtyNeeded, useContainers);
       const lineCost = packed.reduce((s, x) => s + x.cost, 0);
       const lineQty  = packed.reduce((s, x) => s + x.gallons, 0);
       lines.push({
@@ -195,7 +216,12 @@ export default function Calculator() {
       // Pick the cheapest product with matching SKU (any container)
       const matching = products.filter((p) => p.sku === tpl.sku);
       if (matching.length === 0) continue;
-      const containers = matching.slice().sort((a, b) => b.package_size - a.package_size);
+      const filtered = matching.filter((c) => {
+        const k = classifyContainer(c);
+        if (k === "roll") return true;
+        return allowedSizes[k];
+      });
+      const containers = (filtered.length ? filtered : matching).slice().sort((a, b) => b.package_size - a.package_size);
       const packed = packContainers(Number(qty), containers);
       const lineCost = packed.reduce((s, x) => s + x.cost, 0);
       const lineQty  = packed.reduce((s, x) => s + x.gallons, 0);
@@ -219,7 +245,7 @@ export default function Calculator() {
       .map((id) => systems.find((s) => s.id === id))
       .filter(Boolean)
       .map(computeBom);
-  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons]);
+  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, allowedSizes]);
 
   /** Save the picked column's BoM back to the originating deal's cost_items. */
   const saveColumnToDeal = async (col) => {
@@ -232,7 +258,11 @@ export default function Calculator() {
       // One cost line per product (rolled-up across container sizes)
       for (const ln of col.lines) {
         if (ln.lineCost <= 0) continue;
-        const containerSummary = ln.packed.map((x) => `${x.qty}×${x.product.package_size}${x.product.unit}`).join(", ");
+        const containerSummary = ln.packed.map((x) => {
+          const kind = classifyContainer(x.product);
+          const kindLabel = kind === "tote" ? "tote" : kind === "drum" ? "drum" : kind === "pail" ? "pail" : (x.product.unit || "");
+          return `${x.qty}×${x.product.package_size}${x.product.unit} ${kindLabel}`;
+        }).join(", ");
         newCostItems.push({
           category: "Materials",
           vendor_id: null,
@@ -245,7 +275,11 @@ export default function Calculator() {
       }
       for (const ln of col.addonLines) {
         if (ln.lineCost <= 0) continue;
-        const containerSummary = ln.packed.map((x) => `${x.qty}×${x.product.package_size}${x.product.unit}`).join(", ");
+        const containerSummary = ln.packed.map((x) => {
+          const kind = classifyContainer(x.product);
+          const kindLabel = kind === "tote" ? "tote" : kind === "drum" ? "drum" : kind === "pail" ? "pail" : (x.product.unit || "");
+          return `${x.qty}×${x.product.package_size}${x.product.unit} ${kindLabel}`;
+        }).join(", ");
         newCostItems.push({
           category: "Materials",
           vendor_id: null,
@@ -341,6 +375,37 @@ export default function Calculator() {
             data-testid="input-waste"
             className="border border-zinc-300 px-3 h-10 text-base w-full font-mono focus:outline-none focus:border-blue-700"
           />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 block mb-1" title="Uncheck a container size if the site can't physically accept it (no forklift, narrow access, etc.)">
+            Site Access — Allowed Containers
+          </label>
+          <div className="flex items-center gap-2 h-10">
+            {[
+              { key: "tote", label: "Totes",  hint: "275 gal" },
+              { key: "drum", label: "Drums",  hint: "55 gal"  },
+              { key: "pail", label: "Pails",  hint: "5 gal"   },
+            ].map((c) => {
+              const on = allowedSizes[c.key];
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => setAllowedSizes({ ...allowedSizes, [c.key]: !on })}
+                  data-testid={`toggle-container-${c.key}`}
+                  className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 h-10 text-[11px] font-bold uppercase tracking-wider rounded-sm border transition-colors ${
+                    on
+                      ? "bg-blue-700 text-white border-blue-700 hover:bg-blue-800"
+                      : "bg-zinc-100 text-zinc-400 border-zinc-300 hover:bg-zinc-200 line-through"
+                  }`}
+                  title={on ? `${c.label} (${c.hint}) included` : `${c.label} (${c.hint}) excluded — site can't accept`}
+                >
+                  {c.label}
+                  <span className={`text-[9px] font-mono ${on ? "text-blue-100" : "text-zinc-400"}`}>{c.hint}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="text-xs flex flex-col justify-center">
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Markup</div>
@@ -493,14 +558,18 @@ function CompareColumn({ col, settings, totalSf, onRemove, onSaveToDeal, savingT
                 Needs {ln.qtyNeeded.toFixed(1)} {ln.product.unit}
               </div>
               <div className="mt-1 space-y-0.5">
-                {ln.packed.map((pk, j) => (
-                  <div key={j} className="flex justify-between gap-2">
-                    <span className="text-zinc-600 truncate">
-                      {pk.qty} × {pk.product.package_size} {pk.product.unit} pail/drum/tote
-                    </span>
-                    <span className="font-mono text-zinc-900">{formatCurrency(pk.cost)}</span>
-                  </div>
-                ))}
+                {ln.packed.map((pk, j) => {
+                  const kind = classifyContainer(pk.product);
+                  const kindLabel = kind === "tote" ? "tote" : kind === "drum" ? "drum" : kind === "pail" ? "pail" : (pk.product.unit || "");
+                  return (
+                    <div key={j} className="flex justify-between gap-2">
+                      <span className="text-zinc-600 truncate">
+                        {pk.qty} × {pk.product.package_size} {pk.product.unit} {kindLabel}
+                      </span>
+                      <span className="font-mono text-zinc-900">{formatCurrency(pk.cost)}</span>
+                    </div>
+                  );
+                })}
               </div>
               <div className="flex justify-between mt-1 font-mono font-bold">
                 <span className="text-[10px] uppercase tracking-wider text-zinc-500">Line subtotal</span>
@@ -518,12 +587,16 @@ function CompareColumn({ col, settings, totalSf, onRemove, onSaveToDeal, savingT
                 <div className="font-bold truncate">{ln.addon.label}</div>
                 <div className="text-[10px] text-zinc-500 mt-0.5">{ln.qtyNeeded} {ln.addon.unit}</div>
                 <div className="mt-1 space-y-0.5">
-                  {ln.packed.map((pk, j) => (
-                    <div key={j} className="flex justify-between gap-2">
-                      <span className="text-zinc-600 truncate">{pk.qty} × {pk.product.package_size} {pk.product.unit}</span>
-                      <span className="font-mono">{formatCurrency(pk.cost)}</span>
-                    </div>
-                  ))}
+                  {ln.packed.map((pk, j) => {
+                    const kind = classifyContainer(pk.product);
+                    const kindLabel = kind === "tote" ? "tote" : kind === "drum" ? "drum" : kind === "pail" ? "pail" : (pk.product.unit || "");
+                    return (
+                      <div key={j} className="flex justify-between gap-2">
+                        <span className="text-zinc-600 truncate">{pk.qty} × {pk.product.package_size} {pk.product.unit} {kindLabel}</span>
+                        <span className="font-mono">{formatCurrency(pk.cost)}</span>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="flex justify-between mt-1 font-mono font-bold">
                   <span className="text-[10px] uppercase tracking-wider text-zinc-500">Line subtotal</span>
