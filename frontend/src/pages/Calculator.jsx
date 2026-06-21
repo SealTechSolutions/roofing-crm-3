@@ -158,6 +158,10 @@ export default function Calculator() {
   // Stored on the deal as overhead_25yr_pct / profit_25yr_pct etc.
   const [overheadByWarranty, setOverheadByWarranty] = useState({});
   const [profitByWarranty,   setProfitByWarranty]   = useState({});
+  // Per-warranty NDL (No-Dollar-Limit) toggle — Everest Systems only. Standard
+  // Everest warranty = $1,000 flat, NDL = $3,500 flat, both regardless of roof
+  // size. Persisted to the deal as warranty_*_ndl booleans.
+  const [ndlByWarranty, setNdlByWarranty] = useState({});
 
   const [deals, setDeals] = useState([]);
   const [selectedDealId, setSelectedDealId] = useState(initialDealId || "");
@@ -228,6 +232,12 @@ export default function Calculator() {
         20: numOrUndef(r.data.profit_20yr_pct),
         15: numOrUndef(r.data.profit_15yr_pct),
         10: numOrUndef(r.data.profit_10yr_pct),
+      });
+      setNdlByWarranty({
+        25: !!r.data.warranty_25yr_ndl,
+        20: !!r.data.warranty_20yr_ndl,
+        15: !!r.data.warranty_15yr_ndl,
+        10: !!r.data.warranty_10yr_ndl,
       });
       // Auto-switch to Materials & PO mode if the customer has signed off
       // (Darren can manually toggle back to Estimate if needed).
@@ -344,13 +354,22 @@ export default function Calculator() {
     const markedUp = rawCost * (1 + settings.markup_pct / 100);
     const handlingBase = settings.handling_basis === "raw" ? rawCost : markedUp;
     const handling = handlingBase * (settings.handling_pct / 100);
-    // Warranty up-charge — comes off the picked DEAL (not the calculator
-    // settings) so the same calculator can quote different-priced warranties
-    // per job. Looked up by the system's warranty band.
+    // Warranty up-charge — most vendors persist a flat $ on the deal
+    // (warranty_*_add). Everest Systems is special: pricing is $1,000 for any
+    // Standard warranty and $3,500 for any NDL warranty, regardless of roof
+    // size or warranty length. The rep ticks the NDL toggle per column; the
+    // Everest tier overrides whatever was last saved on the deal.
     const WARRANTY_ADD_FIELD = { 25: "warranty_25yr_add", 20: "warranty_20yr_add",
                                   15: "warranty_15yr_add", 10: "warranty_10yr_add" };
-    const warrantyField = WARRANTY_ADD_FIELD[system.warranty_years];
-    const warrantyAdd = (deal && warrantyField) ? Number(deal[warrantyField] || 0) : 0;
+    const isEverest = (system.vendor || "").toLowerCase().includes("everest");
+    const isNdl = !!ndlByWarranty[system.warranty_years];
+    let warrantyAdd;
+    if (isEverest) {
+      warrantyAdd = isNdl ? 3500 : 1000;
+    } else {
+      const warrantyField = WARRANTY_ADD_FIELD[system.warranty_years];
+      warrantyAdd = (deal && warrantyField) ? Number(deal[warrantyField] || 0) : 0;
+    }
     // Labor — per-warranty input the rep types on each column. Stored in
     // laborByWarranty state and persisted to deal.labor_*_add on save.
     const laborAdd = Number(laborByWarranty[system.warranty_years] || 0);
@@ -366,7 +385,7 @@ export default function Calculator() {
     const customer = subtotal + overhead + profit;
     const pricePerSf = sf > 0 ? customer / sf : 0;
 
-    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, laborAdd, subtotal, overhead, profit, ohPct, prPct, customer, pricePerSf };
+    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, isNdl, laborAdd, subtotal, overhead, profit, ohPct, prPct, customer, pricePerSf };
   };
 
   const columns = useMemo(() => {
@@ -374,7 +393,7 @@ export default function Calculator() {
       .map((id) => systems.find((s) => s.id === id))
       .filter(Boolean)
       .map(computeBom);
-  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, allowedSizes, deal, laborByWarranty, overheadByWarranty, profitByWarranty]);
+  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, allowedSizes, deal, laborByWarranty, overheadByWarranty, profitByWarranty, ndlByWarranty]);
 
   // ────────────────────────────────────────────────────────────────────
   //   Calculator → Deal action handlers (split by mode)
@@ -400,16 +419,24 @@ export default function Calculator() {
     const LABOR_ADD_FIELD = { 25: "labor_25yr_add", 20: "labor_20yr_add", 15: "labor_15yr_add", 10: "labor_10yr_add" };
     const OH_FIELD     = { 25: "overhead_25yr_pct", 20: "overhead_20yr_pct", 15: "overhead_15yr_pct", 10: "overhead_10yr_pct" };
     const PR_FIELD     = { 25: "profit_25yr_pct",   20: "profit_20yr_pct",   15: "profit_15yr_pct",   10: "profit_10yr_pct" };
+    const WAR_ADD_FIELD = { 25: "warranty_25yr_add", 20: "warranty_20yr_add", 15: "warranty_15yr_add", 10: "warranty_10yr_add" };
+    const NDL_FIELD     = { 25: "warranty_25yr_ndl", 20: "warranty_20yr_ndl", 15: "warranty_15yr_ndl", 10: "warranty_10yr_ndl" };
     const customerRounded = Math.round(col.customer * 100) / 100;
     const laborField = LABOR_ADD_FIELD[col.system.warranty_years];
     const ohField    = OH_FIELD[col.system.warranty_years];
     const prField    = PR_FIELD[col.system.warranty_years];
+    const warField   = WAR_ADD_FIELD[col.system.warranty_years];
+    const ndlField   = NDL_FIELD[col.system.warranty_years];
     setSavingToDeal(true);
     try {
       const body = { ...deal, [field]: customerRounded };
       if (laborField) body[laborField] = Math.round((col.laborAdd || 0) * 100) / 100;
       if (ohField) body[ohField] = col.ohPct;
       if (prField) body[prField] = col.prPct;
+      // For Everest, persist the auto-computed warranty $ + NDL flag so
+      // reopening the calculator restores the exact state the rep saw.
+      if (col.isEverest && warField) body[warField] = Math.round(col.warrantyAdd * 100) / 100;
+      if (col.isEverest && ndlField) body[ndlField] = !!col.isNdl;
       ["id","created_at","updated_at","created_by",
        "materials_cost","labor_cost","subcontractor_cost","other_expenses_total",
        "total_costs","profit","margin_pct","is_deleted","deleted_at","deleted_by",
@@ -434,6 +461,8 @@ export default function Calculator() {
     const LABOR_FIELDS = { 25: "labor_25yr_add", 20: "labor_20yr_add", 15: "labor_15yr_add", 10: "labor_10yr_add" };
     const OH_FIELDS    = { 25: "overhead_25yr_pct", 20: "overhead_20yr_pct", 15: "overhead_15yr_pct", 10: "overhead_10yr_pct" };
     const PR_FIELDS    = { 25: "profit_25yr_pct",   20: "profit_20yr_pct",   15: "profit_15yr_pct",   10: "profit_10yr_pct" };
+    const WAR_FIELDS   = { 25: "warranty_25yr_add", 20: "warranty_20yr_add", 15: "warranty_15yr_add", 10: "warranty_10yr_add" };
+    const NDL_FIELDS   = { 25: "warranty_25yr_ndl", 20: "warranty_20yr_ndl", 15: "warranty_15yr_ndl", 10: "warranty_10yr_ndl" };
     for (const col of columns) {
       const field = PROPOSAL_FIELD_BY_WARRANTY[col.system.warranty_years];
       const letter = OPTION_LETTER[col.system.warranty_years];
@@ -442,9 +471,13 @@ export default function Calculator() {
       const lf = LABOR_FIELDS[col.system.warranty_years];
       const of_ = OH_FIELDS[col.system.warranty_years];
       const pf = PR_FIELDS[col.system.warranty_years];
+      const wf = WAR_FIELDS[col.system.warranty_years];
+      const nf = NDL_FIELDS[col.system.warranty_years];
       if (lf) updates[lf] = Math.round((col.laborAdd || 0) * 100) / 100;
       if (of_) updates[of_] = col.ohPct;
       if (pf) updates[pf] = col.prPct;
+      if (col.isEverest && wf) updates[wf] = Math.round(col.warrantyAdd * 100) / 100;
+      if (col.isEverest && nf) updates[nf] = !!col.isNdl;
       summary.push(`Option ${letter} = ${formatCurrency(col.customer)}`);
     }
     if (!Object.keys(updates).length) {
@@ -920,6 +953,7 @@ export default function Calculator() {
                   onLaborChange={(v) => setLaborByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
                   onOverheadChange={(v) => setOverheadByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
                   onProfitChange={(v) => setProfitByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
+                  onNdlChange={(v) => setNdlByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
                   savingToDeal={savingToDeal}
                   testIdSuffix={idx}
                 />
@@ -958,8 +992,8 @@ export default function Calculator() {
   );
 }
 
-function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, onPushMaterials, onPushAndPo, savingToDeal, testIdSuffix, onLaborChange, onOverheadChange, onProfitChange }) {
-  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, laborAdd, overhead, profit, ohPct, prPct, customer, pricePerSf } = col;
+function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, onPushMaterials, onPushAndPo, savingToDeal, testIdSuffix, onLaborChange, onOverheadChange, onProfitChange, onNdlChange }) {
+  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, isNdl, laborAdd, overhead, profit, ohPct, prPct, customer, pricePerSf } = col;
   const hasRecipe = lines.length > 0;
   const optionLetter = { 25: "A", 20: "B", 15: "C", 10: "D" }[system.warranty_years];
   return (
@@ -1123,7 +1157,7 @@ function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, on
         )}
         {mode === "estimate" && onSetOption && !optionLetter && (
           <div className="mt-3 px-2 py-2 bg-amber-50 border border-amber-200 text-[10px] text-amber-800 rounded-sm text-center">
-            {system.warranty_years || "?"}-yr warranty has no Option slot (A/B/C/D map to 25/20/15/10-yr only).
+            {system.warranty_years || "?"}-yr warranty has no Option slot — A/B/C/D map to 25/20/15/10-yr. The price is calculated for reference only.
           </div>
         )}
         {mode === "materials" && onPushMaterials && (

@@ -364,7 +364,7 @@ function HeadRow() {
       <th className="py-3 px-3 w-24">Unit</th>
       <th className="py-3 px-3 w-24 text-right">Default Price</th>
       <th className="py-3 px-3 w-16 text-right" title="Typical shipping % on this item">Ship %</th>
-      <th className="py-3 px-3 w-20 text-right" title="Internal markup target — never shown to customers">Markup %</th>
+      <th className="py-3 px-3 w-20 text-right" title="Handling fee % on this item — never shown to customers">Handling %</th>
       <th className="py-3 px-3 w-24 text-right" title="Default Price × (1 + Shipping %)">Loaded</th>
       <th className="py-3 px-3 w-24"></th>
     </tr>

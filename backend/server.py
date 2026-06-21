@@ -504,6 +504,13 @@ class DealIn(BaseModel):
     warranty_10yr_add: float = 0.0
     # Optional 25-yr warranty add-on (e.g., FARM Hail Rider). Mirrors the other tiers.
     warranty_25yr_add: float = 0.0
+    # NDL (No-Dollar-Limit) flags — used by the Material Calculator to auto-apply
+    # Everest's tiered warranty pricing ($1,000 standard / $3,500 NDL). True means
+    # the rep ticked the NDL toggle for that warranty band.
+    warranty_10yr_ndl: bool = False
+    warranty_15yr_ndl: bool = False
+    warranty_20yr_ndl: bool = False
+    warranty_25yr_ndl: bool = False
     warranty_color: str = "white"
     cover_photo_file_id: Optional[str] = None
     # Change orders — approved scope additions/deductions that affect the contract total
