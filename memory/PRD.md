@@ -932,6 +932,25 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - **Pending for Darren's tomorrow review**: AA systems (20-Yr/10-Yr) and 25-Yr Membrane fabric layers are inferred from the CSV — confirm those match field experience.
 
 
+## 2026-02-22 — Calculator workflow split into Estimate vs Materials/PO modes
+- **Two-mode toggle** in the calculator header (`data-testid="mode-estimate"` / `"mode-materials"`). Auto-switches to **Materials & PO** when the picked deal has `scope_signed_at`; otherwise stays in **Estimate / Quote**. Manual override always available.
+- **Estimate mode**: per-column button changed from "Push → Option X" to **"Set → Option X"** — writes ONLY the Customer Price into `proposal_option_*` (price only; no cost lines, no PO). New **"Set ALL → Options on Deal"** bulk button fills all 4 compared columns into A/B/C/D in one PUT.
+- **Materials & PO mode**: per-column shows **two buttons** side-by-side — **"Push Materials"** (writes `material_takeoff` + `cost_items` + `winning_warranty_years` + `winning_system_name` to the deal) and **"Push + PO"** (does the same THEN opens the PO PDF in a new tab). A separate **"PO PDF — Western Colloid"** button below the columns regenerates the PDF from existing `material_takeoff` lines without re-pushing.
+- **Manufacturer dropdown** at top of page (`data-testid="select-vendor"`) — switches the sidebar to a flat list of THAT vendor's systems (no more vendor grouping since single-vendor jobs are the norm). Defaults to Western Colloid, persisted to localStorage.
+- **Deal dropdown** at top of page (`data-testid="select-deal"`) — pick/change the active deal without leaving the calculator. Sorted by most-recently-updated. Auto-prefills Total SF from `deal.property_sqft` -> linked `property.roof_area` fallback. URL keeps `?deal=<id>` in sync so a refresh keeps state.
+- **Auto-pick winning system**: when the calc opens with a signed deal that has `winning_warranty_years`, it pre-selects that system in the sidebar so the salesperson lands directly on the right column.
+- **Vendor auto-create**: pushing materials looks up the chosen manufacturer in `/api/vendors` by name; if missing it creates a minimal record (name only) and toasts a reminder to fill in address/email. This unblocks the existing `_build_po_dict` endpoint (which keys on `vendor_id`).
+- **PO PDF**: re-uses the already-built `purchase_order_pdf.build_purchase_order_pdf` (no prices on the PDF, "pricing to be confirmed on invoice" — matches Darren's vendor workflow). The PO is generated server-side from `deal.material_takeoff` filtered by vendor.
+- **Reduce-input-time additions**:
+  - `localStorage` persists last-used manufacturer, waste %, and site-access toggles.
+  - **"+ Stress Points" preset** in the Add-ons header drops a typical 1×4" + 2×6" + 1×12" reinforcing fabric bundle in one click.
+  - Smart SF fallback (deal → property.roof_area).
+  - Confirmation dialogs spell out which proposal options get OVERWRITTEN.
+- **Deal schema additions** (no migration — fields are just set on save): `winning_warranty_years` (10/15/20/25), `winning_system_name` (string).
+- **All linting clean.** No backend changes required (PO endpoint pre-existed).
+
+
+
 
 ## 2026-02-19 — Property Evaluation PDF (non-fee-based courtesy report)
 - **New 6–7 page PDF** at `GET /api/assessments/{id}/evaluation.pdf` — sibling of the 12-page Commercial Roof Assessment Report. Backed by `/app/backend/property_evaluation_pdf.py` which imports all helpers/colors/styles from `assessment_pdf.py` so the two outputs stay visually consistent without copy-paste drift.
