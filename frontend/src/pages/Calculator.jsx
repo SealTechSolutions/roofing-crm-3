@@ -33,11 +33,18 @@ import { toast } from "sonner";
 import { Calculator as CalcIcon, Plus, X, Save, ChevronLeft, Layers, AlertCircle, Loader2 } from "lucide-react";
 
 const ADDON_TEMPLATES = [
-  { id: "walk_pads_grey",   label: "Walk Pads (Grey)",         sku: "850 SWS Grey",   unit: "gal", default_qty: 0 },
-  { id: "walk_pads_yellow", label: "Walk Pads (Burnt Yellow)", sku: "850 SWS Yellow", unit: "gal", default_qty: 0 },
-  { id: "roof_wash",        label: "Roof Wash & Prep",         sku: "9000",           unit: "gal", default_qty: 0 },
-  { id: "flash_cement_w",   label: "Elastic Cement White",     sku: "800 W",          unit: "gal", default_qty: 0 },
-  { id: "flash_cement_b",   label: "Elastic Cement Black",     sku: "801 B",          unit: "gal", default_qty: 0 },
+  // Walk-pads
+  { id: "walk_pads_grey",   label: "Walk Pads (Grey)",         sku: "850 SWS Grey",   unit: "gal",   default_qty: 0 },
+  { id: "walk_pads_yellow", label: "Walk Pads (Burnt Yellow)", sku: "850 SWS Yellow", unit: "gal",   default_qty: 0 },
+  // Prep / sealants
+  { id: "roof_wash",        label: "Roof Wash & Prep",         sku: "9000",           unit: "gal",   default_qty: 0 },
+  { id: "flash_cement_w",   label: "Elastic Cement White",     sku: "800 W",          unit: "gal",   default_qty: 0 },
+  { id: "flash_cement_b",   label: "Elastic Cement Black",     sku: "801 B",          unit: "gal",   default_qty: 0 },
+  // Reinforcing fabric strips (sold by the roll — qty here is # of rolls)
+  { id: "fabric_4in",       label: 'Fabric 4" x 300\'',        sku: '4" x 300\'',     unit: "rolls", default_qty: 0 },
+  { id: "fabric_6in",       label: 'Fabric 6" x 300\'',        sku: '6" x 300\'',     unit: "rolls", default_qty: 0 },
+  { id: "fabric_12in",      label: 'Fabric 12" x 300\'',       sku: '12" x 300\'',    unit: "rolls", default_qty: 0 },
+  { id: "fabric_20in",      label: 'Fabric 20" x 300\'',       sku: '20" x 300\'',    unit: "rolls", default_qty: 0 },
 ];
 
 const MAX_COMPARE = 4;
