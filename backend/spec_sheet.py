@@ -91,9 +91,9 @@ SILICONE_TEMPLATE = {
         # 5-yr has no proposal slot today so it is intentionally absent here.
         "base_warranty_labels": [
             "—",
-            "20-Year NDL or Standard Warranty",
-            "15-Year NDL or Standard Warranty",
-            "10-Year NDL or Standard Warranty",
+            "20-Year Standard Warranty",
+            "15-Year Standard Warranty",
+            "10-Year Standard Warranty",
         ],
         "rows": [
             [
@@ -125,10 +125,23 @@ SILICONE_TEMPLATE = {
             ],
         ],
         "warranty_row": [
-            "20-Yr NDL Warranty (3rd-Party Inspection) or 20-Yr Standard",
-            "15-Yr NDL Warranty (3rd-Party Inspection) or 15-Yr Standard",
-            "10-Yr NDL Warranty (3rd-Party Inspection) or 10-Yr Standard",
-            "5-Yr Standard Warranty",
+            "20-Yr Standard Warranty Included",
+            "15-Yr Standard Warranty Included",
+            "10-Yr Standard Warranty Included",
+            "5-Yr Standard Warranty Included",
+        ],
+    },
+    # Optional NDL warranty upgrade — rendered as a separate "[OPTIONAL]
+    # Manufacturer Warranty" table on the PDF. Customer can pick base
+    # (Standard $1,000 included) or upgrade per tier. The dollar amounts
+    # come from deal.warranty_*_add (filled by the Calculator's Set Option).
+    "warranty_upgrade": {
+        "title": "[OPTIONAL] Manufacturer NDL Warranty Upgrade",
+        "subtitle": "Upgrade any tier above to a No-Dollar-Limit (NDL) warranty backed by Everest Systems. Includes 3rd-party inspection and extended labor &amp; material coverage. Base prices above already include Everest's Standard $1,000 Labor &amp; Material warranty.",
+        "labels": [
+            "20-Year NDL Warranty Upgrade",
+            "15-Year NDL Warranty Upgrade",
+            "10-Year NDL Warranty Upgrade",
         ],
     },
 }
@@ -1047,20 +1060,45 @@ def _pricing_table(s, doc, template: dict | None = None):
     elems.append(t)
     elems.append(Spacer(1, gap_after))
 
-    # Templates that already enumerate warranty options in-body (e.g., FARM's tier_table)
-    # don't need the optional add-on warranty section — there are no extra warranty fees.
-    if has_tier_table:
+    # Templates with a tier_table normally enumerate warranties in-body and
+    # skip the optional add-on section — unless they explicitly opt in via a
+    # `warranty_upgrade` config (used by SILICONE for the NDL upgrade table).
+    upgrade_cfg = (template or {}).get("warranty_upgrade") if template else None
+    if has_tier_table and not upgrade_cfg:
         return elems
 
-    # ---- Below: Silicone/TPO/PVC templates ONLY (Workmanship + optional L&M tables) ----
+    # ---- [OPTIONAL] Manufacturer Warranty add-on table ----
+    # Labels and section header come from the template so each scope can
+    # phrase its upgrade differently (Silicone → "NDL Warranty Upgrade";
+    # legacy default → "Labor & Material w/Hail Rider").
+    if upgrade_cfg:
+        addon_header = upgrade_cfg.get("title") or "[OPTIONAL] Manufacturer Warranty"
+        addon_labels = upgrade_cfg.get("labels") or [
+            "20-Year Warranty Upgrade",
+            "15-Year Warranty Upgrade",
+            "10-Year Warranty Upgrade",
+        ]
+    else:
+        addon_header = "[OPTIONAL] Manufacturer Warranty (Labor &amp; Material)"
+        addon_labels = [
+            "20-Year Labor & Material w/Hail Rider",
+            "15-Year Labor & Material",
+            "10-Year Labor & Material",
+        ]
     opt = _nonzero([
         ["Warranty Tier", "Add-On Cost"],
-        ["20-Year Labor & Material w/Hail Rider", _currency(doc.get("w20"))],
-        ["15-Year Labor & Material", _currency(doc.get("w15"))],
-        ["10-Year Labor & Material", _currency(doc.get("w10"))],
+        [addon_labels[0], _currency(doc.get("w20"))],
+        [addon_labels[1], _currency(doc.get("w15"))],
+        [addon_labels[2], _currency(doc.get("w10"))],
     ])
     if len(opt) > 1:
-        elems.append(Paragraph("[OPTIONAL] Manufacturer Warranty (Labor &amp; Material)", s["h2"]))
+        elems.append(Paragraph(addon_header, s["h2"]))
+        if upgrade_cfg and upgrade_cfg.get("subtitle"):
+            elems.append(Paragraph(
+                f'<font size="9" color="#52525B">{upgrade_cfg["subtitle"]}</font>',
+                s["body"],
+            ))
+            elems.append(Spacer(1, 0.04 * inch))
         t2 = Table(opt, colWidths=[4.5 * inch, 3.0 * inch])
         t2.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), BLUE), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -1072,6 +1110,11 @@ def _pricing_table(s, doc, template: dict | None = None):
         ]))
         elems.append(t2)
         elems.append(Spacer(1, gap_after))
+
+    # Tier-table templates only get the optional add-on table — the combined
+    # totals + cover-all-bases footer below is for legacy single-tier scopes.
+    if has_tier_table:
+        return elems
 
     # Combined "Total with Upgraded Warranty" — same drop-zero-rows logic.
     tot_rows_raw = [

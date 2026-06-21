@@ -420,27 +420,30 @@ export default function Calculator() {
     const handling = handlingBase * (settings.handling_pct / 100);
     // Warranty up-charge — Everest gets vendor-specific pricing; other vendors
     // read the rep-entered flat $ from the deal.
-    //   Standard: $1,000 flat (any band — no inspection).
-    //   NDL: $3,000 third-party inspection + per-SF rate based on warranty band.
-    //        ($0.06/SF @ 10-yr, $0.09/SF @ 15-yr, $0.12/SF @ 20-yr.) 5-yr has
-    //        no NDL option — the toggle is hidden for that band.
+    //   Standard: $1,000 flat (any band — no inspection). ALWAYS included in
+    //             the customer's base price on Everest jobs.
+    //   NDL:      $3,000 third-party inspection + per-SF rate based on warranty
+    //             band ($0.06/SF @ 10-yr, $0.09/SF @ 15-yr, $0.12/SF @ 20-yr).
+    //             Shown to the customer as an OPTIONAL upgrade — never folded
+    //             into the base price. 5-yr has no NDL.
     const WARRANTY_ADD_FIELD = { 25: "warranty_25yr_add", 20: "warranty_20yr_add",
                                   15: "warranty_15yr_add", 10: "warranty_10yr_add" };
-    const NDL_PER_SF = { 10: 0.06, 15: 0.09, 20: 0.12 };  // no 5-yr / 25-yr NDL
+    const NDL_PER_SF = { 10: 0.06, 15: 0.09, 20: 0.12 };
     const isEverest = (system.vendor || "").toLowerCase().includes("everest");
     const ndlAvailable = isEverest && (system.warranty_years in NDL_PER_SF);
     const isNdl = ndlAvailable && !!ndlByWarranty[system.warranty_years];
-    let warrantyAdd;
-    if (isEverest) {
-      if (isNdl) {
-        warrantyAdd = 3000 + (NDL_PER_SF[system.warranty_years] || 0) * sf;
-      } else {
-        warrantyAdd = 1000;
-      }
-    } else {
-      const warrantyField = WARRANTY_ADD_FIELD[system.warranty_years];
-      warrantyAdd = (deal && warrantyField) ? Number(deal[warrantyField] || 0) : 0;
-    }
+
+    // Standard warranty $ — what's baked into the base customer price.
+    const standardWarranty = isEverest ? 1000 : (
+      (deal && WARRANTY_ADD_FIELD[system.warranty_years])
+        ? Number(deal[WARRANTY_ADD_FIELD[system.warranty_years]] || 0)
+        : 0
+    );
+    // Raw NDL surcharge (before OH+Profit) — only present on Everest jobs.
+    const ndlSurchargeRaw = ndlAvailable ? (3000 + (NDL_PER_SF[system.warranty_years] || 0) * sf - 1000) : 0;
+    // Display warranty row label drives off the toggle (Standard vs NDL),
+    // but the base price math always uses Standard.
+    const warrantyAdd = isEverest ? standardWarranty : standardWarranty;
     // Labor — per-warranty input the rep types on each column. Stored in
     // laborByWarranty state and persisted to deal.labor_*_add on save.
     const laborAdd = Number(laborByWarranty[system.warranty_years] || 0);
@@ -449,14 +452,22 @@ export default function Calculator() {
     // collapse with `||`.
     const ohPct = overheadByWarranty[system.warranty_years] ?? Number(settings.overhead_pct || 0);
     const prPct = profitByWarranty[system.warranty_years]   ?? Number(settings.profit_pct   || 0);
-    // Subtotal before OH&P
+    // Subtotal before OH&P — Standard warranty baseline (the customer's base).
     const subtotal = markedUp + handling + warrantyAdd + laborAdd;
     const overhead = subtotal * (ohPct / 100);
     const profit   = (subtotal + overhead) * (prPct / 100);
-    const customer = subtotal + overhead + profit;
+    const customerBase = subtotal + overhead + profit;
+    // NDL upgrade $ = same compounded markup applied to the surcharge so the
+    // upgrade row carries identical margin as the base. This is what we
+    // publish on the PDF's "[OPTIONAL] Manufacturer Warranty" line.
+    const ndlUpgradeDelta = ndlSurchargeRaw * (1 + ohPct / 100) * (1 + prPct / 100);
+    // Displayed customer price = base + NDL only if rep ticked the toggle in
+    // the calculator. The toggle is for the rep's internal pricing reference;
+    // the PDF always shows base as the headline and NDL as an option.
+    const customer = customerBase + (isNdl ? ndlUpgradeDelta : 0);
     const pricePerSf = sf > 0 ? customer / sf : 0;
 
-    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, laborAdd, subtotal, overhead, profit, ohPct, prPct, customer, pricePerSf };
+    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, ndlUpgradeDelta, customerBase, laborAdd, subtotal, overhead, profit, ohPct, prPct, customer, pricePerSf };
   };
 
   const columns = useMemo(() => {
@@ -492,7 +503,12 @@ export default function Calculator() {
     const PR_FIELD     = { 25: "profit_25yr_pct",   20: "profit_20yr_pct",   15: "profit_15yr_pct",   10: "profit_10yr_pct" };
     const WAR_ADD_FIELD = { 25: "warranty_25yr_add", 20: "warranty_20yr_add", 15: "warranty_15yr_add", 10: "warranty_10yr_add" };
     const NDL_FIELD     = { 25: "warranty_25yr_ndl", 20: "warranty_20yr_ndl", 15: "warranty_15yr_ndl", 10: "warranty_10yr_ndl" };
-    const customerRounded = Math.round(col.customer * 100) / 100;
+    // Everest jobs: the customer's headline price ALWAYS shows the Standard-
+    // warranty base ($1,000 baked in). The NDL upgrade $ travels via the
+    // `warranty_*_add` field — the spec sheet renders it under "[OPTIONAL]
+    // Manufacturer Warranty" so the customer can opt-in separately.
+    const baseForDeal = col.isEverest ? col.customerBase : col.customer;
+    const customerRounded = Math.round(baseForDeal * 100) / 100;
     const laborField = LABOR_ADD_FIELD[col.system.warranty_years];
     const ohField    = OH_FIELD[col.system.warranty_years];
     const prField    = PR_FIELD[col.system.warranty_years];
@@ -504,9 +520,10 @@ export default function Calculator() {
       if (laborField) body[laborField] = Math.round((col.laborAdd || 0) * 100) / 100;
       if (ohField) body[ohField] = col.ohPct;
       if (prField) body[prField] = col.prPct;
-      // For Everest, persist the auto-computed warranty $ + NDL flag so
-      // reopening the calculator restores the exact state the rep saw.
-      if (col.isEverest && warField) body[warField] = Math.round(col.warrantyAdd * 100) / 100;
+      // For Everest, persist the NDL UPGRADE delta in warranty_*_add (so the
+      // PDF can render it as an optional add-on) — and remember the toggle
+      // state in warranty_*_ndl so the calculator restores the same view.
+      if (col.isEverest && warField) body[warField] = Math.round((col.ndlUpgradeDelta || 0) * 100) / 100;
       if (col.isEverest && ndlField) body[ndlField] = !!col.isNdl;
       ["id","created_at","updated_at","created_by",
        "materials_cost","labor_cost","subcontractor_cost","other_expenses_total",
@@ -515,7 +532,7 @@ export default function Calculator() {
       ].forEach((k) => { delete body[k]; });
       const r = await api.put(`/deals/${deal.id}`, body);
       setDeal(r.data);
-      toast.success(`Set Option ${letter} (${col.system.warranty_years}-yr) = ${formatCurrency(col.customer)} on the deal.`);
+      toast.success(`Set Option ${letter} (${col.system.warranty_years}-yr) = ${formatCurrency(baseForDeal)} on the deal.`);
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message);
     } finally {
@@ -538,7 +555,11 @@ export default function Calculator() {
       const field = PROPOSAL_FIELD_BY_WARRANTY[col.system.warranty_years];
       const letter = OPTION_LETTER[col.system.warranty_years];
       if (!field) continue;
-      updates[field] = Math.round(col.customer * 100) / 100;
+      // Everest jobs: save Standard-warranty base in proposal_option_* and
+      // the marked-up NDL upgrade delta in warranty_*_add (the PDF will
+      // render it as an "[OPTIONAL] Manufacturer Warranty" upgrade).
+      const baseForDeal = col.isEverest ? col.customerBase : col.customer;
+      updates[field] = Math.round(baseForDeal * 100) / 100;
       const lf = LABOR_FIELDS[col.system.warranty_years];
       const of_ = OH_FIELDS[col.system.warranty_years];
       const pf = PR_FIELDS[col.system.warranty_years];
@@ -547,9 +568,9 @@ export default function Calculator() {
       if (lf) updates[lf] = Math.round((col.laborAdd || 0) * 100) / 100;
       if (of_) updates[of_] = col.ohPct;
       if (pf) updates[pf] = col.prPct;
-      if (col.isEverest && wf) updates[wf] = Math.round(col.warrantyAdd * 100) / 100;
+      if (col.isEverest && wf) updates[wf] = Math.round((col.ndlUpgradeDelta || 0) * 100) / 100;
       if (col.isEverest && nf) updates[nf] = !!col.isNdl;
-      summary.push(`Option ${letter} = ${formatCurrency(col.customer)}`);
+      summary.push(`Option ${letter} = ${formatCurrency(baseForDeal)}`);
     }
     if (!Object.keys(updates).length) {
       toast.warning("None of the picked systems have a matching A/B/C/D warranty (10/15/20/25-yr)");
