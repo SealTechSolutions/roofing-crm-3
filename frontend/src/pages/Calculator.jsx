@@ -315,10 +315,17 @@ export default function Calculator() {
     const markedUp = rawCost * (1 + settings.markup_pct / 100);
     const handlingBase = settings.handling_basis === "raw" ? rawCost : markedUp;
     const handling = handlingBase * (settings.handling_pct / 100);
-    const customer = markedUp + handling;
+    // Warranty up-charge — comes off the picked DEAL (not the calculator
+    // settings) so the same calculator can quote different-priced warranties
+    // per job. Looked up by the system's warranty band.
+    const WARRANTY_ADD_FIELD = { 25: "warranty_25yr_add", 20: "warranty_20yr_add",
+                                  15: "warranty_15yr_add", 10: "warranty_10yr_add" };
+    const warrantyField = WARRANTY_ADD_FIELD[system.warranty_years];
+    const warrantyAdd = (deal && warrantyField) ? Number(deal[warrantyField] || 0) : 0;
+    const customer = markedUp + handling + warrantyAdd;
     const pricePerSf = sf > 0 ? customer / sf : 0;
 
-    return { system, lines, addonLines, rawCost, markedUp, handling, customer, pricePerSf };
+    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, customer, pricePerSf };
   };
 
   const columns = useMemo(() => {
@@ -326,7 +333,7 @@ export default function Calculator() {
       .map((id) => systems.find((s) => s.id === id))
       .filter(Boolean)
       .map(computeBom);
-  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, allowedSizes]);
+  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, allowedSizes, deal]);
 
   // ────────────────────────────────────────────────────────────────────
   //   Calculator → Deal action handlers (split by mode)
@@ -890,7 +897,7 @@ export default function Calculator() {
 }
 
 function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, onPushMaterials, onPushAndPo, savingToDeal, testIdSuffix }) {
-  const { system, lines, addonLines, rawCost, markedUp, handling, customer, pricePerSf } = col;
+  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, customer, pricePerSf } = col;
   const hasRecipe = lines.length > 0;
   const optionLetter = { 25: "A", 20: "B", 15: "C", 10: "D" }[system.warranty_years];
   return (
@@ -991,6 +998,9 @@ function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, on
         <Row label="Raw materials" value={rawCost} />
         <Row label={`+${settings.markup_pct}% Shipping`} value={markedUp - rawCost} />
         <Row label={`+${settings.handling_pct}% Handling`} value={handling} />
+        {warrantyAdd > 0 && (
+          <Row label={`+ Warranty (${system.warranty_years}-yr)`} value={warrantyAdd} />
+        )}
         <div className="border-t border-zinc-300 pt-1.5 mt-1.5 flex items-baseline justify-between">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Customer Price</div>
