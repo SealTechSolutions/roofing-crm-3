@@ -70,23 +70,30 @@ function groupBySku(products) {
 function packContainers(qtyNeeded, containers) {
   const out = [];
   let remaining = qtyNeeded;
+  // Floating-point safety: snap a number to its nearest integer when within
+  // an epsilon (otherwise 5.000076 ceils to 6 instead of the obvious 5).
+  const snap = (n) => {
+    const r = Math.round(n);
+    return Math.abs(n - r) < 1e-4 ? r : n;
+  };
   for (let i = 0; i < containers.length; i++) {
     const c = containers[i];
     const isLast = i === containers.length - 1;
     if (remaining <= 0) break;
     let count;
+    const ratio = snap(remaining / c.package_size);
     if (isLast) {
       // Round UP for the final (smallest) container so we always cover the qty.
-      count = Math.ceil(remaining / c.package_size);
+      count = Math.ceil(ratio);
     } else {
       // For larger containers, only buy "whole" ones that don't overshoot.
-      count = Math.floor(remaining / c.package_size);
+      count = Math.floor(ratio);
     }
     if (count > 0) {
       const gallons = count * c.package_size;
       const cost = count * (c.unit_price * c.package_size);
       out.push({ product: c, qty: count, gallons, cost });
-      remaining -= gallons;
+      remaining = snap(remaining - gallons);
     }
   }
   return out;
@@ -345,7 +352,7 @@ export default function Calculator() {
             {deal ? `Estimate for ${deal.title || deal.name || "Deal"}` : "Quick System Compare"}
           </h1>
           <p className="text-sm text-zinc-600 mt-1">
-            Pick up to {MAX_COMPARE} systems, enter total square footage, and see a side-by-side material list with the customer-facing price (cost + {settings.markup_pct}% markup + {settings.handling_pct}% handling).
+            Pick up to {MAX_COMPARE} systems, enter total square footage, and see a side-by-side material list with the customer-facing price (cost + {settings.markup_pct}% shipping + {settings.handling_pct}% handling).
           </p>
         </div>
         {deal && (
@@ -408,13 +415,13 @@ export default function Calculator() {
           </div>
         </div>
         <div className="text-xs flex flex-col justify-center">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Markup</div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Shipping</div>
           <div className="font-mono text-base">{settings.markup_pct}% on raw materials</div>
         </div>
         <div className="text-xs flex flex-col justify-center">
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Handling Fee</div>
           <div className="font-mono text-base">
-            {settings.handling_pct}% {settings.handling_basis === "marked_up" ? "(on marked-up total)" : "(on raw cost)"}
+            {settings.handling_pct}% {settings.handling_basis === "marked_up" ? "(on shipping-included total)" : "(on raw cost)"}
           </div>
         </div>
       </div>
@@ -610,7 +617,7 @@ function CompareColumn({ col, settings, totalSf, onRemove, onSaveToDeal, savingT
 
       <div className="border-t-2 border-zinc-950 p-3 bg-zinc-50 space-y-1 text-xs">
         <Row label="Raw materials" value={rawCost} />
-        <Row label={`+${settings.markup_pct}% Markup`} value={markedUp - rawCost} />
+        <Row label={`+${settings.markup_pct}% Shipping`} value={markedUp - rawCost} />
         <Row label={`+${settings.handling_pct}% Handling`} value={handling} />
         <div className="border-t border-zinc-300 pt-1.5 mt-1.5 flex items-baseline justify-between">
           <div>

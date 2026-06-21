@@ -42,7 +42,7 @@ export default function ProductCatalog() {
       <header>
         <h1 className="text-2xl font-black tracking-tight">Product Catalog &amp; Roofing Systems</h1>
         <p className="text-sm text-zinc-600 mt-1">
-          Master price list, named system assemblies, and the markup / handling-fee defaults that drive the Material Calculator.
+          Master price list, named system assemblies, and the shipping / handling-fee defaults that drive the Material Calculator.
         </p>
       </header>
       <div className="flex gap-1 border-b border-zinc-200">
@@ -431,14 +431,14 @@ function SettingsTab() {
     <div className="max-w-xl space-y-4">
       <div className="border border-zinc-200 rounded-sm p-4 space-y-3">
         <div className="grid grid-cols-2 gap-3">
-          <div><label className={labelCls}>Markup %</label><input type="number" step="0.01" className={inputCls} value={s.markup_pct} onChange={(e)=>setS({...s,markup_pct:parseFloat(e.target.value)||0})} /></div>
+          <div><label className={labelCls}>Shipping %</label><input type="number" step="0.01" className={inputCls} value={s.markup_pct} onChange={(e)=>setS({...s,markup_pct:parseFloat(e.target.value)||0})} /></div>
           <div><label className={labelCls}>Handling fee %</label><input type="number" step="0.01" className={inputCls} value={s.handling_pct} onChange={(e)=>setS({...s,handling_pct:parseFloat(e.target.value)||0})} /></div>
         </div>
         <div>
           <label className={labelCls}>Handling fee applied to</label>
           <select className={inputCls} value={s.handling_basis} onChange={(e)=>setS({...s,handling_basis:e.target.value})}>
             <option value="marked_up">Marked-up total (raw × 1.15, then × 1.10)</option>
-            <option value="raw">Raw cost only (raw × 1.10), markup added separately</option>
+            <option value="raw">Raw cost only (raw × 1.10), shipping added separately</option>
           </select>
         </div>
         <div><label className={labelCls}>Default waste factor %</label><input type="number" step="0.01" className={inputCls} value={s.waste_pct} onChange={(e)=>setS({...s,waste_pct:parseFloat(e.target.value)||0})} /></div>
@@ -447,7 +447,7 @@ function SettingsTab() {
         </div>
       </div>
       <div className="text-xs text-zinc-500 border border-zinc-200 p-3 rounded-sm bg-zinc-50">
-        <b>How the math works:</b> Raw material cost = Σ(qty × unit price). Markup adds {s.markup_pct}% (your job-cost margin against the future supplier invoice). Handling fee adds {s.handling_pct}% {s.handling_basis === "marked_up" ? "on the marked-up total" : "on the raw cost only"}.
+        <b>How the math works:</b> Raw material cost = Σ(qty × unit price). Shipping adds {s.markup_pct}% (covers freight from the vendor to the jobsite). Handling fee adds {s.handling_pct}% {s.handling_basis === "marked_up" ? "on the shipping-included total" : "on the raw cost only"}.
       </div>
     </div>
   );
