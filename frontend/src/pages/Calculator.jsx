@@ -30,7 +30,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { Calculator as CalcIcon, Plus, X, Save, ChevronLeft, Layers, AlertCircle, Loader2, FileText } from "lucide-react";
+import { Calculator as CalcIcon, Plus, X, Save, ChevronLeft, Layers, AlertCircle, Loader2, FileText, Download } from "lucide-react";
 
 const ADDON_TEMPLATES = [
   // Walk-pads
@@ -580,17 +580,30 @@ export default function Calculator() {
         </div>
         {deal && (
           <div className="flex flex-col items-end gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               <Link to={`/deals/${deal.id}`} className="inline-flex items-center gap-1 px-3 h-8 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 bg-white hover:bg-zinc-50 rounded-sm" data-testid="back-to-deal">
                 <ChevronLeft className="w-3 h-3" /> Back to Deal
               </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  const token = localStorage.getItem("crm_token") || "";
+                  const base = process.env.REACT_APP_BACKEND_URL;
+                  window.open(`${base}/api/deals/${deal.id}/spec-sheet.pdf?token=${encodeURIComponent(token)}`, "_blank");
+                }}
+                className="inline-flex items-center gap-1 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-zinc-900 text-white hover:bg-zinc-700 rounded-sm"
+                data-testid="download-scope-pdf"
+                title="Download the scope PDF straight to your device — for in-person customer meetings."
+              >
+                <Download className="w-3 h-3" /> Download Scope
+              </button>
               <Link
                 to={`/deals/${deal.id}?openScope=1`}
                 className="inline-flex items-center gap-1 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-amber-600 text-white hover:bg-amber-700 rounded-sm"
                 data-testid="open-scope"
-                title="Jump to the scope editor on the deal so you can finalize the proposal text and send it to the customer for signature."
+                title="Jump to the scope editor on the deal so you can finalize the proposal text and email it from there."
               >
-                <FileText className="w-3 h-3" /> Open Scope →
+                <FileText className="w-3 h-3" /> Edit Scope →
               </Link>
             </div>
             {/* Mode toggle — controls which action buttons appear in each compare column. */}
