@@ -224,7 +224,7 @@ export default function Calculator() {
   /** Save the picked column's BoM back to the originating deal's cost_items. */
   const saveColumnToDeal = async (col) => {
     if (!deal) return;
-    if (!window.confirm(`Push this Bill of Materials to deal "${deal.name}" as Vendor Cost lines?`)) return;
+    if (!window.confirm(`Push this Bill of Materials to deal "${deal.title || deal.name || deal.id}" as Vendor Cost lines?`)) return;
     setSavingToDeal(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
@@ -256,20 +256,10 @@ export default function Calculator() {
           status: "Pending",
         });
       }
-      // Markup + handling as a single line so the deal totals match the calculator
-      const upcharge = col.customer - col.rawCost;
-      if (upcharge > 0) {
-        newCostItems.push({
-          category: "Other",
-          vendor_id: null,
-          vendor_name: "",
-          description: `Markup ${settings.markup_pct}% + Handling ${settings.handling_pct}% — ${col.system.name}`,
-          amount: Math.round(upcharge * 100) / 100,
-          date: today,
-          status: "Pending",
-          calculator_only: true,  // backend ignores this flag; client filter helper
-        });
-      }
+      // Note: we deliberately do NOT push the markup/handling line as a cost
+      // item — it's customer-side margin, not a vendor expense. The Customer
+      // Price is surfaced in the post-save toast so Darren can paste it into
+      // the Proposal Options card himself.
 
       const merged = [...(deal.cost_items || []), ...newCostItems];
       const body = { ...deal, cost_items: merged };
@@ -279,7 +269,11 @@ export default function Calculator() {
        "assigned_user_name","primary_contact_name","property_name"
       ].forEach((k) => { delete body[k]; });
       await api.put(`/deals/${deal.id}`, body);
-      toast.success(`Added ${newCostItems.length} cost line${newCostItems.length === 1 ? "" : "s"} to deal`);
+      toast.success(
+        `Added ${newCostItems.length} material cost line${newCostItems.length === 1 ? "" : "s"} ($${col.rawCost.toFixed(0)}). ` +
+        `Customer Price: ${formatCurrency(col.customer)} — set in Proposal Options if needed.`,
+        { duration: 7000 }
+      );
       nav(`/deals/${deal.id}`);
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message);
@@ -314,7 +308,7 @@ export default function Calculator() {
             <CalcIcon className="w-3.5 h-3.5" /> Material Calculator
           </div>
           <h1 className="text-2xl font-black tracking-tight mt-1">
-            {deal ? `Estimate for ${deal.name}` : "Quick System Compare"}
+            {deal ? `Estimate for ${deal.title || deal.name || "Deal"}` : "Quick System Compare"}
           </h1>
           <p className="text-sm text-zinc-600 mt-1">
             Pick up to {MAX_COMPARE} systems, enter total square footage, and see a side-by-side material list with the customer-facing price (cost + {settings.markup_pct}% markup + {settings.handling_pct}% handling).
