@@ -1517,10 +1517,23 @@ def build_spec_sheet(
         raw_label = data.get("roof_type_label") or (roof_type or "roof system")
         if "farm" in raw_label.lower() or "fluid applied reinforced membrane" in raw_label.lower():
             label_p1 = "FARM (fluid applied reinforced membrane)"
+            system_word = "system"
         else:
             label_p1 = raw_label
-        inc_text_p1 = f"<b>Inclusions:</b>  Approximately {total_sqft_p1:,.0f} SF ({sq_p1} SQ) {color_p1} {label_p1} system, including walls and flashings."
-        story.append(Paragraph(inc_text_p1, s["body"]))
+            # For Silicone deals, the customer-facing scope reads as "silicone
+            # roofing system" — we keep the word "roofing" so the bullet ties
+            # back to the SILICONE ROOF SCOPE title and the tier-table on Page 2.
+            system_word = "roofing system"
+        inc_bullets = [
+            f"Install approximately {total_sqft_p1:,.0f} SF ({sq_p1} SQ) of a {color_p1} {label_p1} {system_word}.",
+            "Provide all labor, materials, equipment, supervision, and insurance required for installation.",
+            "Include the standard warranty corresponding to the selected system warranty term.",
+        ]
+        story.append(Paragraph("Inclusions", s["h2"]))
+        story.append(Paragraph(
+            "<br/>".join([f"•&nbsp;&nbsp;{b}" for b in inc_bullets]),
+            s["body"],
+        ))
 
     story.append(PageBreak())
 
