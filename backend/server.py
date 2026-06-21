@@ -4700,6 +4700,20 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
                 photo_bytes, _ = get_object(rec["storage_path"])
             except Exception:
                 photo_bytes = None
+    # Fallback: if no `cover_photo_file_id` is set on the deal, use whatever
+    # project photo is flagged `is_cover=True`. This keeps the in-PDF banner
+    # in sync with the gallery's "Set as Cover" star, even when the deal's
+    # dedicated field gets cleared during data recovery / album reshuffles.
+    if not photo_bytes:
+        flagged = await db.project_photos.find_one(
+            {"deal_id": deal["id"], "is_cover": True, "is_deleted": {"$ne": True}},
+            {"_id": 0, "storage_path": 1},
+        )
+        if flagged and flagged.get("storage_path"):
+            try:
+                photo_bytes, _ = get_object(flagged["storage_path"])
+            except Exception:
+                photo_bytes = None
 
     pdf_bytes = build_spec_sheet(
         data,
