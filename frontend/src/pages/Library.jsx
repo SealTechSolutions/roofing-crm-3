@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { api, formatApiError, API } from "@/lib/api";
 import { toast } from "sonner";
-import { BookOpen, Search, Upload, Trash2, Download, Folder, FileText, X } from "lucide-react";
+import { BookOpen, Search, Upload, Trash2, Download, Folder, FileText, X, Sparkles } from "lucide-react";
 import CameraCaptureButton from "@/components/CameraCaptureButton";
 
 export default function Library() {
@@ -81,6 +81,41 @@ export default function Library() {
           </div>
           <h1 className="font-heading text-4xl font-black tracking-tight">Library</h1>
           <div className="text-xs text-zinc-500 mt-1">Brochures, specs, safety data, certs, contracts — pull straight into a scope email.</div>
+        </div>
+      </div>
+
+      {/* Marketing brochures — generated on the fly by the backend. Each card
+          downloads the latest version (so updates roll out without needing to
+          re-upload anything to the library). */}
+      <div className="bg-gradient-to-br from-blue-700 to-blue-900 text-white rounded-sm p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles className="w-4 h-4 text-amber-300" />
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">SealTech Marketing</div>
+        </div>
+        <div className="font-heading text-lg font-black mb-1">Sales Brochures</div>
+        <div className="text-xs text-blue-100 mb-4">One-click PDFs you can attach to a quote or print for a site visit. Generated fresh from the backend every download.</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <BrochureCard
+            title="Fluid Applied Reinforced Membrane"
+            blurb="6-page FARM pitch — Western Colloid systems, lifetime NDL warranty, before/after photos, client roster."
+            href="/brochures/farm.pdf"
+            filename="SealTech-FARM-Brochure.pdf"
+            testId="brochure-farm"
+          />
+          <BrochureCard
+            title="Silicone Restoration"
+            blurb="Coming next — Everest Silkoxy systems, NDL upgrade options, granule finish."
+            href={null}
+            filename="SealTech-Silicone-Brochure.pdf"
+            testId="brochure-silicone"
+          />
+          <BrochureCard
+            title="FARM + Silicone Combined"
+            blurb="Coming next — FARM-led overview with 1–2 pages on silicone for whichever the customer prefers."
+            href={null}
+            filename="SealTech-Combined-Brochure.pdf"
+            testId="brochure-combined"
+          />
         </div>
       </div>
 
@@ -292,6 +327,48 @@ function UploadModal({ preset, taxonomy, onClose, onSaved }) {
           <button type="submit" disabled={saving} data-testid="upload-submit" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm disabled:opacity-50">{saving ? "Uploading..." : "Upload"}</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+
+function BrochureCard({ title, blurb, href, filename, testId }) {
+  const [busy, setBusy] = React.useState(false);
+  const download = async () => {
+    if (!href) return;
+    setBusy(true);
+    const tid = toast.loading(`Generating ${filename}…`);
+    try {
+      const r = await api.get(href, { responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success(`${filename} downloaded`, { id: tid });
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || e?.message || "Download failed", { id: tid });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const enabled = !!href;
+  return (
+    <div className={`rounded-sm p-4 flex flex-col gap-3 border ${enabled ? "bg-white/10 border-white/20 hover:bg-white/20 transition-colors" : "bg-white/5 border-white/10 opacity-60"}`}>
+      <div>
+        <div className="font-heading text-sm font-black leading-tight mb-1">{title}</div>
+        <div className="text-[11px] text-blue-100 leading-snug">{blurb}</div>
+      </div>
+      <button
+        type="button"
+        disabled={!enabled || busy}
+        onClick={download}
+        data-testid={testId}
+        className={`mt-auto flex items-center justify-center gap-1.5 px-3 h-9 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-colors ${enabled ? "bg-amber-400 text-blue-950 hover:bg-amber-300" : "bg-white/10 text-white/40 cursor-not-allowed"}`}
+      >
+        <Download className="w-3.5 h-3.5" />
+        {!enabled ? "Coming soon" : busy ? "Generating…" : "Download PDF"}
+      </button>
     </div>
   );
 }

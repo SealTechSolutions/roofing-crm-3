@@ -6617,6 +6617,9 @@ api_router.include_router(user_profile_module.make_router(db, get_current_user, 
 import product_catalog as _product_catalog
 api_router.include_router(_product_catalog.create_router(db, get_current_user))
 
+import brochures as _brochures
+api_router.include_router(_brochures.create_router(get_current_user))
+
 
 # ----- Public Proposal Signing (Sign Off link) ----------------------------
 import proposal_signing as _proposal_signing
