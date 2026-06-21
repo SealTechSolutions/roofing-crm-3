@@ -25,6 +25,31 @@ export default function ProposalSign() {
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(null); // sign response
 
+  // Lazy-load Google Fonts the FIRST time the signing page mounts (and only
+  // once — guarded by a stable id on the <link> tag so navigating back and
+  // forth doesn't pile up duplicate stylesheets).
+  useEffect(() => {
+    if (document.getElementById("gf-signature-fonts")) return;
+    const link = document.createElement("link");
+    link.id = "gf-signature-fonts";
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Allura&family=Caveat&family=Dancing+Script&family=Great+Vibes&family=Pacifico&display=swap";
+    document.head.appendChild(link);
+  }, []);
+
+  // Typed-signature font picker — lets the customer pick a cursive style for
+  // their typed name. The chosen font is recorded with the signed name so the
+  // PDF receipt can render it the same way.
+  const SIGNATURE_FONTS = [
+    { id: "Dancing Script", label: "Dancing Script", css: "'Dancing Script', cursive" },
+    { id: "Great Vibes",   label: "Great Vibes",   css: "'Great Vibes', cursive" },
+    { id: "Caveat",        label: "Caveat",        css: "'Caveat', cursive" },
+    { id: "Pacifico",      label: "Pacifico",      css: "'Pacifico', cursive" },
+    { id: "Allura",        label: "Allura",        css: "'Allura', cursive" },
+  ];
+  const [signFont, setSignFont] = useState(SIGNATURE_FONTS[0].id);
+  const signFontCss = (SIGNATURE_FONTS.find((f) => f.id === signFont) || SIGNATURE_FONTS[0]).css;
+
   // Signature canvas
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
@@ -151,6 +176,7 @@ export default function ProposalSign() {
         signer_email: signerEmail.trim(),
         accepted: true,
         signature_data_url,
+        signature_font: signFont,   // chosen cursive style (None if customer drew)
       });
       setSuccess(r.data);
     } catch (e) {
@@ -304,6 +330,32 @@ export default function ProposalSign() {
                   data-testid="proposal-signer-name"
                   required
                 />
+                {signerName && (
+                  <div className="mt-2 px-3 py-3 border-2 border-zinc-300 rounded-sm bg-white">
+                    <div className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-1">Preview Signature</div>
+                    <div
+                      data-testid="proposal-typed-signature-preview"
+                      style={{ fontFamily: signFontCss, fontSize: "2.1rem", lineHeight: 1.1, color: "#0b0b0b" }}
+                    >
+                      {signerName}
+                    </div>
+                  </div>
+                )}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {SIGNATURE_FONTS.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setSignFont(f.id)}
+                      data-testid={`sign-font-${f.id.toLowerCase().replace(/\s+/g, "-")}`}
+                      style={{ fontFamily: f.css }}
+                      className={`px-2.5 py-1 rounded-sm border text-base transition-colors ${signFont === f.id ? "bg-blue-700 text-white border-blue-700" : "bg-white text-zinc-700 border-zinc-300 hover:border-zinc-400"}`}
+                      title={`Use the "${f.label}" font for the typed signature`}
+                    >
+                      {signerName || f.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-600 block mb-1.5">Email (optional)</label>

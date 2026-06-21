@@ -30,7 +30,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { Calculator as CalcIcon, Plus, X, Save, ChevronLeft, Layers, AlertCircle, Loader2, FileText, Download } from "lucide-react";
+import { Calculator as CalcIcon, Plus, X, Save, ChevronLeft, Layers, AlertCircle, Loader2, FileText, Download, PenLine } from "lucide-react";
 
 const ADDON_TEMPLATES = [
   // Walk-pads
@@ -605,6 +605,30 @@ export default function Calculator() {
               >
                 <FileText className="w-3 h-3" /> Edit Scope →
               </Link>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const r = await api.get(`/deals/${deal.id}/sign-link`);
+                    const url = r.data?.sign_url;
+                    if (!url) { toast.error("Could not get sign link"); return; }
+                    // Copy to clipboard
+                    try { await navigator.clipboard.writeText(url); } catch { /* ignore */ }
+                    // Open in a new tab so Darren can hand the device to the customer
+                    window.open(url, "_blank");
+                    toast.success(r.data?.already_signed
+                      ? "This deal is already signed — opened the receipt view."
+                      : "Sign link copied to clipboard AND opened in a new tab — hand it to the customer.");
+                  } catch (e) {
+                    toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+                  }
+                }}
+                className="inline-flex items-center gap-1 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-emerald-700 text-white hover:bg-emerald-800 rounded-sm"
+                data-testid="get-signed"
+                title="Mints (or reuses) the public sign URL, copies it to your clipboard, and opens it in a new tab so you can hand the device to the customer right at the table."
+              >
+                <PenLine className="w-3 h-3" /> Get Signed →
+              </button>
             </div>
             {/* Mode toggle — controls which action buttons appear in each compare column. */}
             <div className="inline-flex items-stretch border border-zinc-300 rounded-sm overflow-hidden" data-testid="mode-toggle">

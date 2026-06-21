@@ -141,6 +141,7 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
         signer_email = (body.get("signer_email") or "").strip()
         accepted = bool(body.get("accepted"))
         signature_data_url: Optional[str] = body.get("signature_data_url")
+        signature_font = (body.get("signature_font") or "").strip()[:40]
 
         if not accepted:
             raise HTTPException(400, "Acceptance is required to sign the proposal")
@@ -221,6 +222,7 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
                     "scope_signed_ip": client_ip,
                     "scope_signed_user_agent": ua[:300],
                     "scope_signature_file_id": signature_file_id,
+                    "scope_signature_font": signature_font,
                     "updated_at": now,
                 },
                 "$push": {"status_history": history_entry},

@@ -4521,6 +4521,33 @@ async def subcontractor_scorecards(current=Depends(get_current_user)):
 
 
 # ----- Spec Sheet -----
+@api_router.get("/deals/{deal_id}/sign-link")
+async def deal_sign_link(deal_id: str, current: dict = Depends(get_current_user)):
+    """Mint (or return existing) the public proposal-signing URL for a deal.
+
+    Powers the calculator's "Get Signed" button — Darren clicks once and gets
+    the URL to either copy to clipboard or open on the tablet at the table.
+    Idempotent: re-calling returns the same URL until the deal is signed.
+    """
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}},
+                                   {"_id": 0, "id": 1, "title": 1,
+                                    "scope_signed_at": 1, "proposal_sign_token": 1})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    token_val = await _proposal_signing.ensure_proposal_token(db, deal_id)
+    base = _PUBLIC_BASE_URL.rstrip("/") if _PUBLIC_BASE_URL else ""
+    if not base:
+        raise HTTPException(status_code=500,
+                            detail="PUBLIC_BASE_URL not configured")
+    return {
+        "deal_id": deal_id,
+        "title": deal.get("title") or "",
+        "token": token_val,
+        "sign_url": f"{base}/sign/{token_val}",
+        "already_signed": bool(deal.get("scope_signed_at")),
+    }
+
+
 @api_router.get("/deals/{deal_id}/spec-sheet.pdf")
 async def deal_spec_sheet(
     deal_id: str,
