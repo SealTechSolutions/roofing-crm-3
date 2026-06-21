@@ -39,6 +39,12 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
   const [bulkMoveTarget, setBulkMoveTarget] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+  // Bulk "Set capture date" — fixes the common case of emailed/uploaded
+  // photos that arrive without EXIF (or with the wrong EXIF) and stack on
+  // the upload date instead of the day they were actually shot. The rep
+  // picks a YYYY-MM-DD; backend normalizes it to noon UTC so the day
+  // header lands cleanly.
+  const [bulkCapturedAt, setBulkCapturedAt] = useState("");
   const fileInputRef = useRef(null);
 
   const toggleSelect = (id) => {
@@ -88,8 +94,7 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
     load();
   };
 
-  const bulkMove = async (targetAlbum) => {
-    if (!selectedIds.size) return;
+  const bulkMove = async (targetAlbum) => {    if (!selectedIds.size) return;
     if (!targetAlbum || !targetAlbum.trim()) { toast.error("Pick an album"); return; }
     setBulkBusy(true);
     const ids = Array.from(selectedIds);
@@ -123,6 +128,29 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
     clearSelection();
     setBulkBusy(false);
     load();
+  };
+
+  // Bulk-set `captured_at` for selected photos. Re-anchors photos to the day
+  // they were actually shot so the timeline stops bunching everything under
+  // the upload date (the typical "Mary emailed me a roll from Tuesday" case).
+  const bulkSetCapturedAt = async () => {
+    if (!selectedIds.size) return;
+    if (!bulkCapturedAt) { toast.error("Pick a date first"); return; }
+    setBulkBusy(true);
+    try {
+      const r = await api.patch(`/projects/${dealId}/photos-bulk`, {
+        ids: Array.from(selectedIds),
+        captured_at: bulkCapturedAt,
+      });
+      toast.success(`Re-dated ${r?.data?.matched_count ?? selectedIds.size} photo${selectedIds.size === 1 ? "" : "s"} → ${bulkCapturedAt}`);
+      clearSelection();
+      setBulkCapturedAt("");
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e) || "Could not update capture dates");
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   // Download a single photo to the user's hard drive (Paint / Macromedia /
@@ -168,11 +196,12 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
   );
 
   /**
-   * Group filtered photos by calendar date taken (uses `created_at` which for
-   * field-camera photos = exact moment of capture, and for drag-drop uploads
-   * = upload date). Returns an array of `{ key, label, photos: [] }` sorted
-   * by `sortOrder` — oldest-first by default so the page reads as a natural
-   * before → during → after timeline.
+   * Group filtered photos by **captured_at** (the EXIF/camera shutter time
+   * extracted at upload). Falls back to `created_at` (upload time) when a
+   * photo has no captured_at — typically true for old uploads from before
+   * EXIF extraction was wired up. Returns `{ key, label, photos: [] }` sorted
+   * by `sortOrder` — oldest-first by default so the gallery reads as a
+   * natural before → during → after timeline of the actual job site.
    */
   const dateGroups = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -187,17 +216,24 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
     };
     const buckets = new Map();
     for (const p of filtered) {
-      const d = p.created_at ? new Date(p.created_at) : new Date(0);
+      // captured_at = true shutter time (EXIF). Fall back to created_at
+      // (upload time) for legacy rows so they still show somewhere on the
+      // timeline instead of disappearing into "No date".
+      const stamp = p.captured_at || p.created_at;
+      const d = stamp ? new Date(stamp) : new Date(0);
       const dayKey = isNaN(d.getTime()) ? "unknown" : d.toISOString().slice(0, 10);
       if (!buckets.has(dayKey)) {
         buckets.set(dayKey, { key: dayKey, label: dayKey === "unknown" ? "No date" : fmtLabel(d), photos: [], ts: d.getTime() || 0 });
       }
       buckets.get(dayKey).photos.push(p);
     }
-    // Sort photos within a day by created_at to keep the order stable.
+    // Sort photos within a day by capture/upload timestamp (same fallback
+    // hierarchy) so 9:14 am shows before 11:32 am within the same date row.
     const groups = Array.from(buckets.values()).map((g) => ({
       ...g,
-      photos: g.photos.slice().sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || ""))),
+      photos: g.photos.slice().sort((a, b) =>
+        String(a.captured_at || a.created_at || "").localeCompare(String(b.captured_at || b.created_at || ""))
+      ),
     }));
     groups.sort((a, b) => sortOrder === "asc" ? a.ts - b.ts : b.ts - a.ts);
     return groups;
@@ -461,6 +497,34 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
                 data-testid="photos-bulk-tag-clear"
               >
                 Clear tag
+              </button>
+            </div>
+
+            {/* Separator */}
+            <div className="h-6 w-px bg-blue-500/60" />
+
+            {/* Action 3: Set capture date — fixes the "emailed photos all
+                stack on the upload date" mess. Backend normalizes the
+                YYYY-MM-DD to noon UTC so day-headers line up cleanly. */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-blue-200 text-[10px] uppercase tracking-wider font-bold whitespace-nowrap">Set capture date →</span>
+              <input
+                type="date"
+                value={bulkCapturedAt}
+                onChange={(e) => setBulkCapturedAt(e.target.value)}
+                disabled={bulkBusy}
+                className="h-8 px-2 text-xs text-zinc-900 bg-white border-0 rounded-sm font-bold disabled:opacity-50"
+                data-testid="photos-bulk-captured-at"
+                title="Re-anchors all selected photos to this date so they cluster under the right day on the timeline."
+              />
+              <button
+                type="button"
+                disabled={!bulkCapturedAt || bulkBusy}
+                onClick={bulkSetCapturedAt}
+                className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider bg-white text-blue-700 hover:bg-blue-50 disabled:opacity-50 rounded-sm"
+                data-testid="photos-bulk-set-date"
+              >
+                {bulkBusy ? "Setting…" : "Apply"}
               </button>
             </div>
 

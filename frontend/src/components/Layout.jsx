@@ -40,9 +40,9 @@ export default function Layout() {
       {/* Sidebar */}
       <aside className="w-64 bg-zinc-950 text-zinc-50 flex flex-col" data-testid="sidebar">
         <div className="p-4 bg-white border-b border-zinc-800">
-          <img src="/sealtech-logo.png" alt="SealTech Building Solutions" className="w-full h-auto max-h-24 object-contain" />
+          <img src="/sealtech-logo.png" alt="SealTech Building Solutions" className="w-full h-auto max-h-16 object-contain" />
         </div>
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 p-3 space-y-0.5">
           {NAV.map((item) => (
             <NavLink
               key={item.to}
@@ -50,14 +50,14 @@ export default function Layout() {
               end={item.to === "/"}
               data-testid={item.testId}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 text-sm font-bold uppercase tracking-wider transition-colors ${
+                `flex items-center gap-2.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors ${
                   isActive
                     ? "bg-blue-700 text-white"
                     : "text-zinc-400 hover:text-white hover:bg-zinc-900"
                 }`
               }
             >
-              <item.icon className="w-4 h-4" />
+              <item.icon className="w-3.5 h-3.5" />
               {item.label}
             </NavLink>
           ))}
