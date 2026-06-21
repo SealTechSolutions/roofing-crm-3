@@ -70,13 +70,14 @@ const EVEREST_ADDON_TEMPLATES = [
   { id: "ev_patch_2",     label: "Silkoxy Patch — 2 Gal",          match: { vendor: "Everest Systems", name_includes: "Silkoxy Patch — 2 Gal" },          unit: "pail", default_qty: 0 },
   { id: "ev_patch_5",     label: "Silkoxy Patch — 5 Gal",          match: { vendor: "Everest Systems", name_includes: "Silkoxy Patch — 5 Gal" },          unit: "pail", default_qty: 0 },
   { id: "ev_ever_tread",  label: "Silkoxy Ever-Tread Walk Pad",    match: { vendor: "Everest Systems", name_includes: "Ever-Tread Walk Pad" },            unit: "roll", default_qty: 0 },
-  // SESCO granules (50 / 100 lb bags). Buying from SESCO but applied on Everest
-  // jobs — listed under Everest add-ons per the customer workflow.
-  { id: "sesco_buff",        label: "Granules — Buff (50 lb bag)",          match: { vendor: "SESCO", name_includes: "BUFF" },        unit: "bag", isGranule: true, default_qty: 0 },
-  { id: "sesco_brown",       label: "Granules — Brown (100 lb bag)",        match: { vendor: "SESCO", name_includes: "BROWN" },       unit: "bag", isGranule: true, default_qty: 0 },
-  { id: "sesco_rainbow",     label: "Granules — Rainbow (100 lb bag)",      match: { vendor: "SESCO", name_includes: "RAINBOW" },     unit: "bag", isGranule: true, default_qty: 0 },
-  { id: "sesco_6_10_white",  label: "Granules — 6/10 White (50 lb bag)",    match: { vendor: "SESCO", name_includes: "6/10 WHITE" },  unit: "bag", isGranule: true, default_qty: 0 },
-  { id: "sesco_snow_white",  label: "Granules — Snow White (50 lb bag)",    match: { vendor: "SESCO", name_includes: "SNOW WHITE" },  unit: "bag", isGranule: true, default_qty: 0 },
+  // SESCO granules — Sealtech orders by the PALLET (qty here = pallets). The
+  // backing product_catalog rows are stored as 1 pallet = $bags_per_pallet ×
+  // $/bag (e.g. BUFF = 56 × $8 = $448/pallet). Triggers $2,000 LTL freight.
+  { id: "sesco_buff",        label: "Granules — Buff (56 bags/pallet)",      match: { vendor: "SESCO", name_includes: "buff" },        unit: "pallet", isGranule: true, default_qty: 0 },
+  { id: "sesco_brown",       label: "Granules — Brown (30 bags/pallet)",     match: { vendor: "SESCO", name_includes: "brown" },       unit: "pallet", isGranule: true, default_qty: 0 },
+  { id: "sesco_rainbow",     label: "Granules — Rainbow (30 bags/pallet)",   match: { vendor: "SESCO", name_includes: "rainbow" },     unit: "pallet", isGranule: true, default_qty: 0 },
+  { id: "sesco_6_10_white",  label: "Granules — 6/10 White (56 bags/pallet)",match: { vendor: "SESCO", name_includes: "6/10 white" },  unit: "pallet", isGranule: true, default_qty: 0 },
+  { id: "sesco_snow_white",  label: "Granules — Snow White (63 bags/pallet)",match: { vendor: "SESCO", name_includes: "snow white" },  unit: "pallet", isGranule: true, default_qty: 0 },
 ];
 
 // Flat freight surcharge applied once per column when any SESCO granule line

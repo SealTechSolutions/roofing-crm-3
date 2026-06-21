@@ -54,15 +54,18 @@ RECIPE_BY_BAND = {
     20: (3.0, 2, "Two coats — 1.5 + 1.5 GPS"),
 }
 
-# SESCO granules — LTL "LESS THAN HALF A TRUCKLOAD" price per bag. Source:
-# SESCO PRICE LIST Jan 2026.
+# SESCO granules — LTL "LESS THAN HALF A TRUCKLOAD" price per bag, sold by the
+# pallet (Sealtech only orders full pallets, not loose bags). Stored in
+# product_catalog with package_size=1 + unit_price=price-per-pallet so the
+# calculator's container-packing math treats 1 qty = 1 pallet.
+# Source: SESCO PRICE LIST Jan 2026.
 SESCO_GRANULES = [
-    # (name, bag_lb, bags_per_pallet, unit_price)
-    ("BUFF Granules — 50 lb bag",        50,  56, 8.00),
-    ("BROWN Granules — 100 lb bag",      100, 30, 10.50),
-    ("RAINBOW Granules — 100 lb bag",    100, 30, 13.75),
-    ("6/10 WHITE Granules — 50 lb bag",  50,  56, 11.25),
-    ("SNOW WHITE Granules — 50 lb bag",  50,  63, 11.25),
+    # (name, bag_lb, bags_per_pallet, price_per_bag)
+    ("BUFF Granules — 50 lb bags / pallet",        50,  56, 8.00),
+    ("BROWN Granules — 100 lb bags / pallet",      100, 30, 10.50),
+    ("RAINBOW Granules — 100 lb bags / pallet",    100, 30, 13.75),
+    ("6/10 WHITE Granules — 50 lb bags / pallet",  50,  56, 11.25),
+    ("SNOW WHITE Granules — 50 lb bags / pallet",  50,  63, 11.25),
 ]
 
 
@@ -137,13 +140,40 @@ def main() -> None:
         })
         mirrored += 1
 
-    # 2. SESCO granules
+    # 2. SESCO granules — Sealtech buys these by the PALLET (not loose bags).
+    #    Stored with package_size=1 and unit_price = bags_per_pallet × price-
+    #    per-bag so qty=1 in the calculator means one pallet.
     granule_added = 0
-    for name, bag_lb, bags_per_pallet, price in SESCO_GRANULES:
-        already = db.product_catalog.find_one({
-            "name": name, "vendor": SESCO, "is_deleted": {"$ne": True},
+    granule_healed = 0
+    for name, bag_lb, bags_per_pallet, price_per_bag in SESCO_GRANULES:
+        pallet_price = round(bags_per_pallet * price_per_bag, 2)
+        notes = (
+            f"{bag_lb} lb × {bags_per_pallet} bags = 1 pallet. "
+            f"LTL price ${price_per_bag:.2f}/bag → ${pallet_price:.2f}/pallet. "
+            "Flat $2,000 freight per order applied separately."
+        )
+        # Match heal-or-insert against any prior row sharing the colour family
+        # (so renames from "BUFF Granules — 50 lb bag" → "… / pallet" don't
+        # create duplicates).
+        colour_token = name.split(" Granules")[0]
+        existing = db.product_catalog.find_one({
+            "vendor": SESCO,
+            "name": {"$regex": rf"^{colour_token} Granules", "$options": "i"},
+            "is_deleted": {"$ne": True},
         })
-        if already:
+        if existing:
+            db.product_catalog.update_one(
+                {"id": existing["id"]},
+                {"$set": {
+                    "name": name,
+                    "unit": "pallet",
+                    "package_size": 1.0,
+                    "unit_price": pallet_price,
+                    "notes": notes,
+                    "updated_at": _now(),
+                }},
+            )
+            granule_healed += 1
             continue
         db.product_catalog.insert_one({
             "id": str(uuid.uuid4()),
@@ -151,14 +181,10 @@ def main() -> None:
             "sku": "",
             "vendor": SESCO,
             "category": "Granules",
-            "unit": "bag",
-            "package_size": 1.0,  # one bag per "container"; freight is flat $2k/order
-            "unit_price": price,
-            "notes": (
-                f"{bag_lb} lb bag, {bags_per_pallet} bags/pallet. "
-                "Less-than-half-truckload pricing (1–6 pallets). "
-                "Flat $2,000 LTL freight per order applied separately."
-            ),
+            "unit": "pallet",
+            "package_size": 1.0,
+            "unit_price": pallet_price,
+            "notes": notes,
             "is_deleted": False,
             "created_at": _now(),
             "created_by": "seed-everest",
@@ -236,7 +262,7 @@ def main() -> None:
     print(
         f"Everest seed complete — mirrored {mirrored} product(s), "
         f"healed {fixed_pkg} package-size(s), "
-        f"+{granule_added} SESCO granule(s), "
+        f"+{granule_added} / ~{granule_healed} SESCO granule(s), "
         f"+{created_systems} system(s), "
         f"+{recipes_added} recipe row(s)."
     )
