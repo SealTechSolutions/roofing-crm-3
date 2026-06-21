@@ -154,6 +154,10 @@ export default function Calculator() {
   // every roof. Map: {25: 6300, 20: 5800, 15: 4500, 10: 3500}. Persisted to the
   // deal as labor_25yr_add / _20yr_add / _15yr_add / _10yr_add when "Set" fires.
   const [laborByWarranty, setLaborByWarranty] = useState({});
+  // Per-warranty OH and Profit % overrides (default to global settings).
+  // Stored on the deal as overhead_25yr_pct / profit_25yr_pct etc.
+  const [overheadByWarranty, setOverheadByWarranty] = useState({});
+  const [profitByWarranty,   setProfitByWarranty]   = useState({});
 
   const [deals, setDeals] = useState([]);
   const [selectedDealId, setSelectedDealId] = useState(initialDealId || "");
@@ -204,13 +208,26 @@ export default function Calculator() {
     }
     api.get(`/deals/${selectedDealId}`).then(async (r) => {
       setDeal(r.data);
-      // Pre-fill the per-warranty labor inputs from whatever the rep typed last
-      // time on this deal (mirrors how warranty_*_add is persisted).
+      // Pre-fill the per-warranty labor + OH/P inputs from whatever the rep
+      // saved last time on this deal (mirrors how warranty_*_add is persisted).
+      const numOrUndef = (v) => (v === null || v === undefined || v === "") ? undefined : Number(v);
       setLaborByWarranty({
         25: Number(r.data.labor_25yr_add || 0),
         20: Number(r.data.labor_20yr_add || 0),
         15: Number(r.data.labor_15yr_add || 0),
         10: Number(r.data.labor_10yr_add || 0),
+      });
+      setOverheadByWarranty({
+        25: numOrUndef(r.data.overhead_25yr_pct),
+        20: numOrUndef(r.data.overhead_20yr_pct),
+        15: numOrUndef(r.data.overhead_15yr_pct),
+        10: numOrUndef(r.data.overhead_10yr_pct),
+      });
+      setProfitByWarranty({
+        25: numOrUndef(r.data.profit_25yr_pct),
+        20: numOrUndef(r.data.profit_20yr_pct),
+        15: numOrUndef(r.data.profit_15yr_pct),
+        10: numOrUndef(r.data.profit_10yr_pct),
       });
       // Auto-switch to Materials & PO mode if the customer has signed off
       // (Darren can manually toggle back to Estimate if needed).
@@ -337,14 +354,19 @@ export default function Calculator() {
     // Labor — per-warranty input the rep types on each column. Stored in
     // laborByWarranty state and persisted to deal.labor_*_add on save.
     const laborAdd = Number(laborByWarranty[system.warranty_years] || 0);
+    // Per-column Overhead / Profit % (fall back to global Settings defaults if
+    // the per-column override is undefined). 0% IS a valid override → don't
+    // collapse with `||`.
+    const ohPct = overheadByWarranty[system.warranty_years] ?? Number(settings.overhead_pct || 0);
+    const prPct = profitByWarranty[system.warranty_years]   ?? Number(settings.profit_pct   || 0);
     // Subtotal before OH&P
     const subtotal = markedUp + handling + warrantyAdd + laborAdd;
-    const overhead = subtotal * ((settings.overhead_pct || 0) / 100);
-    const profit   = (subtotal + overhead) * ((settings.profit_pct || 0) / 100);
+    const overhead = subtotal * (ohPct / 100);
+    const profit   = (subtotal + overhead) * (prPct / 100);
     const customer = subtotal + overhead + profit;
     const pricePerSf = sf > 0 ? customer / sf : 0;
 
-    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, laborAdd, subtotal, overhead, profit, customer, pricePerSf };
+    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, laborAdd, subtotal, overhead, profit, ohPct, prPct, customer, pricePerSf };
   };
 
   const columns = useMemo(() => {
@@ -352,7 +374,7 @@ export default function Calculator() {
       .map((id) => systems.find((s) => s.id === id))
       .filter(Boolean)
       .map(computeBom);
-  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, allowedSizes, deal, laborByWarranty]);
+  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, allowedSizes, deal, laborByWarranty, overheadByWarranty, profitByWarranty]);
 
   // ────────────────────────────────────────────────────────────────────
   //   Calculator → Deal action handlers (split by mode)
@@ -376,12 +398,18 @@ export default function Calculator() {
       return;
     }
     const LABOR_ADD_FIELD = { 25: "labor_25yr_add", 20: "labor_20yr_add", 15: "labor_15yr_add", 10: "labor_10yr_add" };
+    const OH_FIELD     = { 25: "overhead_25yr_pct", 20: "overhead_20yr_pct", 15: "overhead_15yr_pct", 10: "overhead_10yr_pct" };
+    const PR_FIELD     = { 25: "profit_25yr_pct",   20: "profit_20yr_pct",   15: "profit_15yr_pct",   10: "profit_10yr_pct" };
     const customerRounded = Math.round(col.customer * 100) / 100;
     const laborField = LABOR_ADD_FIELD[col.system.warranty_years];
+    const ohField    = OH_FIELD[col.system.warranty_years];
+    const prField    = PR_FIELD[col.system.warranty_years];
     setSavingToDeal(true);
     try {
       const body = { ...deal, [field]: customerRounded };
       if (laborField) body[laborField] = Math.round((col.laborAdd || 0) * 100) / 100;
+      if (ohField) body[ohField] = col.ohPct;
+      if (prField) body[prField] = col.prPct;
       ["id","created_at","updated_at","created_by",
        "materials_cost","labor_cost","subcontractor_cost","other_expenses_total",
        "total_costs","profit","margin_pct","is_deleted","deleted_at","deleted_by",
@@ -404,13 +432,19 @@ export default function Calculator() {
     const updates = {};
     const summary = [];
     const LABOR_FIELDS = { 25: "labor_25yr_add", 20: "labor_20yr_add", 15: "labor_15yr_add", 10: "labor_10yr_add" };
+    const OH_FIELDS    = { 25: "overhead_25yr_pct", 20: "overhead_20yr_pct", 15: "overhead_15yr_pct", 10: "overhead_10yr_pct" };
+    const PR_FIELDS    = { 25: "profit_25yr_pct",   20: "profit_20yr_pct",   15: "profit_15yr_pct",   10: "profit_10yr_pct" };
     for (const col of columns) {
       const field = PROPOSAL_FIELD_BY_WARRANTY[col.system.warranty_years];
       const letter = OPTION_LETTER[col.system.warranty_years];
       if (!field) continue;
       updates[field] = Math.round(col.customer * 100) / 100;
       const lf = LABOR_FIELDS[col.system.warranty_years];
+      const of_ = OH_FIELDS[col.system.warranty_years];
+      const pf = PR_FIELDS[col.system.warranty_years];
       if (lf) updates[lf] = Math.round((col.laborAdd || 0) * 100) / 100;
+      if (of_) updates[of_] = col.ohPct;
+      if (pf) updates[pf] = col.prPct;
       summary.push(`Option ${letter} = ${formatCurrency(col.customer)}`);
     }
     if (!Object.keys(updates).length) {
@@ -884,6 +918,8 @@ export default function Calculator() {
                   onPushMaterials={deal ? () => pushMaterialsToDeal(col) : null}
                   onPushAndPo={deal ? () => pushMaterialsToDeal(col, { andDownloadPo: true }) : null}
                   onLaborChange={(v) => setLaborByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
+                  onOverheadChange={(v) => setOverheadByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
+                  onProfitChange={(v) => setProfitByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
                   savingToDeal={savingToDeal}
                   testIdSuffix={idx}
                 />
@@ -922,8 +958,8 @@ export default function Calculator() {
   );
 }
 
-function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, onPushMaterials, onPushAndPo, savingToDeal, testIdSuffix, onLaborChange }) {
-  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, laborAdd, overhead, profit, customer, pricePerSf } = col;
+function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, onPushMaterials, onPushAndPo, savingToDeal, testIdSuffix, onLaborChange, onOverheadChange, onProfitChange }) {
+  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, laborAdd, overhead, profit, ohPct, prPct, customer, pricePerSf } = col;
   const hasRecipe = lines.length > 0;
   const optionLetter = { 25: "A", 20: "B", 15: "C", 10: "D" }[system.warranty_years];
   return (
@@ -1041,10 +1077,22 @@ function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, on
           />
         </div>
         {(settings.overhead_pct || 0) > 0 && (
-          <Row label={`+${settings.overhead_pct}% Overhead`} value={overhead} />
+          <PctEditableRow
+            label="Overhead"
+            pct={ohPct}
+            amount={overhead}
+            onChange={onOverheadChange}
+            testId={`overhead-pct-${testIdSuffix}`}
+          />
         )}
         {(settings.profit_pct || 0) > 0 && (
-          <Row label={`+${settings.profit_pct}% Profit`} value={profit} />
+          <PctEditableRow
+            label="Profit"
+            pct={prPct}
+            amount={profit}
+            onChange={onProfitChange}
+            testId={`profit-pct-${testIdSuffix}`}
+          />
         )}
         <div className="border-t border-zinc-300 pt-1.5 mt-1.5 flex items-baseline justify-between">
           <div>
@@ -1112,6 +1160,29 @@ function Row({ label, value }) {
     <div className="flex justify-between font-mono">
       <span className="text-zinc-600">{label}</span>
       <span>{formatCurrency(value)}</span>
+    </div>
+  );
+}
+
+function PctEditableRow({ label, pct, amount, onChange, testId }) {
+  return (
+    <div className="flex items-center justify-between gap-2 font-mono">
+      <span className="text-zinc-600 text-[11px] flex items-center gap-1">
+        +
+        <input
+          type="number"
+          min="0"
+          max="100"
+          step="0.5"
+          value={pct ?? ""}
+          onChange={(e) => onChange?.(e.target.value === "" ? null : Number(e.target.value))}
+          className="w-12 border border-zinc-300 px-1 h-6 text-[11px] font-mono text-right focus:outline-none focus:border-blue-700"
+          data-testid={testId}
+          title={`${label} % — per-option override. Clear the field to fall back to the global default.`}
+        />
+        % {label}
+      </span>
+      <span>{formatCurrency(amount)}</span>
     </div>
   );
 }
