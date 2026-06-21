@@ -261,10 +261,16 @@ export default function Calculator() {
       .map(computeBom);
   }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, allowedSizes]);
 
-  /** Save the picked column's BoM back to the originating deal's cost_items. */
+  /** Save the picked column's BoM back to the originating deal's cost_items
+   *  AND auto-fill the matching proposal option (Option A/B/C/D by warranty). */
   const saveColumnToDeal = async (col) => {
     if (!deal) return;
-    if (!window.confirm(`Push this Bill of Materials to deal "${deal.title || deal.name || deal.id}" as Vendor Cost lines?`)) return;
+    const PROPOSAL_LABEL = { 25: "Option A (25-yr)", 20: "Option B (20-yr)", 15: "Option C (15-yr)", 10: "Option D (10-yr)" };
+    const optionLabel = PROPOSAL_LABEL[col.system.warranty_years];
+    const confirmMsg = optionLabel
+      ? `Push ${col.system.name} to deal "${deal.title || deal.name || deal.id}"?\n\n• ${col.lines.length + col.addonLines.length} material cost lines → Vendor Cost ($${col.rawCost.toFixed(0)})\n• Customer Price ${formatCurrency(col.customer)} → ${optionLabel} on the Proposal card\n\nAny existing ${optionLabel} amount will be OVERWRITTEN.`
+      : `Push ${col.system.name} to deal "${deal.title || deal.name || deal.id}" as Vendor Cost lines?`;
+    if (!window.confirm(confirmMsg)) return;
     setSavingToDeal(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
@@ -305,12 +311,25 @@ export default function Calculator() {
         });
       }
       // Note: we deliberately do NOT push the markup/handling line as a cost
-      // item — it's customer-side margin, not a vendor expense. The Customer
-      // Price is surfaced in the post-save toast so Darren can paste it into
-      // the Proposal Options card himself.
+      // item — it's customer-side margin, not a vendor expense. Instead, the
+      // computed Customer Price drops directly into the proposal-option field
+      // that matches this system's warranty band, so the on-deal proposal
+      // tiers stay in sync with the calculator's math (one-click bidding).
+
+      // Map warranty-years -> the deal field that holds that proposal tier.
+      const PROPOSAL_FIELD_BY_WARRANTY = {
+        25: "proposal_option_25yr", // Option A
+        20: "proposal_option_1",    // Option B
+        15: "proposal_option_2",    // Option C
+        10: "proposal_option_3",    // Option D
+      };
+      const proposalField = PROPOSAL_FIELD_BY_WARRANTY[col.system.warranty_years];
+      const proposalLabel = { 25: "Option A (25-yr)", 20: "Option B (20-yr)", 15: "Option C (15-yr)", 10: "Option D (10-yr)" }[col.system.warranty_years];
+      const customerRounded = Math.round(col.customer * 100) / 100;
 
       const merged = [...(deal.cost_items || []), ...newCostItems];
       const body = { ...deal, cost_items: merged };
+      if (proposalField) body[proposalField] = customerRounded;
       ["id","created_at","updated_at","created_by",
        "materials_cost","labor_cost","subcontractor_cost","other_expenses_total",
        "total_costs","profit","margin_pct","is_deleted","deleted_at","deleted_by",
@@ -318,8 +337,9 @@ export default function Calculator() {
       ].forEach((k) => { delete body[k]; });
       await api.put(`/deals/${deal.id}`, body);
       toast.success(
-        `Added ${newCostItems.length} material cost line${newCostItems.length === 1 ? "" : "s"} ($${col.rawCost.toFixed(0)}). ` +
-        `Customer Price: ${formatCurrency(col.customer)} — set in Proposal Options if needed.`,
+        proposalField
+          ? `Pushed ${newCostItems.length} cost line${newCostItems.length === 1 ? "" : "s"} ($${col.rawCost.toFixed(0)}) and set ${proposalLabel} = ${formatCurrency(col.customer)}.`
+          : `Added ${newCostItems.length} cost line${newCostItems.length === 1 ? "" : "s"} ($${col.rawCost.toFixed(0)}). System has ${col.system.warranty_years || "?"}-yr warranty — no matching proposal field; Customer Price ${formatCurrency(col.customer)} not auto-filled.`,
         { duration: 7000 }
       );
       nav(`/deals/${deal.id}`);
@@ -646,16 +666,23 @@ function CompareColumn({ col, settings, totalSf, onRemove, onSaveToDeal, savingT
           </div>
         </div>
 
-        {onSaveToDeal && (
-          <button
-            onClick={onSaveToDeal}
-            disabled={savingToDeal || !hasRecipe}
-            className="mt-3 w-full inline-flex items-center justify-center gap-1 px-3 h-9 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-sm"
-            data-testid={`save-to-deal-${testIdSuffix}`}
-          >
-            <Save className="w-3 h-3" /> {savingToDeal ? "Saving…" : "Push to Deal"}
-          </button>
-        )}
+        {onSaveToDeal && (() => {
+          const optionLetter = { 25: "A", 20: "B", 15: "C", 10: "D" }[system.warranty_years];
+          return (
+            <button
+              onClick={onSaveToDeal}
+              disabled={savingToDeal || !hasRecipe}
+              className="mt-3 w-full inline-flex items-center justify-center gap-1 px-3 h-9 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-sm"
+              data-testid={`save-to-deal-${testIdSuffix}`}
+              title={optionLetter
+                ? `Pushes ${col.lines.length} material cost lines AND auto-fills Option ${optionLetter} on the deal.`
+                : `Pushes material cost lines to the deal (no matching proposal option for ${system.warranty_years}-yr warranty).`}
+            >
+              <Save className="w-3 h-3" />
+              {savingToDeal ? "Saving…" : optionLetter ? `Push → Option ${optionLetter}` : "Push to Deal"}
+            </button>
+          );
+        })()}
       </div>
     </div>
   );
