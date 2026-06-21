@@ -109,19 +109,19 @@ SILICONE_TEMPLATE = {
                 "",
             ],
             [
-                "Total: 3.0 GPS — two passes",
-                "Total: 2.5 GPS — two passes",
-                "Total: 2.0 GPS — single pass",
-                "Total: 1.5 GPS — single pass",
+                "Total: 3.0 GPS",
+                "Total: 2.5 GPS",
+                "Total: 2.0 GPS",
+                "Total: 1.5 GPS",
             ],
         ],
         "alt_header": "Optional — Embedded Protective Granules",
         "alt_rows": [
             [
-                "Broadcast ceramic-coated granules into the wet top coat to full embedment for slip resistance and foot-traffic durability.",
-                "Broadcast ceramic-coated granules into the wet top coat to full embedment for slip resistance and foot-traffic durability.",
-                "Broadcast ceramic-coated granules into the wet coating to full embedment for slip resistance and foot-traffic durability.",
-                "Broadcast ceramic-coated granules into the wet coating to full embedment for slip resistance and foot-traffic durability.",
+                "Broadcast protective granules into topcoat of silicone.",
+                "Broadcast protective granules into topcoat of silicone.",
+                "Broadcast protective granules into topcoat of silicone.",
+                "Broadcast protective granules into topcoat of silicone.",
             ],
         ],
         "warranty_row": [
@@ -136,13 +136,9 @@ SILICONE_TEMPLATE = {
     # (Standard $1,000 included) or upgrade per tier. The dollar amounts
     # come from deal.warranty_*_add (filled by the Calculator's Set Option).
     "warranty_upgrade": {
-        "title": "[OPTIONAL] Manufacturer NDL Warranty Upgrade",
-        "subtitle": "Upgrade any tier above to a No-Dollar-Limit (NDL) warranty backed by Everest Systems. Includes 3rd-party inspection and extended labor &amp; material coverage. Base prices above already include Everest's Standard $1,000 Labor &amp; Material warranty.",
-        "labels": [
-            "20-Year NDL Warranty Upgrade",
-            "15-Year NDL Warranty Upgrade",
-            "10-Year NDL Warranty Upgrade",
-        ],
+        "title": "[OPTIONAL] Manufacturer Warranty",
+        "subtitle": "20-year, 15-year, or 10-year Everest Systems Labor &amp; Material Warranty.",
+        "layout": "horizontal",
     },
 }
 
@@ -972,10 +968,10 @@ def _pricing_table(s, doc, template: dict | None = None):
     if has_tier_table:
         doc = {**doc, "_tier_table": template.get("tier_table") or {}}
     table_font = 9
-    cell_pad = 7
+    cell_pad = 6 if has_tier_table else 7
     total_font = 10
     total_pad = 8
-    gap_after = 0.12 * inch
+    gap_after = 0.06 * inch if has_tier_table else 0.12 * inch
     # Construction Project / Other — single price, no warranty language
     if is_dynamic:
         elems.append(Paragraph(
@@ -1068,48 +1064,83 @@ def _pricing_table(s, doc, template: dict | None = None):
         return elems
 
     # ---- [OPTIONAL] Manufacturer Warranty add-on table ----
-    # Labels and section header come from the template so each scope can
-    # phrase its upgrade differently (Silicone → "NDL Warranty Upgrade";
-    # legacy default → "Labor & Material w/Hail Rider").
+    # Two layout modes:
+    #   1) "horizontal" (3-column) — used by SILICONE for the NDL upgrade.
+    #      Renders one row with "20-Year: $5,000 | 15-Year: $4,500 | 10-Year: $4,000".
+    #   2) default 2-column "Tier / Add-On Cost" stack — used by legacy
+    #      Silicone/TPO/PVC L&M warranty upgrades.
     if upgrade_cfg:
         addon_header = upgrade_cfg.get("title") or "[OPTIONAL] Manufacturer Warranty"
-        addon_labels = upgrade_cfg.get("labels") or [
-            "20-Year Warranty Upgrade",
-            "15-Year Warranty Upgrade",
-            "10-Year Warranty Upgrade",
-        ]
+        addon_subtitle = upgrade_cfg.get("subtitle") or ""
+        layout = (upgrade_cfg.get("layout") or "vertical").lower()
     else:
         addon_header = "[OPTIONAL] Manufacturer Warranty (Labor &amp; Material)"
-        addon_labels = [
+        addon_subtitle = ""
+        layout = "vertical"
+
+    if layout == "horizontal":
+        # Build "20-Year: $5,000" cells, omit any tier where the amount is 0.
+        cells = []
+        for years, key in ((20, "w20"), (15, "w15"), (10, "w10")):
+            val = _currency(doc.get(key))
+            if not val or val in ("$0.00", "$0"):
+                continue
+            cells.append(f"<b>{years}-Year:</b>  {val}")
+        if cells:
+            elems.append(Paragraph(addon_header, s["h2"]))
+            if addon_subtitle:
+                elems.append(Paragraph(
+                    f'<font size="9" color="#52525B">{addon_subtitle}</font>',
+                    s["body"],
+                ))
+                elems.append(Spacer(1, 0.04 * inch))
+            row = [[Paragraph(c, s["body"]) for c in cells]]
+            col_count = len(cells)
+            col_w = 7.5 * inch / col_count
+            t2 = Table(row, colWidths=[col_w] * col_count)
+            t2.setStyle(TableStyle([
+                ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), table_font + 1),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+                ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ]))
+            elems.append(t2)
+            elems.append(Spacer(1, gap_after))
+    else:
+        addon_labels = (upgrade_cfg or {}).get("labels") or [
             "20-Year Labor & Material w/Hail Rider",
             "15-Year Labor & Material",
             "10-Year Labor & Material",
         ]
-    opt = _nonzero([
-        ["Warranty Tier", "Add-On Cost"],
-        [addon_labels[0], _currency(doc.get("w20"))],
-        [addon_labels[1], _currency(doc.get("w15"))],
-        [addon_labels[2], _currency(doc.get("w10"))],
-    ])
-    if len(opt) > 1:
-        elems.append(Paragraph(addon_header, s["h2"]))
-        if upgrade_cfg and upgrade_cfg.get("subtitle"):
-            elems.append(Paragraph(
-                f'<font size="9" color="#52525B">{upgrade_cfg["subtitle"]}</font>',
-                s["body"],
-            ))
-            elems.append(Spacer(1, 0.04 * inch))
-        t2 = Table(opt, colWidths=[4.5 * inch, 3.0 * inch])
-        t2.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), BLUE), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-            ("FONTSIZE", (0, 0), (-1, -1), table_font), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-            ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
-            ("TOPPADDING", (0, 0), (-1, -1), cell_pad), ("BOTTOMPADDING", (0, 0), (-1, -1), cell_pad),
-        ]))
-        elems.append(t2)
-        elems.append(Spacer(1, gap_after))
+        opt = _nonzero([
+            ["Warranty Tier", "Add-On Cost"],
+            [addon_labels[0], _currency(doc.get("w20"))],
+            [addon_labels[1], _currency(doc.get("w15"))],
+            [addon_labels[2], _currency(doc.get("w10"))],
+        ])
+        if len(opt) > 1:
+            elems.append(Paragraph(addon_header, s["h2"]))
+            if addon_subtitle:
+                elems.append(Paragraph(
+                    f'<font size="9" color="#52525B">{addon_subtitle}</font>',
+                    s["body"],
+                ))
+                elems.append(Spacer(1, 0.04 * inch))
+            t2 = Table(opt, colWidths=[4.5 * inch, 3.0 * inch])
+            t2.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), BLUE), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 0), (-1, -1), table_font), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
+                ("TOPPADDING", (0, 0), (-1, -1), cell_pad), ("BOTTOMPADDING", (0, 0), (-1, -1), cell_pad),
+            ]))
+            elems.append(t2)
+            elems.append(Spacer(1, gap_after))
 
     # Tier-table templates only get the optional add-on table — the combined
     # totals + cover-all-bases footer below is for legacy single-tier scopes.
@@ -1460,37 +1491,36 @@ def build_spec_sheet(
     story.extend(_header_block(s, data, template["title"], template))
     story.extend(_pricing_table(s, data, template))
 
-    # For templates with a tier_table (e.g. FARM), Page 2 already absorbs the
-    # comparison-table footprint, so the Page 1 pricing block is compact and
-    # leaves room for the Inclusions blurb + an enlarged cover photo. Render
-    # them here on Page 1 so the page is fully utilized.
+    # For templates with a tier_table (e.g. FARM/SILICONE), Page 2 already
+    # absorbs the comparison-table footprint, so the Page 1 pricing block is
+    # compact. Render the cover photo first (top of breathing-room) so the
+    # Inclusions blurb sits just under the image — matches the customer's
+    # expected proposal layout (photo of the actual roof, then scope summary).
     if template.get("tier_table"):
-        story.append(Spacer(1, 0.06 * inch))
-        story.append(Paragraph("Inclusions", s["h2"]))
-        total_sqft_p1 = data.get("total_sqft", 0) or 0
-        sq_p1 = int(round(total_sqft_p1 / 100))
-        color_p1 = data.get("color", "white")
-        raw_label = data.get("roof_type_label") or (roof_type or "roof system")
-        # Preserve the FARM acronym in body copy: "FARM (fluid applied reinforced membrane)"
-        if "farm" in raw_label.lower() or "fluid applied reinforced membrane" in raw_label.lower():
-            label_p1 = "FARM (fluid applied reinforced membrane)"
-        else:
-            label_p1 = raw_label
-        inc_text_p1 = f"Approximately {total_sqft_p1:,.0f} SF ({sq_p1} SQ) {color_p1} {label_p1} system, including walls and flashings."
-        story.append(Paragraph(inc_text_p1, s["body"]))
-        story.append(Spacer(1, 0.08 * inch))
+        story.append(Spacer(1, 0.02 * inch))
         if cover_photo_bytes:
             try:
-                img = Image(BytesIO(cover_photo_bytes), width=7.5 * inch, height=2.7 * inch, kind="proportional")
+                img = Image(BytesIO(cover_photo_bytes), width=7.5 * inch, height=2.0 * inch, kind="proportional")
                 img.hAlign = "CENTER"
                 story.append(img)
             except Exception:
                 story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
         else:
-            ph = Table([[" "]], colWidths=[7.5 * inch], rowHeights=[2.7 * inch])
+            ph = Table([[" "]], colWidths=[7.5 * inch], rowHeights=[2.0 * inch])
             ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
             story.append(ph)
             story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))
+        story.append(Spacer(1, 0.04 * inch))
+        total_sqft_p1 = data.get("total_sqft", 0) or 0
+        sq_p1 = int(round(total_sqft_p1 / 100))
+        color_p1 = data.get("color", "white")
+        raw_label = data.get("roof_type_label") or (roof_type or "roof system")
+        if "farm" in raw_label.lower() or "fluid applied reinforced membrane" in raw_label.lower():
+            label_p1 = "FARM (fluid applied reinforced membrane)"
+        else:
+            label_p1 = raw_label
+        inc_text_p1 = f"<b>Inclusions:</b>  Approximately {total_sqft_p1:,.0f} SF ({sq_p1} SQ) {color_p1} {label_p1} system, including walls and flashings."
+        story.append(Paragraph(inc_text_p1, s["body"]))
 
     story.append(PageBreak())
 
