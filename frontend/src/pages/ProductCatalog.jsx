@@ -23,7 +23,7 @@ api.interceptors.request.use((cfg) => {
   return cfg;
 });
 
-const CATEGORIES = ["FARM", "Silicone", "TPO", "EPDM", "ModBit", "PVC", "Other"];
+const CATEGORIES = ["FARM", "All-Acrylic", "Silicone", "TPO", "EPDM", "ModBit", "PVC", "Other"];
 const UNITS = ["gal", "pail", "roll", "sf", "lf", "ea", "bag", "tube", "box"];
 const COVERAGE_BASIS = [
   { value: "per_100sf", label: "per 100 sf" },

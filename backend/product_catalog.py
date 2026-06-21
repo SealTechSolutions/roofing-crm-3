@@ -32,7 +32,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Body
 
 
-CATEGORIES = ["FARM", "Silicone", "TPO", "EPDM", "ModBit", "PVC", "Other"]
+CATEGORIES = ["FARM", "All-Acrylic", "Silicone", "TPO", "EPDM", "ModBit", "PVC", "Other"]
 UNITS = ["gal", "pail", "roll", "sf", "lf", "ea", "bag", "tube", "box"]
 COVERAGE_BASIS = ["per_100sf", "per_sf", "per_lf", "per_each_optional"]
 

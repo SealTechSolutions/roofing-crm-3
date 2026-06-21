@@ -54,15 +54,15 @@ PACKAGES = [
 # 9 Western Colloid systems with coverage in gallons per 100 sf for 4 categories.
 # (system name, system_type, warranty_years, emulsion, acrylic, fabric_soft, fabric_firm)
 RAW_SYSTEMS = [
-    ("25-Year Gravel System (E/A)",          "FARM",     25, 26, 9,  3, 0),
-    ("20-Year Gravel System (E/A)",          "FARM",     20, 32, 6,  3, 0),
-    ("25-Year Membrane System (E/A)",        "FARM",     25, 6,  9,  0, 3),
-    ("20-Year Membrane System (E/A)",        "FARM",     20, 12, 6,  0, 3),
-    ("20-Year All-Acrylic Membrane (AA)",    "Silicone", 20, 0,  9,  0, 2),
-    ("15-Year Membrane System (E/A)",        "FARM",     15, 6,  6,  0, 2),
-    ("10-Year Membrane System (E/A)",        "FARM",     10, 10, 3,  0, 2),
-    ("10-Year All-Acrylic Membrane (AA)",    "Silicone", 10, 0,  6,  0, 1),
-    ("10-Year Metal Roof System (AA)",       "Silicone", 10, 0,  3,  0, 0),
+    ("25-Year Gravel System (E/A)",          "FARM",        25, 26, 9,  3, 0),
+    ("20-Year Gravel System (E/A)",          "FARM",        20, 32, 6,  3, 0),
+    ("25-Year Membrane System (E/A)",        "FARM",        25, 6,  9,  0, 3),
+    ("20-Year Membrane System (E/A)",        "FARM",        20, 12, 6,  0, 3),
+    ("20-Year All-Acrylic Membrane (AA)",    "All-Acrylic", 20, 0,  9,  0, 2),
+    ("15-Year Membrane System (E/A)",        "FARM",        15, 6,  6,  0, 2),
+    ("10-Year Membrane System (E/A)",        "FARM",        10, 10, 3,  0, 2),
+    ("10-Year All-Acrylic Membrane (AA)",    "All-Acrylic", 10, 0,  6,  0, 1),
+    ("10-Year Metal Roof System (AA)",       "All-Acrylic", 10, 0,  3,  0, 0),
 ]
 
 async def main():
