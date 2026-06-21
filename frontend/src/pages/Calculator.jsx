@@ -542,7 +542,11 @@ function CompareColumn({ col, settings, totalSf, onRemove, onSaveToDeal, savingT
         <div className="border-t border-zinc-300 pt-1.5 mt-1.5 flex items-baseline justify-between">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Customer Price</div>
-            {totalSf > 0 && <div className="text-[10px] text-zinc-500 font-mono">{formatCurrency(pricePerSf)}/SF</div>}
+            {totalSf > 0 && (
+              <div className="text-[10px] text-zinc-500 font-mono">
+                {pricePerSf.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 })}/SF
+              </div>
+            )}
           </div>
           <div className="text-lg font-black font-mono" data-testid={`customer-price-${testIdSuffix}`}>
             {formatCurrency(customer)}
