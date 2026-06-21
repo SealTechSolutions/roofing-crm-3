@@ -68,7 +68,7 @@ function savePrefs(prefs) {
   try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* ignore quota errors */ }
 }
 
-const MAX_COMPARE = 4;
+const MAX_COMPARE = 3;
 
 /** Classify a product's package size into a coarse "container kind" so we
  *  can let the user veto tote / drum / pail delivery based on site access. */
@@ -846,7 +846,7 @@ export default function Calculator() {
             </div>
           ) : (
             <>
-            <div className={`grid gap-4 ${columns.length === 1 ? "grid-cols-1" : columns.length === 2 ? "grid-cols-1 md:grid-cols-2" : columns.length === 3 ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-4"}`}>
+            <div className={`grid gap-4 ${columns.length === 1 ? "grid-cols-1" : columns.length === 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-3"}`}>
               {columns.map((col, idx) => (
                 <CompareColumn
                   key={col.system.id}

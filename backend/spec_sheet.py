@@ -976,6 +976,12 @@ def _pricing_table(s, doc, template: dict | None = None):
         f'{doc.get("product_type", "Roof System Investment")}{header_suffix}',
         s["h2"],
     ))
+    # Filter helper — skip warranty rows where the option/add-on price is $0
+    # so Darren can quote any 3 of the 4 bands without empty rows showing up
+    # on the customer's PDF.
+    def _nonzero(rows):
+        return [rows[0]] + [r for r in rows[1:] if (lambda v: v and v != "$0.00" and v != "$0")(r[1])]
+
     if has_tier_table:
         base = [
             ["Warranty Tier", "Base Investment"],
@@ -984,6 +990,7 @@ def _pricing_table(s, doc, template: dict | None = None):
             ["15-Year Standard Warranty", _currency(doc.get("opt_15"))],
             ["10-Year Standard Warranty", _currency(doc.get("opt_10"))],
         ]
+        base = _nonzero(base)
     else:
         base = [
             ["Warranty Tier", "Base Investment"],
@@ -991,6 +998,7 @@ def _pricing_table(s, doc, template: dict | None = None):
             ["15-Year Workmanship", _currency(doc.get("opt_15"))],
             ["10-Year Workmanship", _currency(doc.get("opt_10"))],
         ]
+        base = _nonzero(base)
     t = Table(base, colWidths=[4.5 * inch, 3.0 * inch])
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BLUE),
@@ -1012,42 +1020,52 @@ def _pricing_table(s, doc, template: dict | None = None):
     if has_tier_table:
         return elems
 
-    elems.append(Paragraph("[OPTIONAL] Manufacturer Warranty (Labor &amp; Material)", s["h2"]))
-    opt = [
+    # ---- Below: Silicone/TPO/PVC templates ONLY (Workmanship + optional L&M tables) ----
+    opt = _nonzero([
         ["Warranty Tier", "Add-On Cost"],
         ["20-Year Labor & Material w/Hail Rider", _currency(doc.get("w20"))],
         ["15-Year Labor & Material", _currency(doc.get("w15"))],
         ["10-Year Labor & Material", _currency(doc.get("w10"))],
-    ]
-    t2 = Table(opt, colWidths=[4.5 * inch, 3.0 * inch])
-    t2.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), BLUE), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), table_font), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
-        ("TOPPADDING", (0, 0), (-1, -1), cell_pad), ("BOTTOMPADDING", (0, 0), (-1, -1), cell_pad),
-    ]))
-    elems.append(t2)
-    elems.append(Spacer(1, gap_after))
+    ])
+    if len(opt) > 1:
+        elems.append(Paragraph("[OPTIONAL] Manufacturer Warranty (Labor &amp; Material)", s["h2"]))
+        t2 = Table(opt, colWidths=[4.5 * inch, 3.0 * inch])
+        t2.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BLUE), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 0), (-1, -1), table_font), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
+            ("TOPPADDING", (0, 0), (-1, -1), cell_pad), ("BOTTOMPADDING", (0, 0), (-1, -1), cell_pad),
+        ]))
+        elems.append(t2)
+        elems.append(Spacer(1, gap_after))
 
-    elems.append(Paragraph("Total Investment with Optional Manufacturer Warranty", s["h2"]))
-    tot = [
-        ["Including 20-Year Upgraded Warranty", _currency((doc.get("opt_20") or 0) + (doc.get("w20") or 0))],
-        ["Including 15-Year Upgraded Warranty", _currency((doc.get("opt_15") or 0) + (doc.get("w15") or 0))],
-        ["Including 10-Year Upgraded Warranty", _currency((doc.get("opt_10") or 0) + (doc.get("w10") or 0))],
+    # Combined "Total with Upgraded Warranty" — same drop-zero-rows logic.
+    tot_rows_raw = [
+        ("opt_20", "w20", "Including 20-Year Upgraded Warranty"),
+        ("opt_15", "w15", "Including 15-Year Upgraded Warranty"),
+        ("opt_10", "w10", "Including 10-Year Upgraded Warranty"),
     ]
-    t3 = Table(tot, colWidths=[4.5 * inch, 3.0 * inch])
-    t3.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), total_font),
-        ("TEXTCOLOR", (1, 0), (1, -1), BLUE),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("GRID", (0, 0), (-1, -1), 0.5, DARK),
-        ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
-        ("TOPPADDING", (0, 0), (-1, -1), total_pad), ("BOTTOMPADDING", (0, 0), (-1, -1), total_pad),
-    ]))
-    elems.append(t3)
+    tot_rows = []
+    for opt_key, w_key, label in tot_rows_raw:
+        base_v = doc.get(opt_key) or 0
+        if not base_v:
+            continue  # this option isn't quoted on this scope
+        tot_rows.append([label, _currency(base_v + (doc.get(w_key) or 0))])
+    if tot_rows:
+        elems.append(Paragraph("Total Investment with Optional Manufacturer Warranty", s["h2"]))
+        t3 = Table(tot_rows, colWidths=[4.5 * inch, 3.0 * inch])
+        t3.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), total_font),
+            ("TEXTCOLOR", (1, 0), (1, -1), BLUE),
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("GRID", (0, 0), (-1, -1), 0.5, DARK),
+            ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
+            ("TOPPADDING", (0, 0), (-1, -1), total_pad), ("BOTTOMPADDING", (0, 0), (-1, -1), total_pad),
+        ]))
+        elems.append(t3)
     return elems
 
 
