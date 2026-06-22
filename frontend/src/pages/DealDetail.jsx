@@ -1722,13 +1722,20 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({});
   const [existing, setExisting] = useState(null);
+  // Subcontractor roster — drives the "Contractor" dropdown so the rep can
+  // pick a vendor and auto-fill all sub fields in one shot.
+  const [subs, setSubs] = useState([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const r = await api.get(`/deals/${dealId}/work-order/draft`);
-        setForm(r.data?.existing ? { ...r.data.draft, ...r.data.existing } : r.data?.draft || {});
-        setExisting(r.data?.existing || null);
+        const [draftR, subsR] = await Promise.all([
+          api.get(`/deals/${dealId}/work-order/draft`),
+          api.get("/vendors?kind=Subcontractor").catch(() => ({ data: [] })),
+        ]);
+        setForm(draftR.data?.existing ? { ...draftR.data.draft, ...draftR.data.existing } : draftR.data?.draft || {});
+        setExisting(draftR.data?.existing || null);
+        setSubs((subsR.data || []).slice().sort((a, b) => (a.name || "").localeCompare(b.name || "")));
       } catch (e) {
         toast.error(e?.response?.data?.detail || e.message);
       } finally {
@@ -1738,6 +1745,23 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
   }, [dealId]);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  // Picking a sub from the dropdown auto-fills every field that came from the
+  // vendor record — Contractor name, company, address, contact, email. Rep
+  // can still edit any of them after.
+  const pickSub = (subId) => {
+    if (!subId) { set("contractor", ""); return; }
+    const sub = subs.find((x) => x.id === subId);
+    if (!sub) return;
+    setForm((p) => ({
+      ...p,
+      contractor: sub.name || "",
+      sub_company: sub.name || "",
+      sub_address: sub.address || "",
+      sub_contact: sub.contact_name || "",
+      sub_email: sub.email || "",
+    }));
+  };
 
   const preview = async () => {
     try {
@@ -1799,7 +1823,23 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
             <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mt-2">Project</div>
             <Field label="Project Name" value={form.project_name} onChange={(v) => set("project_name", v)} testId="wo-project-name" />
             <Field label="Project Address" value={form.project_address} onChange={(v) => set("project_address", v)} testId="wo-project-address" />
-            <Field label="Contractor (entity SealTech is paying)" value={form.contractor} onChange={(v) => set("contractor", v)} testId="wo-contractor" />
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Contractor (entity SealTech is paying)</label>
+              <select
+                value={subs.find((s) => s.name === form.contractor)?.id || ""}
+                onChange={(e) => pickSub(e.target.value)}
+                data-testid="wo-contractor-select"
+                className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm bg-white"
+              >
+                <option value="">— Pick a subcontractor —</option>
+                {subs.map((sub) => (
+                  <option key={sub.id} value={sub.id}>
+                    {sub.name}{sub.contact_name ? ` · ${sub.contact_name}` : ""}
+                  </option>
+                ))}
+              </select>
+              <div className="text-[10px] text-zinc-500 mt-1">Picking a sub auto-fills the company name, address, contact, and email below. Edit any field after.</div>
+            </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Description (scope of work)</label>
               <textarea

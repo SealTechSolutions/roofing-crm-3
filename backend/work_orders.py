@@ -448,7 +448,11 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
             prop = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
         sub = None
         if deal.get("primary_subcontractor_id"):
-            sub = await db.subcontractors.find_one({"id": deal["primary_subcontractor_id"]}, {"_id": 0})
+            # Subcontractors live in the `vendors` collection with kind="Subcontractor"
+            sub = await db.vendors.find_one(
+                {"id": deal["primary_subcontractor_id"], "kind": "Subcontractor"},
+                {"_id": 0},
+            )
         # Default total = chosen amount on the deal (the price the customer is paying)
         chosen = float(deal.get("chosen_amount") or 0)
         return {
@@ -458,10 +462,10 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
                 "wo_date": datetime.now(timezone.utc).strftime("%m/%d/%Y"),
                 "project_name": deal.get("title") or "",
                 "project_address": (prop or {}).get("address") or deal.get("title") or "",
-                "contractor": (sub or {}).get("company_name") or "",
-                "sub_company": (sub or {}).get("company_name") or "",
+                "contractor": (sub or {}).get("name") or "",
+                "sub_company": (sub or {}).get("name") or "",
                 "sub_address": (sub or {}).get("address") or "",
-                "sub_contact": (sub or {}).get("contact_name") or (sub or {}).get("primary_contact_name") or "",
+                "sub_contact": (sub or {}).get("contact_name") or "",
                 "sub_email": (sub or {}).get("email") or "",
                 "work_date": datetime.now(timezone.utc).strftime("%m/%d/%Y"),
                 "description": _auto_scope_from_deal(deal, db),
