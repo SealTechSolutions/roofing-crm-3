@@ -22,6 +22,7 @@ import BooksCOA from "@/pages/BooksCOA";
 import CoiReminders from "@/pages/CoiReminders";
 import PublicGallery from "@/pages/PublicGallery";
 import ProposalSign from "@/pages/ProposalSign";
+import WorkOrderSign from "@/pages/WorkOrderSign";
 import MagicLinkConsume from "@/pages/MagicLinkConsume";
 import TrashPage from "@/pages/Trash";
 import Profile from "@/pages/Profile";
@@ -90,6 +91,7 @@ function App() {
             {/* Public photo-share gallery — NO auth required */}
             <Route path="/share/photos/:token" element={<PublicGallery />} />
             <Route path="/sign/:token" element={<ProposalSign />} />
+            <Route path="/work-order/sign/:token" element={<WorkOrderSign />} />
             <Route path="/m/:token" element={<MagicLinkConsume />} />
             {/* Standalone full-screen mobile camera capture (no sidebar Layout) */}
             <Route path="/field" element={<FieldCapture />} />

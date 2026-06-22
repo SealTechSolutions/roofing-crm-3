@@ -6620,6 +6620,23 @@ api_router.include_router(_product_catalog.create_router(db, get_current_user))
 import brochures as _brochures
 api_router.include_router(_brochures.create_router(get_current_user))
 
+import work_orders as _work_orders
+# PUBLIC_BASE_URL drives the sign-link prefix in outbound emails. Falls back to
+# the frontend's REACT_APP_BACKEND_URL (read from /app/frontend/.env) so the
+# subcontractor can click the link from their inbox and land on the SPA.
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "")
+if not PUBLIC_BASE_URL:
+    try:
+        with open("/app/frontend/.env") as _fe:
+            for _ln in _fe:
+                if _ln.startswith("REACT_APP_BACKEND_URL"):
+                    PUBLIC_BASE_URL = _ln.split("=", 1)[1].strip()
+                    break
+    except OSError:
+        PUBLIC_BASE_URL = ""
+api_router.include_router(_work_orders.create_router(db, get_current_user, PUBLIC_BASE_URL))
+api_router.include_router(_work_orders.create_public_router(db, PUBLIC_BASE_URL))
+
 
 # ----- Public Proposal Signing (Sign Off link) ----------------------------
 import proposal_signing as _proposal_signing

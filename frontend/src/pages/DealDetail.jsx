@@ -34,6 +34,7 @@ export default function DealDetail() {
   const [invoiceEditor, setInvoiceEditor] = useState(null); // null | invoice object (new or existing)
   const [scopeEditorOpen, setScopeEditorOpen] = useState(false);
   const [sendToFieldOpen, setSendToFieldOpen] = useState(false);
+  const [workOrderOpen, setWorkOrderOpen] = useState(false);
   const [finalInvoicePreview, setFinalInvoicePreview] = useState(null); // {contract_total, already_invoiced, final_amount, existing_final_invoice_id?}
   const [closedBannerDismissed, setClosedBannerDismissed] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
@@ -449,6 +450,14 @@ export default function DealDetail() {
             className="inline-flex items-center gap-2 border border-zinc-300 text-zinc-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:border-zinc-950 rounded-sm transition-colors"
           >
             <Mail className="w-4 h-4" /> Email to Prospect
+          </button>
+          <button
+            data-testid="send-work-order"
+            onClick={() => setWorkOrderOpen(true)}
+            title="Issue a Work Order to the subcontractor — includes the spec sheet"
+            className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
+          >
+            <FileText className="w-4 h-4" /> Send Work Order
           </button>
           <button
             data-testid="new-assessment-from-deal"
@@ -1373,6 +1382,19 @@ export default function DealDetail() {
           subtitle={`Scan to capture photos for ${deal?.title || "this project"}`}
         />
       )}
+      {workOrderOpen && (
+        <WorkOrderModal
+          dealId={id}
+          onClose={() => setWorkOrderOpen(false)}
+          onSent={(res) => {
+            toast.success(res?.email_sent
+              ? `Work order emailed to ${res?.sign_url ? "the sub" : "subcontractor"}`
+              : "Work order saved (email could not be sent — check SMTP)");
+            setWorkOrderOpen(false);
+            reload();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1686,3 +1708,136 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
     </div>
   );
 }
+
+/**
+ * WorkOrderModal — issues a Work Order to the subcontractor.
+ *
+ * Flow: GET draft from backend (auto-fills sub info, project, scope bullets
+ * from the same spec sheet the customer sees) → rep edits any field →
+ * Preview (PDF) OR Send. Sending persists the WO, attaches the spec sheet,
+ * emails the sub with a public sign link, and toasts back.
+ */
+function WorkOrderModal({ dealId, onClose, onSent }) {
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({});
+  const [existing, setExisting] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await api.get(`/deals/${dealId}/work-order/draft`);
+        setForm(r.data?.existing ? { ...r.data.draft, ...r.data.existing } : r.data?.draft || {});
+        setExisting(r.data?.existing || null);
+      } catch (e) {
+        toast.error(e?.response?.data?.detail || e.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [dealId]);
+
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const preview = async () => {
+    try {
+      const r = await api.post(`/deals/${dealId}/work-order/preview`, form, { responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || e.message);
+    }
+  };
+
+  const send = async () => {
+    if (!form.sub_email || !form.sub_email.includes("@")) {
+      toast.error("Subcontractor email is required"); return;
+    }
+    setSubmitting(true);
+    try {
+      const r = await api.post(`/deals/${dealId}/work-order/send`, form);
+      onSent?.(r.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-sm max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="work-order-modal">
+        <div className="px-5 py-4 border-b border-zinc-200 flex items-center justify-between">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700">Issue Work Order</div>
+            <h2 className="font-heading text-xl font-black">Send Work Order to Subcontractor</h2>
+            {existing && (
+              <div className="text-[11px] text-amber-700 mt-1">
+                ⚠ A work order already exists for this deal. Saving will overwrite it
+                {existing.signed_at && " — but the existing signature will NOT be invalidated; the sub will need to sign the new version."}
+              </div>
+            )}
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 text-xl leading-none px-2">×</button>
+        </div>
+        {loading ? (
+          <div className="p-8 text-center text-zinc-500 text-sm">Loading draft…</div>
+        ) : (
+          <div className="p-5 space-y-4 text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="WO Date" value={form.wo_date} onChange={(v) => set("wo_date", v)} testId="wo-date" />
+              <Field label="Work Date" value={form.work_date} onChange={(v) => set("work_date", v)} testId="wo-work-date" />
+            </div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mt-2">Subcontractor</div>
+            <Field label="Company Name" value={form.sub_company} onChange={(v) => set("sub_company", v)} testId="wo-sub-company" />
+            <Field label="Company Address" value={form.sub_address} onChange={(v) => set("sub_address", v)} testId="wo-sub-address" />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Contact Name" value={form.sub_contact} onChange={(v) => set("sub_contact", v)} testId="wo-sub-contact" />
+              <Field label="Email *" value={form.sub_email} onChange={(v) => set("sub_email", v)} testId="wo-sub-email" required />
+            </div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mt-2">Project</div>
+            <Field label="Project Name" value={form.project_name} onChange={(v) => set("project_name", v)} testId="wo-project-name" />
+            <Field label="Project Address" value={form.project_address} onChange={(v) => set("project_address", v)} testId="wo-project-address" />
+            <Field label="Contractor (entity SealTech is paying)" value={form.contractor} onChange={(v) => set("contractor", v)} testId="wo-contractor" />
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Description (scope of work)</label>
+              <textarea
+                value={form.description || ""}
+                onChange={(e) => set("description", e.target.value)}
+                rows={8}
+                data-testid="wo-description"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-xs font-mono"
+              />
+              <div className="text-[10px] text-zinc-500 mt-1">Auto-populated from the spec sheet. Edit freely — HTML tags &lt;b&gt;, &lt;br/&gt; supported.</div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Total ($)</label>
+              <input type="number" step="0.01" value={form.total || 0} onChange={(e) => set("total", Number(e.target.value))} data-testid="wo-total" className="w-48 h-10 px-3 border border-zinc-300 rounded-sm text-sm font-mono text-right" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Notes (override default Master-Subcontractor text)</label>
+              <textarea value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Leave blank to use the standard Master Subcontractor Agreement notes." data-testid="wo-notes" className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-xs" />
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-sm p-3 text-[11px] text-blue-900">
+              <b>The email to the sub will include 2 attachments:</b> this Work Order PDF + the customer-signed Spec Sheet PDF so they see the same scope of work the customer agreed to.
+            </div>
+          </div>
+        )}
+        <div className="px-5 py-4 border-t border-zinc-200 flex items-center justify-end gap-2">
+          <button type="button" onClick={onClose} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50">Cancel</button>
+          <button type="button" onClick={preview} disabled={loading} data-testid="wo-preview" className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-blue-700 text-blue-700 hover:bg-blue-50 rounded-sm disabled:opacity-50">Preview PDF</button>
+          <button type="button" onClick={send} disabled={loading || submitting} data-testid="wo-send" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm disabled:opacity-50">{submitting ? "Sending…" : "Send to Subcontractor"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const Field = ({ label, value, onChange, testId, required }) => (
+  <div>
+    <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">{label}</label>
+    <input type="text" value={value || ""} onChange={(e) => onChange(e.target.value)} data-testid={testId} required={required} className="w-full h-10 px-3 border border-zinc-300 rounded-sm text-sm" />
+  </div>
+);
+
