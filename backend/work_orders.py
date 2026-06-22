@@ -148,9 +148,14 @@ def build_work_order_pdf(wo: dict, signed_signature: Optional[dict] = None,
     # ---- NOTES ----
     story.append(Paragraph("NOTES", s["h2"]))
     notes = wo.get("notes") or (
-        "Subcontractor agrees to the amount and scope of this work order and "
-        "to operate under their current contract obligations of their Master "
-        "Subcontractor Agreement."
+        "Subcontractor agrees to perform the Work described in this Work Order, "
+        "including the application of the roof system in strict accordance with "
+        "the manufacturer's specifications (see attached). Subcontractor shall "
+        "furnish all labor, materials, insurance, supervision, and equipment "
+        "necessary to complete the Work in a professional and workmanlike "
+        "manner. Any required warranties shall be provided by Subcontractor or "
+        "Contractor as specified in the Work Order or by prior agreement. All "
+        "items referenced above are collectively referred to as the \u201cWork.\u201d"
     )
     notes_box = Table([[Paragraph(notes, s["body"])]], colWidths=[7.5 * inch])
     notes_box.setStyle(TableStyle([

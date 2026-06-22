@@ -168,7 +168,7 @@ export default function WorkOrderSign() {
           </div>
           <label className="flex items-start gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} data-testid="wo-sign-accept" className="mt-0.5" />
-            <span>I have reviewed the work order and accept the amount and scope. I agree to operate under the obligations of the Master Subcontractor Agreement.</span>
+            <span>I have reviewed the work order and accept the scope of Work. I agree to perform the Work in strict accordance with the manufacturer's specifications, and to furnish all labor, materials, insurance, supervision, and equipment necessary to complete it in a professional and workmanlike manner.</span>
           </label>
           <button
             type="submit"

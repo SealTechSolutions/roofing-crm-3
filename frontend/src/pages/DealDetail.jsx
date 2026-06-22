@@ -1857,7 +1857,7 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Notes (override default Master-Subcontractor text)</label>
-              <textarea value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Leave blank to use the standard Master Subcontractor Agreement notes." data-testid="wo-notes" className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-xs" />
+              <textarea value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={3} placeholder="Leave blank to use the standard Work Order language (subcontractor agrees to perform the Work per manufacturer specs, furnishes labor/materials/insurance/supervision/equipment, etc.)" data-testid="wo-notes" className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-xs" />
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-sm p-3 text-[11px] text-blue-900">
               <b>The email to the sub will include 2 attachments:</b> this Work Order PDF + the customer-signed Spec Sheet PDF so they see the same scope of work the customer agreed to.
