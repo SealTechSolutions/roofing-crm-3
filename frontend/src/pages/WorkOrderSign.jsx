@@ -109,23 +109,35 @@ export default function WorkOrderSign() {
       </div>
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-        {/* Embedded PDF preview */}
-        <div className="bg-white border border-zinc-200 rounded-sm overflow-hidden">
-          <iframe
-            src={`${API_BASE}/work-order/${token}/pdf`}
-            title="Work Order"
-            className="w-full"
-            style={{ height: "70vh" }}
-          />
-        </div>
-
-        {/* Plain-text recap so mobile users without PDF rendering still see it */}
+        {/* Plain-text recap FIRST — works on every device even when PDF preview can't render */}
         <div className="bg-white border border-zinc-200 rounded-sm p-5 space-y-2 text-sm">
           <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Summary</div>
           <div><b>Project:</b> {f.project_name}</div>
           <div><b>Address:</b> {f.project_address}</div>
           <div><b>Subcontractor:</b> {f.sub_company} {f.sub_contact && `· ${f.sub_contact}`}</div>
           <div><b>Total:</b> <span className="font-mono font-bold text-blue-900">${Number(f.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+          <a
+            href={`${API_BASE}/work-order/${token}/pdf`}
+            target="_blank"
+            rel="noreferrer"
+            data-testid="wo-sign-open-pdf"
+            className="mt-3 inline-flex items-center gap-2 px-4 h-10 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm"
+          >
+            <FileText className="w-3.5 h-3.5" /> Open Work Order PDF
+          </a>
+        </div>
+
+        {/* Embedded PDF preview — works on most desktops; mobile Safari shows
+            a blank iframe, which is why the "Open Work Order PDF" button above
+            is provided as the primary affordance. Keep iframe short so the
+            signature form below is always above the fold. */}
+        <div className="hidden md:block bg-white border border-zinc-200 rounded-sm overflow-hidden">
+          <iframe
+            src={`${API_BASE}/work-order/${token}/pdf`}
+            title="Work Order"
+            className="w-full"
+            style={{ height: "60vh" }}
+          />
         </div>
 
         {/* Signature form */}
