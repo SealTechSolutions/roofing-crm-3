@@ -598,19 +598,39 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
             doc["created_at"] = _now_iso()
             await db.work_orders.insert_one(doc)
 
-        # Render the WO PDF and ALSO the customer-signed spec sheet so the
-        # sub gets the full scope packet in one email.
+        # Render the WO PDF. When the rep has explicitly attached one or more
+        # manufacturer-spec PDFs from the Library, we use THOSE as the scope
+        # packet and skip the auto-generated SealTech spec sheet — otherwise
+        # subs get two scope documents and don't know which one to follow.
+        # When no library files are selected, the deal's spec sheet is still
+        # attached so the sub always has a scope to reference.
         pdf_bytes = build_work_order_pdf(doc)
-        spec_pdf_bytes = await _build_deal_spec_pdf(db, deal)
+        selected_lib_ids = body.get("library_file_ids") or []
+        if selected_lib_ids:
+            spec_pdf_bytes = None  # library files replace the auto spec sheet
+        else:
+            spec_pdf_bytes = await _build_deal_spec_pdf(db, deal)
         sign_url = f"{app_url_for_public_links.rstrip('/')}/work-order/sign/{sign_token}"
+        # Build the body language to match what's actually attached
+        if selected_lib_ids:
+            packet_line = (
+                "<p>Attached: the Work Order itself plus the manufacturer "
+                "specification(s) the customer signed off on. Please review "
+                "the attached spec(s) and click below to e-sign and accept the work:</p>"
+            )
+        else:
+            packet_line = (
+                "<p>Two documents are attached: the Work Order itself and the "
+                "project Spec Sheet showing the full scope of work the customer "
+                "signed off on. Please review both and click the link below to "
+                "e-sign and accept the work:</p>"
+            )
         html = (
             f"<p>Hello {doc.get('sub_contact') or doc.get('sub_company') or 'team'},</p>"
             f"<p>SealTech Building Solutions has issued you a Work Order for "
             f"<b>{doc.get('project_name')}</b> at <b>{doc.get('project_address')}</b>.</p>"
             f"<p>Total: <b>${float(doc.get('total') or 0):,.2f}</b></p>"
-            f"<p>Two documents are attached: the Work Order itself and the project Spec Sheet "
-            f"showing the full scope of work the customer signed off on. Please review both "
-            f"and click the link below to e-sign and accept the work:</p>"
+            f"{packet_line}"
             f'<p><a href="{sign_url}" style="background:#062B67;color:#fff;padding:10px 18px;text-decoration:none;border-radius:4px;display:inline-block;font-weight:bold;">REVIEW &amp; SIGN WORK ORDER</a></p>'
             f"<p>Or copy the link:<br/><code>{sign_url}</code></p>"
             f"<p>— SealTech Building Solutions</p>"
@@ -620,8 +640,11 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
             attachments.append({"bytes": spec_pdf_bytes, "filename": "SealTech-SpecSheet.pdf", "mime": "application/pdf"})
         # Optional Library file attachments (e.g. Western Colloid manufacturer
         # spec PDFs the rep picked in the modal). Fetched from object storage
-        # by id; skipped silently if any file is missing.
-        for lib_id in (body.get("library_file_ids") or []):
+        # by id; skipped silently if any file is missing. The filename uses
+        # the library `display_name` (human-friendly, e.g. "15 YR Emulsion and
+        # Acrylic.pdf") rather than the upload-time original_filename which is
+        # usually a cryptic SKU.
+        for lib_id in selected_lib_ids:
             try:
                 lf = await db.library_files.find_one({"id": lib_id, "is_deleted": False}, {"_id": 0})
                 if not lf or not lf.get("storage_path"):
@@ -629,14 +652,22 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
                 from storage import get_object
                 lb, _ct = get_object(lf["storage_path"])
                 if lb:
+                    pretty = (lf.get("display_name") or "spec").strip()
+                    if not pretty.lower().endswith(".pdf"):
+                        pretty = f"{pretty}.pdf"
                     attachments.append({
                         "bytes": lb,
-                        "filename": lf.get("original_filename") or f"{lf.get('display_name') or 'spec'}.pdf",
+                        "filename": pretty,
                         "mime": lf.get("content_type") or "application/pdf",
                     })
             except Exception:
                 continue
         ok = _send_email(sub_email, f"Work Order — {doc.get('project_name')}", html, attachments=attachments)
+        import logging
+        _log = logging.getLogger(__name__)
+        _log.info("[WO send] sub=%s lib_ids=%r spec_attached=%s → %d attachments: %s",
+                  sub_email, body.get("library_file_ids"), bool(spec_pdf_bytes),
+                  len(attachments), [a["filename"] for a in attachments])
         return {"ok": True, "email_sent": ok, "sign_token": sign_token, "sign_url": sign_url,
                 "work_order_id": wo_id, "spec_attached": bool(spec_pdf_bytes),
                 "library_files_attached": len(attachments) - 1 - (1 if spec_pdf_bytes else 0)}

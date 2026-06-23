@@ -1903,9 +1903,13 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
                   </label>
                 ))}
               </div>
-              {selectedLibraryIds.length > 0 && (
+              {selectedLibraryIds.length > 0 ? (
                 <div className="px-3 py-2 bg-blue-50 border-t border-blue-200 text-[11px] text-blue-900">
-                  <b>{selectedLibraryIds.length}</b> spec{selectedLibraryIds.length === 1 ? "" : "s"} will be attached to the email.
+                  <b>{selectedLibraryIds.length}</b> manufacturer spec{selectedLibraryIds.length === 1 ? "" : "s"} will be attached. The auto-generated SealTech Spec Sheet is <b>replaced</b> by your selection — sub gets one scope packet, not two.
+                </div>
+              ) : (
+                <div className="px-3 py-2 bg-amber-50 border-t border-amber-200 text-[11px] text-amber-900">
+                  No manufacturer spec attached → the email will include the auto-generated <b>SealTech Spec Sheet</b> (Silicone Roof Scope template) as the scope reference.
                 </div>
               )}
             </div>

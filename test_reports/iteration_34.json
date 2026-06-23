@@ -1,0 +1,44 @@
+{
+  "summary": "Verified the WO 'library file replaces auto SealTech Spec Sheet' fix end-to-end. Cases A (1 lib), B (0 lib), C (2 libs) all return correct spec_attached + library_files_attached values. Backend log confirms friendly display_name filenames ('15 YR Emulsion and Acrylic.pdf', '10 YR Emulsion and Acrylic.pdf') are used instead of cryptic SKU names, and 'SealTech-SpecSheet.pdf' is suppressed when libs are selected. Frontend WorkOrderModal shows the correct AMBER banner (no selection) and BLUE 'replaced' banner (with selection).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "WorkOrderModal — DealDetail.jsx ~line 1924",
+        "issues": [
+          "Static blue info row at bottom still says 'Email attachments: Work Order PDF + customer-signed Spec Sheet PDF + any Manufacturer Specs you ticked above.' This is now stale: when Manufacturer Specs are ticked, the customer-signed Spec Sheet is REPLACED (not added). The dynamic banner already conveys this correctly, but the static line below it contradicts the dynamic banner. Recommend either removing the static line or making it conditional on selectedLibraryIds.length."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_wo_library_replaces_spec.py",
+    "/app/test_reports/pytest/iter34_wo_library.xml"
+  ],
+  "action_items": [
+    "(Optional polish) Fix the static 'Email attachments:' line at DealDetail.jsx line ~1924 — it still implies the auto Spec Sheet is always attached even when Manufacturer Specs are ticked. Suggested: make conditional on selectedLibraryIds.length, OR drop the line entirely since the new dynamic banner above already explains attachments correctly."
+  ],
+  "critical_code_review_comments": [
+    "work_orders.py is approaching ~815 lines — consider extracting the WO send flow (PDF render + spec selection + attachment build + email dispatch) into a helper module for testability and readability.",
+    "In the new attachment loop (work_orders.py ~lines 647-664), get_object failures fall through 'continue' silently — at minimum a logger.warning would help diagnose if a sub ever asks 'where's my spec?' again.",
+    "The response field name 'library_files_attached' is computed as len(attachments) - 1 - (1 if spec_pdf_bytes else 0). This works but is brittle — if a future change adds another non-lib attachment, the count will be off. Recommend tracking a dedicated counter while building the attachments list."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_wo_library_replaces_spec.py (NEW — 4 regression tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4 pytest cases passed)",
+    "frontend": "100% (both amber + blue banner states verified visually + via DOM text assertions)"
+  },
+  "test_credentials": "darren@sealtechsolutions.co / admin123 (from problem statement; not from /app/memory/test_credentials.md which I did not need to consult since creds were provided).",
+  "seed_data_creation": "None — only the safe TEST_Lead Deal (640a9104-…) was touched. Library file IDs already existed in DB. WO send is idempotent so the test deal's WO row was just overwritten each run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression coverage for the WO library-replaces-spec behavior lives at /app/backend/tests/test_wo_library_replaces_spec.py and asserts: (a) library_file_ids non-empty ⇒ spec_attached=False, (b) library_file_ids empty ⇒ spec_attached=True, (c) backend log line uses display_name and excludes SealTech-SpecSheet.pdf. WO modal data-testids: 'send-work-order' (page button — has both legacy 'send-work-order' and inner 'wo-send' inside the modal Send button), 'wo-lib-{library_file_id}' for each library checkbox, 'wo-preview', 'wo-send'. The deal id 640a9104-0bd5-44dd-9f13-51e4b8cd2e4e is the only safe test deal. Real customer deals to NEVER touch: b2f4b511-09ee-411d-978f-44a02ac24d13, 350cedf9-6012-42bd-9e0b-90db4adb43df.",
+  "rca_of_the_issue": "Original user confusion: WO email had 'SealTech-SpecSheet.pdf' (the auto Silicone Roof Scope generic template) attached alongside the user-selected manufacturer spec, so when Gmail collapsed/hid attachments the user thought the auto template WAS their selected file. Also the library file was attached using its cryptic upload-time filename (e.g. '16-SMEA_2P_6xE_15yrEA.pdf') instead of the human-readable display_name. Fix verified: when library_file_ids is non-empty, spec_pdf_bytes is set to None so the auto SealTech-SpecSheet.pdf is never built or attached; library files attach using lf['display_name'] + '.pdf'. Frontend banner gives the rep clear visual feedback before send. All 4 backend test cases pass."
+}
