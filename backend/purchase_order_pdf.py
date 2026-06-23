@@ -41,7 +41,7 @@ def _footer(canvas, doc):
     canvas.line(0.5 * inch, 0.6 * inch, 8.0 * inch, 0.6 * inch)
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(GRAY)
-    canvas.drawString(0.5 * inch, 0.45 * inch, "SealTech Building Solutions  -  720-715-9955  -  scope@sealtechsolutions.co  -  www.sealtechbuildingsolutions.com")
+    canvas.drawString(0.5 * inch, 0.45 * inch, "SealTech Building Solutions  -  720-715-9955  -  finance@sealtechsolutions.co")
     canvas.drawRightString(8.0 * inch, 0.45 * inch, f"{doc.page} | Page")
     canvas.restoreState()
 

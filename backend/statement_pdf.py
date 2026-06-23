@@ -71,7 +71,7 @@ def _footer(canvas, doc):
     canvas.line(0.5 * inch, 0.6 * inch, 8.0 * inch, 0.6 * inch)
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(GRAY)
-    canvas.drawString(0.5 * inch, 0.45 * inch, "SealTech Building Solutions  -  720-715-9955  -  scope@sealtechsolutions.co  -  www.sealtechbuildingsolutions.com")
+    canvas.drawString(0.5 * inch, 0.45 * inch, "SealTech Building Solutions  -  720-715-9955  -  finance@sealtechsolutions.co")
     canvas.drawRightString(8.0 * inch, 0.45 * inch, f"{doc.page} | Page")
     canvas.restoreState()
 
@@ -209,7 +209,7 @@ def build_statement_pdf(customer: dict, invoices: list, statement_date_iso: str,
         "<b>SealTech Building Solutions</b>",
         "2278 Mannatt Ct",
         "Castle Rock, CO 80104",
-        '<font color="#52525B">scope@sealtechsolutions.co</font>',
+        '<font color="#52525B">finance@sealtechsolutions.co</font>',
         '<font color="#52525B">720-715-9955</font>',
     ]
 
