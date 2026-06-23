@@ -319,13 +319,19 @@ def _auto_scope_from_deal(deal: dict, db) -> str:
         if eff.get("scope_1"):
             chunks.append(f"<b>{eff.get('scope_1_title', 'Inspection and Prep')}</b>")
             chunks.extend([f"• {b}" for b in eff["scope_1"]])
-        # Prefer the WO-specific scope_2 when the template supplies one — keeps
-        # the sub-facing version distinct from the customer spec sheet.
-        wo_title = base.get("wo_scope_2_title") or eff.get("scope_2_title", "Application")
-        wo_bullets = base.get("wo_scope_2") or eff.get("scope_2") or []
-        if wo_bullets:
-            chunks.append(f"<br/><b>{wo_title}</b>")
+        # The template can supply a Work-Order-only override list. When the
+        # template's `wo_scope_2_title` is None, the override bullets are
+        # appended directly to the same list (no section header) — used by
+        # FARM so the sub sees one continuous scope of work.
+        if "wo_scope_2" in base:
+            wo_bullets = base.get("wo_scope_2") or []
+            wo_title = base.get("wo_scope_2_title")
+            if wo_title:
+                chunks.append(f"<br/><b>{wo_title}</b>")
             chunks.extend([f"• {b}" for b in wo_bullets])
+        elif eff.get("scope_2"):
+            chunks.append(f"<br/><b>{eff.get('scope_2_title', 'Application')}</b>")
+            chunks.extend([f"• {b}" for b in eff["scope_2"]])
         return "<br/>".join(chunks)
     except Exception:
         return ""
