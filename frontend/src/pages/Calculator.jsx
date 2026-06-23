@@ -280,8 +280,14 @@ export default function Calculator() {
       // (Darren can manually toggle back to Estimate if needed).
       if (r.data.scope_signed_at) setMode("materials");
       else setMode("estimate");
-      // Smart SF fallback: deal.property_sqft -> property record's roof_area
-      let sf = r.data.property_sqft || r.data.total_sf;
+      // Smart SF preference order:
+      //   1. deal.total_sqft  — backend-computed roof+parapet total
+      //      (= property_sqft + perimeter_lnft × avg_parapet_height)
+      //   2. deal.property_sqft  — bare floor area (legacy / no parapet)
+      //   3. property record's roof_area / square_footage
+      // The Calculator drives material PO counts so we MUST use the
+      // parapet-inclusive figure when it's available.
+      let sf = r.data.total_sqft || r.data.property_sqft || r.data.total_sf;
       if (!sf && r.data.property_id) {
         try {
           const pr = await api.get(`/properties/${r.data.property_id}`);

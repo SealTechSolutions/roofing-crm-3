@@ -1,0 +1,28 @@
+{
+  "summary": "Iter 37: Verified the Calculator SF preference fix (total_sqft || property_sqft || total_sf). Bug reproduction PASSED: navigating to /calculator?deal=eef534dd-869c-48e5-b5f8-24c190255b8d (3629 Crosshaven Ct) now populates Total SF = 7050 (parapet-inclusive) instead of the previous 6500 (bare floor). Backend GET /api/deals/{id} confirmed total_sqft=7050.0, property_sqft=6500.0, perimeter_lnft=550.0, avg_parapet_height=1.0. Sandbox deal regression: Calculator loads gracefully when total_sqft and property_sqft are absent (input stays empty, no crash). No errors on page. Deal title 'Crosshaven' visible in header.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_calculator_sqft_fix.py",
+    "/app/test_reports/pytest/pytest_iter37.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Calculator.jsx line 290 fix correctly prefers total_sqft (parapet-inclusive) over property_sqft (bare floor). Fallback order is sound: total_sqft -> property_sqft -> total_sf (legacy) -> property record's roof_area/square_footage. The check `if (!sf && r.data.property_id)` correctly only falls back to /properties when no deal-level sqft exists.",
+    "Calculator.jsx is now 1100+ lines — consider splitting CompareColumn and the BoM compute logic into separate modules per the >700-line guideline (non-blocking, future cleanup)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_calculator_sqft_fix.py (new)"
+  ],
+  "success_rate": { "backend": "100% (2/2)", "frontend": "100% (Calculator SF bug fix verified end-to-end)" },
+  "test_credentials": "darren@sealtechsolutions.co / admin123 (admin)",
+  "seed_data_creation": "None — read-only verification against existing deals.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Calculator parapet-sqft bug is fixed and verified at /app/frontend/src/pages/Calculator.jsx line 290. Backend auto-computes total_sqft on every save via _post_process_deal_data in server.py L1144-1161. Test file /app/backend/tests/test_calculator_sqft_fix.py covers the Crosshaven deal (id=eef534dd-869c-48e5-b5f8-24c190255b8d, expects total_sqft=7050) and a sandbox deal regression.",
+  "rca of the issue": "Root cause: Calculator.jsx was reading r.data.property_sqft FIRST and falling back to a non-existent r.data.total_sf field, so the 550 sq ft of parapet wall area (550 lnft × 1.0 ft height) was being dropped from material PO sizing. Reproduction: load /calculator?deal=<id of deal with parapet>; observe Total SF = property_sqft instead of total_sqft. Fix: change L290 to `r.data.total_sqft || r.data.property_sqft || r.data.total_sf` — confirmed via Playwright the Total SF input now shows 7050 for the 3629 Crosshaven Ct deal. Mitigation: any legacy deal without total_sqft falls back to property_sqft (safe — total_sqft is auto-computed on every PUT/POST, so this only affects records that haven't been saved since the parapet feature shipped)."
+}
