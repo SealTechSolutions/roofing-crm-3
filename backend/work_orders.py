@@ -203,9 +203,13 @@ def build_work_order_pdf(wo: dict, signed_signature: Optional[dict] = None,
     work_header = [Paragraph("DATE", s["label"]),
                    Paragraph("DESCRIPTION", s["label"]),
                    Paragraph("TOTAL", s["label"])]
+    # Convert any plain newlines the rep typed into <br/> so the PDF mirrors
+    # the modal layout. Double-newline (blank line) → double <br/>.
+    raw_desc = wo.get("description") or "—"
+    desc_html = raw_desc.replace("\r\n", "\n").replace("\n", "<br/>")
     work_row = [
         Paragraph(wo.get("work_date") or datetime.now(timezone.utc).strftime("%m/%d/%Y"), s["value"]),
-        Paragraph(wo.get("description") or "—", s["value"]),
+        Paragraph(desc_html, s["value"]),
         Paragraph(f"${float(wo.get('total') or 0):,.2f}",
                   ParagraphStyle("amt", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=BLUE, alignment=2)),
     ]
