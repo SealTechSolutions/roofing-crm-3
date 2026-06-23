@@ -766,7 +766,7 @@ def create_public_router(db, app_url_for_public_links: str):
             u = await db.users.find_one({"id": deal["assigned_user_id"]}, {"_id": 0, "email": 1})
             rep_email = (u or {}).get("email")
         if not rep_email:
-            rep_email = os.environ.get("SMTP_FROM")
+            rep_email = os.environ.get("GMAIL_FROM_EMAIL")
         if rep_email:
             _send_email(
                 rep_email,
