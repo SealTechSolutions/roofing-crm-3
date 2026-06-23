@@ -1002,3 +1002,7 @@ Closed the entire Lead → Sent → Won loop without anyone in the office touchi
 - Google Calendar 2-way sync for project schedules
 - Smart auto-attachment suggestions in Email Scope modal (pre-select Library docs by proposed_roof_type) — **cover photo only; NEVER the Material Take-Off**, which is internal pricing/margin info and must never be sent to customers (locked by Darren 2026-02-18).
 - Refactor `server.py` (~4,500 lines) into `/app/backend/routes/` modules
+
+
+## Changelog
+- **2026-06-23** — Fixed runtime `toggleLibraryFile is not defined` in `WorkOrderModal` (DealDetail.jsx). Defined the toggle helper, wired `library_file_ids` into both preview + send payloads. Also fixed two backend bugs in `backend/work_orders.py` where `get_object()` (which returns a `(bytes, content_type)` tuple) was assigned to a single var — caused cover-photo + library spec attachments to ship as `(bytes, str)` tuples and either silently fail or crash. Verified via curl on `TEST_Lead Deal`: `library_files_attached: 2`, `spec_attached: true`. Smoke screenshot confirmed modal renders.

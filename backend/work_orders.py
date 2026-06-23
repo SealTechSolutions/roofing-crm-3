@@ -370,14 +370,14 @@ async def _build_deal_spec_pdf(db, deal: dict) -> Optional[bytes]:
             )
             if ph and ph.get("storage_path"):
                 try:
-                    cover_bytes = get_object(ph["storage_path"])
+                    cover_bytes, _ct = get_object(ph["storage_path"])
                 except Exception:
                     cover_bytes = None
         else:
             f = await db.files.find_one({"id": cover_id, "is_deleted": {"$ne": True}}, {"_id": 0, "storage_path": 1})
             if f and f.get("storage_path"):
                 try:
-                    cover_bytes = get_object(f["storage_path"])
+                    cover_bytes, _ct = get_object(f["storage_path"])
                 except Exception:
                     cover_bytes = None
 
@@ -570,7 +570,7 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
                 if not lf or not lf.get("storage_path"):
                     continue
                 from storage import get_object
-                lb = get_object(lf["storage_path"])
+                lb, _ct = get_object(lf["storage_path"])
                 if lb:
                     attachments.append({
                         "bytes": lb,

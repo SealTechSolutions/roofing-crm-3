@@ -1754,6 +1754,14 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
+  // Toggle a Library spec into/out of the attachment list. We key off the
+  // file id so the checkbox state stays in sync after reloads.
+  const toggleLibraryFile = (lf) => {
+    setSelectedLibraryIds((prev) =>
+      prev.includes(lf.id) ? prev.filter((x) => x !== lf.id) : [...prev, lf.id]
+    );
+  };
+
   // Picking a sub from the dropdown auto-fills every field that came from the
   // vendor record — Contractor name, company, address, contact, email. Rep
   // can still edit any of them after.
@@ -1773,7 +1781,7 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
 
   const preview = async () => {
     try {
-      const r = await api.post(`/deals/${dealId}/work-order/preview`, form, { responseType: "blob" });
+      const r = await api.post(`/deals/${dealId}/work-order/preview`, { ...form, library_file_ids: selectedLibraryIds }, { responseType: "blob" });
       const url = URL.createObjectURL(r.data);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 30000);
@@ -1788,7 +1796,7 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
     }
     setSubmitting(true);
     try {
-      const r = await api.post(`/deals/${dealId}/work-order/send`, form);
+      const r = await api.post(`/deals/${dealId}/work-order/send`, { ...form, library_file_ids: selectedLibraryIds });
       onSent?.(r.data);
     } catch (e) {
       toast.error(e?.response?.data?.detail || e.message);
