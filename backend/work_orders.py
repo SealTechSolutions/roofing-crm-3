@@ -461,37 +461,47 @@ async def _build_deal_spec_pdf(db, deal: dict) -> Optional[bytes]:
 
 def _send_email(to: str, subject: str, html: str,
                 attachments: Optional[list] = None) -> bool:
-    """Send an outbound email via the same Gmail SMTP config the rest of the
-    app uses. `attachments` is a list of dicts: {bytes, filename, mime?}.
-    Returns True on success; False on any failure (caller logs)."""
-    host = os.environ.get("SMTP_HOST")
-    user = os.environ.get("SMTP_USER")
-    pw   = os.environ.get("SMTP_PASSWORD") or os.environ.get("SMTP_PASS")
-    port = int(os.environ.get("SMTP_PORT") or 587)
-    sender = os.environ.get("SMTP_FROM") or user
-    if not all([host, user, pw, sender]):
+    """Send an outbound email via the shared Gmail SMTP helper the rest of
+    the app uses (reads GMAIL_USERNAME / GMAIL_APP_PASSWORD / GMAIL_FROM_EMAIL
+    from .env). `attachments` is a list of dicts: {bytes, filename, mime?}
+    — translated to the email_sender shape before forwarding.
+    Returns True on success; False on any failure (logged)."""
+    import logging
+    log = logging.getLogger(__name__)
+    if not to or "@" not in to:
+        log.warning("WO email skipped — invalid recipient %r", to)
         return False
-    msg = MIMEMultipart()
-    msg["From"] = sender
-    msg["To"] = to
-    msg["Subject"] = subject
-    msg.attach(MIMEText(html, "html"))
+    try:
+        from email_sender import send_email as _gmail_send, EmailNotConfigured
+    except Exception as e:
+        log.error("WO email — email_sender import failed: %r", e)
+        return False
+    # Translate {bytes, filename, mime} -> {data, filename, mime}
+    norm_attachments = []
     for att in (attachments or []):
         if not att or not att.get("bytes"):
             continue
-        sub_type = (att.get("mime") or "pdf").split("/")[-1]
-        part = MIMEBase("application", sub_type)
-        part.set_payload(att["bytes"])
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition", f'attachment; filename="{att.get("filename", "attachment.pdf")}"')
-        msg.attach(part)
+        norm_attachments.append({
+            "data": att["bytes"],
+            "filename": att.get("filename", "attachment.pdf"),
+            "mime": att.get("mime", "application/pdf"),
+        })
+    # Derive a plain-text fallback from the HTML (strip tags very loosely)
+    import re as _re
+    body_text = _re.sub(r"<[^>]+>", "", html or "").strip() or " "
     try:
-        with smtplib.SMTP(host, port, timeout=20) as srv:
-            srv.starttls()
-            srv.login(user, pw)
-            srv.sendmail(sender, [to], msg.as_string())
+        _gmail_send(
+            to=to, subject=subject, body_text=body_text, body_html=html,
+            attachments=norm_attachments,
+            reply_to=os.environ.get("GMAIL_FROM_EMAIL") or None,
+        )
+        log.info("WO email sent to %s (%d attachments)", to, len(norm_attachments))
         return True
-    except Exception:
+    except EmailNotConfigured as e:
+        log.error("WO email — Gmail not configured: %s", e)
+        return False
+    except Exception as e:
+        log.error("WO email send failed to %s: %r", to, e)
         return False
 
 

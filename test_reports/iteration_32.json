@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 32 — Verified the Work Order send-to-sub Gmail dispatch fix in /app/backend/work_orders.py. Created /app/backend/tests/test_work_order_send_email.py with 4 pytest cases covering draft, send (basic + with library files), and preview-with-newlines. ALL 4 PASS. Critical assertion `email_sent=true` is now satisfied — backend log shows: `WO email sent to darren@darrenoliverllc.com (2 attachments)` for the basic send and `(4 attachments)` when 2 library files are added. The previous SMTP_* env-var lookup bug is fixed: _send_email() now wraps email_sender.send_email() using GMAIL_USERNAME/GMAIL_APP_PASSWORD.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "verified_flows": {
+    "GET /api/deals/{TEST_Lead}/work-order/draft → 200 with draft object": "PASS",
+    "POST /api/deals/{TEST_Lead}/work-order/send (no library files) → ok=true, email_sent=true, spec_attached=true": "PASS",
+    "POST /api/deals/{TEST_Lead}/work-order/preview with literal \\n\\n in description → 200, Content-Type=application/pdf, body starts with %PDF": "PASS",
+    "POST /api/deals/{TEST_Lead}/work-order/send with 2 library_file_ids (Western Colloid / Specifications) → email_sent=true, library_files_attached=2": "PASS",
+    "Backend log confirmation": "work_orders.py logged 'WO email sent to darren@darrenoliverllc.com (2 attachments)' then '(4 attachments)' — Gmail SMTP actually dispatched"
+  },
+  "critical_code_review_comments": [
+    "_send_email() now properly translates {bytes,filename,mime} → email_sender's {data,filename,mime} shape and derives a plain-text fallback via regex tag strip. Clean wrapper. ✅",
+    "Line 769 in work_orders.py still references `os.environ.get('SMTP_FROM')` as a fallback rep email when the deal has no assigned_user_id. That env var does not exist in /app/backend/.env — should be GMAIL_FROM_EMAIL. Minor bug (only hits the rep-notify path on the public sign endpoint when a deal has no assigned user); not exercised by this test but worth a one-line follow-up fix.",
+    "EmailNotConfigured exception is caught and logged with `log.error` — good; failure mode is non-fatal to the API caller (returns email_sent=false rather than 500).",
+    "description newline handling at line 209 (raw_desc.replace('\\r\\n','\\n').replace('\\n','<br/>')) correctly converts both \\n and \\n\\n into <br/> tags so ReportLab Paragraph renders blank lines."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_work_order_send_email.py",
+    "/app/test_reports/pytest/pytest_iter32.xml"
+  ],
+  "action_items": [
+    "(Optional, low priority) Replace `os.environ.get('SMTP_FROM')` on line 769 of /app/backend/work_orders.py with `os.environ.get('GMAIL_FROM_EMAIL')` so the rep-notify email after sub e-signs still has a valid fallback recipient when a deal lacks assigned_user_id."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_work_order_send_email.py (new)"
+  ],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "N/A — backend-only scope"},
+  "test_credentials": "darren@sealtechsolutions.co / admin123",
+  "seed_data_creation": "None — only the TEST_Lead Deal (640a9104-…) was touched, exactly as instructed. One work_orders row upserted for that deal (idempotent — re-running the test replaces, never duplicates).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Work Order send→Gmail flow is fully verified end-to-end. Real emails were dispatched to darren@darrenoliverllc.com during this test run (2 of them — one with WO+Spec, one with WO+Spec+2 library PDFs). pytest_iter32.xml is the regression artifact. Only nit found: line 769 still references SMTP_FROM env var (dead fallback) in the public-sign rep-notify path — not blocking, easy one-line fix.",
+  "rca_of_the_issue": "Original bug: work_orders._send_email() used a hand-rolled smtplib helper that read SMTP_HOST/SMTP_USER/SMTP_PASSWORD/SMTP_FROM which are NOT defined in /app/backend/.env (only GMAIL_USERNAME/GMAIL_APP_PASSWORD/GMAIL_FROM_EMAIL are). Result: helper threw inside the try block and returned False — API responded with email_sent=false and the sub never received the email. Fix: _send_email() now imports email_sender.send_email() (the same helper proposals/invoices use), translates the attachment dict shape, and forwards. Verified by both pytest assertions and backend INFO log line `WO email sent to darren@darrenoliverllc.com (N attachments)`."
+}
