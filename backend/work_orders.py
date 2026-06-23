@@ -518,11 +518,14 @@ async def _build_deal_spec_pdf(db, deal: dict) -> Optional[bytes]:
 
 
 def _send_email(to: str, subject: str, html: str,
-                attachments: Optional[list] = None) -> bool:
+                attachments: Optional[list] = None,
+                from_email: Optional[str] = None) -> bool:
     """Send an outbound email via the shared Gmail SMTP helper the rest of
     the app uses (reads GMAIL_USERNAME / GMAIL_APP_PASSWORD / GMAIL_FROM_EMAIL
     from .env). `attachments` is a list of dicts: {bytes, filename, mime?}
     — translated to the email_sender shape before forwarding.
+    `from_email` is the "Send As" alias to use (e.g. projects@sealtechsolutions.co
+    for Work Orders); falls back to GMAIL_FROM_EMAIL when None.
     Returns True on success; False on any failure (logged)."""
     import logging
     log = logging.getLogger(__name__)
@@ -551,9 +554,11 @@ def _send_email(to: str, subject: str, html: str,
         _gmail_send(
             to=to, subject=subject, body_text=body_text, body_html=html,
             attachments=norm_attachments,
-            reply_to=os.environ.get("GMAIL_FROM_EMAIL") or None,
+            reply_to=from_email or os.environ.get("GMAIL_FROM_EMAIL") or None,
+            from_email=from_email,
         )
-        log.info("WO email sent to %s (%d attachments)", to, len(norm_attachments))
+        log.info("WO email sent to %s from=%s (%d attachments)",
+                 to, from_email or "default", len(norm_attachments))
         return True
     except EmailNotConfigured as e:
         log.error("WO email — Gmail not configured: %s", e)
@@ -720,11 +725,21 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
                     })
             except Exception:
                 continue
-        ok = _send_email(sub_email, f"Work Order — {doc.get('project_name')}", html, attachments=attachments)
+        # Resolve the "Send As" alias for Work Orders. Work Orders are project
+        # comms (sub onboarding, scope handoff) so they group under the
+        # `projects` routing category. Falls back to GMAIL_FROM_EMAIL if the
+        # category isn't configured.
+        try:
+            from email_routing import get_from_for_category
+            wo_from = await get_from_for_category(db, "projects") or None
+        except Exception:
+            wo_from = None
+        ok = _send_email(sub_email, f"Work Order — {doc.get('project_name')}",
+                          html, attachments=attachments, from_email=wo_from)
         import logging
         _log = logging.getLogger(__name__)
-        _log.info("[WO send] sub=%s lib_ids=%r spec_attached=%s → %d attachments: %s",
-                  sub_email, body.get("library_file_ids"), bool(spec_pdf_bytes),
+        _log.info("[WO send] sub=%s from=%s lib_ids=%r spec_attached=%s → %d attachments: %s",
+                  sub_email, wo_from or "default", body.get("library_file_ids"), bool(spec_pdf_bytes),
                   len(attachments), [a["filename"] for a in attachments])
         return {"ok": True, "email_sent": ok, "sign_token": sign_token, "sign_url": sign_url,
                 "work_order_id": wo_id, "spec_attached": bool(spec_pdf_bytes),
@@ -857,6 +872,11 @@ def create_public_router(db, app_url_for_public_links: str):
         if not rep_email:
             rep_email = os.environ.get("GMAIL_FROM_EMAIL")
         if rep_email:
+            try:
+                from email_routing import get_from_for_category
+                rep_from = await get_from_for_category(db, "projects") or None
+            except Exception:
+                rep_from = None
             _send_email(
                 rep_email,
                 f"Work Order signed — {wo.get('project_name')}",
@@ -865,6 +885,7 @@ def create_public_router(db, app_url_for_public_links: str):
                 f"<p>The deal has been moved to the <b>Sub Engaged</b> stage.</p>",
                 attachments=[{"bytes": pdf_bytes, "filename": "SealTech-WorkOrder-Signed.pdf",
                               "mime": "application/pdf"}],
+                from_email=rep_from,
             )
         return {"ok": True, "signed_at": signed_signature["signed_at"], "already_signed": False}
 

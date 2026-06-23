@@ -2082,11 +2082,11 @@ async def email_purchase_order(deal_id: str, vendor_id: str, body: dict = Body(d
     cc_email = (body.get("cc_email") or "").strip()
     from_email = (body.get("from_email") or "").strip() or None
     if not from_email:
-        # Default to the "finance" Send-As alias for purchase orders — POs
-        # are financial commitments to vendors, so they group under finance@
-        # per the team's correspondence-routing rule.
+        # Default to the "projects" Send-As alias for purchase orders — POs
+        # are project-side comms (vendor handoff, materials ordering) so they
+        # group under projects@ per the team's correspondence-routing rule.
         from email_routing import get_from_for_category
-        from_email = await get_from_for_category(db, "finance") or None
+        from_email = await get_from_for_category(db, "projects") or None
     if not to_email:
         raise HTTPException(status_code=400, detail="No recipient email — please provide one or set the vendor's email.")
 
@@ -2112,7 +2112,7 @@ async def email_purchase_order(deal_id: str, vendor_id: str, body: dict = Body(d
       <p style="margin: 16px 0;">Could you confirm receipt, lead time, and pricing? Please call <b>Darren Oliver at 720-715-9955</b> if you have any questions or to discuss volume pricing.</p>
       <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
         <b style="color: #0A0A0A;">{po['requested_by'].get('name') or 'SealTech Building Solutions'}</b><br/>
-        SealTech Building Solutions  ·  720-715-9955  ·  finance@sealtechsolutions.co
+        SealTech Building Solutions  ·  720-715-9955  ·  projects@sealtechsolutions.co
       </p>
     </body></html>
     """
@@ -3921,7 +3921,7 @@ async def email_aliases(current=Depends(get_current_user)):
         defaults = {
             "invoice":    _pick("finance@sealtechsolutions.co"),
             "statement":  _pick("finance@sealtechsolutions.co"),
-            "po":         _pick("finance@sealtechsolutions.co"),
+            "po":         _pick("projects@sealtechsolutions.co"),
             "scope":      _pick("scope@sealtechsolutions.co"),
             "assessment": _pick("assessments@sealtechsolutions.co"),
         }
