@@ -44,6 +44,49 @@ INK = colors.HexColor("#18181B")
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "sealtech-logo.png")
 SEALTECH_SIG_PATH = os.path.join(os.path.dirname(__file__), "assets", "sealtech-signature.png")
+FONTS_DIR = os.path.join(os.path.dirname(__file__), "assets", "fonts")
+
+# Map of user-facing font name → (registered font name in ReportLab, TTF filename).
+# All six are Google Fonts (OFL-licensed) shipped under backend/assets/fonts.
+# Registered lazily on first PDF build to avoid import-time side effects.
+SIGNATURE_FONTS = {
+    "Caveat":         ("Caveat",         "Caveat.ttf"),
+    "Dancing Script": ("DancingScript",  "DancingScript.ttf"),
+    "Great Vibes":    ("GreatVibes",     "GreatVibes.ttf"),
+    "Sacramento":     ("Sacramento",     "Sacramento.ttf"),
+    "Allura":         ("Allura",         "Allura.ttf"),
+    "Pacifico":       ("Pacifico",       "Pacifico.ttf"),
+}
+_signature_fonts_registered = False
+
+def _ensure_signature_fonts():
+    """Register the script-font TTFs with ReportLab exactly once per process."""
+    global _signature_fonts_registered
+    if _signature_fonts_registered:
+        return
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        for _user_name, (rl_name, fname) in SIGNATURE_FONTS.items():
+            path = os.path.join(FONTS_DIR, fname)
+            if os.path.exists(path):
+                try:
+                    pdfmetrics.registerFont(TTFont(rl_name, path))
+                except Exception:
+                    pass  # font already registered or unreadable; ignore
+    except Exception:
+        pass
+    _signature_fonts_registered = True
+
+def _signature_font_for(name: Optional[str]) -> str:
+    """Resolve the user's chosen script-font label to the ReportLab font name.
+    Falls back to Helvetica-Oblique if the label isn't in our shipped set."""
+    if not name:
+        return "Helvetica-Oblique"
+    entry = SIGNATURE_FONTS.get(name)
+    if not entry:
+        return "Helvetica-Oblique"
+    return entry[0]
 
 SEALTECH = {
     "name": "SealTech Building Solutions",
@@ -83,6 +126,10 @@ def build_work_order_pdf(wo: dict, signed_signature: Optional[dict] = None,
     will add "change-order".
     """
     s = _styles()
+    # Register the script signature TTFs (Caveat, Dancing Script, etc.) on
+    # first call so the user's chosen signature style actually renders in the
+    # PDF instead of a generic italic Helvetica fallback.
+    _ensure_signature_fonts()
     buf = BytesIO()
     doc = BaseDocTemplate(
         buf, pagesize=LETTER,
@@ -249,10 +296,21 @@ def build_work_order_pdf(wo: dict, signed_signature: Optional[dict] = None,
     sig_right_lines = [Paragraph("<b>Contractor:</b>", s["sig"])]
 
     if signed_signature and signed_signature.get("text"):
+        # Resolve the script font label (e.g. "Caveat", "Great Vibes") to its
+        # registered ReportLab font name. Falls back to Helvetica-Oblique if
+        # the label is missing or the TTF couldn't be loaded.
+        sig_font = _signature_font_for(signed_signature.get("font"))
+        # Most cursive fonts have a much larger optical x-height than
+        # Helvetica — bump font size up so the rendered signature is clearly
+        # legible at typical Letter-page viewing zoom.
+        sig_size = 26 if sig_font != "Helvetica-Oblique" else 18
         sig_left_lines.append(Spacer(1, 0.18 * inch))
         sig_left_lines.append(Paragraph(
-            f'<font face="Helvetica-Oblique" size="16" color="#062B67">{signed_signature["text"]}</font>',
-            s["sig"],
+            f'<font face="{sig_font}" size="{sig_size}" color="#062B67">'
+            f'{signed_signature["text"]}'
+            f'</font>',
+            ParagraphStyle("sig_typed", fontName=sig_font, fontSize=sig_size,
+                           leading=sig_size + 4, textColor=BLUE),
         ))
         sig_left_lines.append(Paragraph("_______________________________________", s["small"]))
         sig_left_lines.append(Paragraph(

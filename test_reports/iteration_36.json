@@ -1,0 +1,26 @@
+{
+  "summary": "Verified script-font signature rendering fix end-to-end. All 15 pytest tests pass (font-file shipping, ReportLab registration of all 6 faces, resolver for known labels + fallback, per-font PDF builds for Caveat/Dancing Script/Great Vibes/Sacramento/Allura/Pacifico, unknown-font fallback safety, and the real signed Dexter WO PDF endpoint + rendered-pixel check). Full frontend e2e on the TEST_Lead deal: minted a fresh sign_token via /api/deals/.../work-order/send, drove WorkOrderSign.jsx with Playwright (mobile viewport so the iframe doesn't interfere), clicked the Great Vibes style, submitted — server returned 200, DB persisted signed_signature.font='Great Vibes', GET /pdf returns 200 application/pdf (1.29 MB), and the page-1 PNG shows real ink in the subcontractor signature region.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_wo_signature_fonts.py",
+    "/app/test_reports/pytest/wo_fonts.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "work_orders.py is 872 lines — recommended to split into pdf_builder.py / public_router.py / admin_router.py in a future cleanup pass; not blocking.",
+    "WorkOrderSign.jsx comment on line 24-25 ('PDF uses Helvetica-Oblique as stand-in') is now stale — the PDF actually renders the chosen script font. Update comment for clarity."
+  ],
+  "updated_files": ["/app/backend/tests/test_wo_signature_fonts.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "darren@sealtechsolutions.co / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Signed a fresh Work Order on the TEST_Lead sandbox deal (640a9104-0bd5-44dd-9f13-51e4b8cd2e4e). New WO id=CPFnbPtSJ5nYkhZfm1dZDA, sign_token=NyIoCrji8z4zUys2AuDrMSn-es8wYOrU, signed_signature.font='Great Vibes', signed_by_name='Test User'. Read-only Dexter WO (070FFFHvx78zluNbD3jN6l18KeX3igpI) was not mutated.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Script-signature-font fix is verified. Six Google Font TTFs ship at /app/backend/assets/fonts/; work_orders._ensure_signature_fonts() registers them lazily on first build_work_order_pdf call. PDF size jumped from ~30-40 KB to ~1.3 MB once any script font is embedded — that's expected (TTF subset embedding). Regression suite: /app/backend/tests/test_wo_signature_fonts.py (15 tests, pdftoppm + Pillow needed for the pixel-check tests; both available in this env).",
+  "rca_of_the_issue": "ORIGINAL BUG: build_work_order_pdf hard-coded `face='Helvetica-Oblique'` so the user's signature_font choice was ignored — typed-style cursive name rendered as italic Helvetica. FIX VERIFIED: SIGNATURE_FONTS map + _ensure_signature_fonts() lazy-registers 6 TTF faces on first PDF build; _signature_font_for() returns the registered RL font name (Caveat / DancingScript / GreatVibes / Sacramento / Allura / Pacifico) or Helvetica-Oblique for unknown labels. PDF builder now reads signed_signature.font and uses the resolved face at 26pt with custom ParagraphStyle leading=30. Reproduction: GET /api/work-order/070FFFHvx78zluNbD3jN6l18KeX3igpI/pdf — page 1 now shows the Subcontractor signature 'Darren Oliver' in a flowing Dancing Script cursive, not italic Helvetica."
+}
