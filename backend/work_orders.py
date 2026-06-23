@@ -43,6 +43,7 @@ GRAY = colors.HexColor("#52525B")
 INK = colors.HexColor("#18181B")
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "sealtech-logo.png")
+SEALTECH_SIG_PATH = os.path.join(os.path.dirname(__file__), "assets", "sealtech-signature.png")
 
 SEALTECH = {
     "name": "SealTech Building Solutions",
@@ -195,6 +196,10 @@ def build_work_order_pdf(wo: dict, signed_signature: Optional[dict] = None,
     story.append(Spacer(1, 0.12 * inch))
 
     # ---- Work Description table ----
+    # We size the description row dynamically so the signatures land near the
+    # bottom of the page no matter how much copy the rep types. Strategy:
+    # measure the height of every flowable above + the acceptance block below,
+    # then make the description row consume the remaining vertical space.
     work_header = [Paragraph("DATE", s["label"]),
                    Paragraph("DESCRIPTION", s["label"]),
                    Paragraph("TOTAL", s["label"])]
@@ -204,7 +209,118 @@ def build_work_order_pdf(wo: dict, signed_signature: Optional[dict] = None,
         Paragraph(f"${float(wo.get('total') or 0):,.2f}",
                   ParagraphStyle("amt", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=BLUE, alignment=2)),
     ]
-    work_table = Table([work_header, work_row], colWidths=[1.0 * inch, 5.0 * inch, 1.5 * inch])
+
+    # Measure stuff already in `story` (header through proj_table) to compute
+    # used height. Each flowable's wrap() returns (w, h) for the given frame.
+    avail_w = doc.width
+    used_top = 0.0
+    for fl in story:
+        try:
+            _w, _h = fl.wrap(avail_w, doc.height)
+            used_top += _h
+        except Exception:
+            pass
+
+    # Pre-build the acceptance + signature block so we can measure it too.
+    now_dt = datetime.now(timezone.utc)
+    accept_day = now_dt.strftime("%d")
+    accept_month = now_dt.strftime("%B")
+    accept_year = now_dt.strftime("%Y")
+    if signed_signature and signed_signature.get("signed_at"):
+        try:
+            sdt = datetime.fromisoformat(signed_signature["signed_at"].replace("Z", "+00:00"))
+            accept_day = sdt.strftime("%d")
+            accept_month = sdt.strftime("%B")
+            accept_year = sdt.strftime("%Y")
+        except Exception:
+            pass
+    accept_para = Paragraph(
+        f"<b>Accepted this {accept_day} day of {accept_month}, {accept_year}.</b>",
+        s["body"],
+    )
+    accept_spacer = Spacer(1, 0.20 * inch)
+
+    # Build signature lines (sub on left, contractor on right with embedded sig)
+    sig_left_lines = [Paragraph("<b>Subcontractor:</b>", s["sig"])]
+    sig_right_lines = [Paragraph("<b>Contractor:</b>", s["sig"])]
+
+    if signed_signature and signed_signature.get("text"):
+        sig_left_lines.append(Spacer(1, 0.18 * inch))
+        sig_left_lines.append(Paragraph(
+            f'<font face="Helvetica-Oblique" size="16" color="#062B67">{signed_signature["text"]}</font>',
+            s["sig"],
+        ))
+        sig_left_lines.append(Paragraph("_______________________________________", s["small"]))
+        sig_left_lines.append(Paragraph(
+            f"Signed electronically  ·  {signed_signature.get('signed_at','').split('T')[0]}",
+            s["small"],
+        ))
+    elif signed_signature and signed_signature.get("image_bytes"):
+        try:
+            sig_left_lines.append(Spacer(1, 0.10 * inch))
+            sig_left_lines.append(Image(BytesIO(signed_signature["image_bytes"]),
+                                        width=2.5 * inch, height=0.6 * inch,
+                                        kind="proportional"))
+            sig_left_lines.append(Paragraph("_______________________________________", s["small"]))
+            sig_left_lines.append(Paragraph(
+                f"Signed electronically  ·  {signed_signature.get('signed_at','').split('T')[0]}",
+                s["small"],
+            ))
+        except Exception:
+            sig_left_lines.append(Paragraph("(drawn signature could not be rendered)", s["small"]))
+    else:
+        sig_left_lines.append(Spacer(1, 0.20 * inch))
+        sig_left_lines.append(Paragraph("_______________________________________", s["small"]))
+
+    # Pre-stamp the CONTRACTOR (SealTech) signature above the company name.
+    if os.path.exists(SEALTECH_SIG_PATH):
+        try:
+            sig_right_lines.append(Spacer(1, 0.05 * inch))
+            sig_right_lines.append(Image(SEALTECH_SIG_PATH,
+                                         width=2.4 * inch, height=0.55 * inch,
+                                         kind="proportional"))
+        except Exception:
+            sig_right_lines.append(Spacer(1, 0.20 * inch))
+    else:
+        sig_right_lines.append(Spacer(1, 0.20 * inch))
+    sig_right_lines.append(Paragraph("_______________________________________", s["small"]))
+    sig_right_lines.append(Paragraph(SEALTECH["name"], s["small"]))
+
+    sig_table = Table([[sig_left_lines, sig_right_lines]], colWidths=[3.75 * inch, 3.75 * inch])
+    sig_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+    ]))
+
+    # Measure the acceptance + sig stack height
+    used_bottom = 0.0
+    for fl in (accept_para, accept_spacer, sig_table):
+        try:
+            _w, _h = fl.wrap(avail_w, doc.height)
+            used_bottom += _h
+        except Exception:
+            pass
+
+    # Header row height for the work table (DATE / DESC / TOTAL labels)
+    header_row_h = 0.30 * inch
+    pad_around_work_table = 0.20 * inch  # spacer after work_table → accept block
+
+    # Remaining vertical space the description row should consume.
+    # Subtract a safety margin: Paragraph styles use spaceAfter which is
+    # applied AFTER wrap() returns, so the real used height is a few pts
+    # taller than measured. 18pt buffer avoids the cell overflowing the page.
+    safety_buffer = 24.0
+    desc_row_h = doc.height - used_top - header_row_h - used_bottom - pad_around_work_table - safety_buffer
+    # Floor it so a tiny description never collapses; cap it so it never blows
+    # past one page.
+    min_desc = 1.2 * inch
+    if desc_row_h < min_desc:
+        desc_row_h = min_desc
+
+    work_table = Table([work_header, work_row],
+                       colWidths=[1.0 * inch, 5.0 * inch, 1.5 * inch],
+                       rowHeights=[header_row_h, desc_row_h])
     work_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BLUE),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -218,84 +334,11 @@ def build_work_order_pdf(wo: dict, signed_signature: Optional[dict] = None,
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
     story.append(work_table)
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(accept_spacer)
 
-    # ---- Acceptance block ----
-    now_dt = datetime.now(timezone.utc)
-    accept_day = now_dt.strftime("%d")
-    accept_month = now_dt.strftime("%B")
-    accept_year = now_dt.strftime("%Y")
-    if signed_signature and signed_signature.get("signed_at"):
-        try:
-            sdt = datetime.fromisoformat(signed_signature["signed_at"].replace("Z", "+00:00"))
-            accept_day = sdt.strftime("%d")
-            accept_month = sdt.strftime("%B")
-            accept_year = sdt.strftime("%Y")
-        except Exception:
-            pass
-    story.append(Paragraph(
-        f"<b>Accepted this {accept_day} day of {accept_month}, {accept_year}.</b>",
-        s["body"],
-    ))
+    # ---- Acceptance + Signatures (already built above) ----
+    story.append(accept_para)
     story.append(Spacer(1, 0.20 * inch))
-
-    # Signature lines (subcontractor + contractor)
-    sig_left_lines = [Paragraph("<b>Subcontractor:</b>", s["sig"])]
-    sig_right_lines = [Paragraph("<b>Contractor:</b>", s["sig"])]
-
-    if signed_signature and signed_signature.get("text"):
-        # Typed cursive — render the typed name. ReportLab can't load arbitrary
-        # Google Fonts without registration, so we use Helvetica-Oblique as a
-        # universally-supported visual stand-in for the cursive style. The
-        # ProposalSign UI saves the user-chosen font name as metadata; renders
-        # as oblique here so the PDF stays self-contained.
-        sig_left_lines.append(Spacer(1, 0.18 * inch))
-        sig_left_lines.append(Paragraph(
-            f'<font face="Helvetica-Oblique" size="16" color="#062B67">{signed_signature["text"]}</font>',
-            s["sig"],
-        ))
-        sig_left_lines.append(Paragraph(
-            "_______________________________________",
-            s["small"],
-        ))
-        sig_left_lines.append(Paragraph(
-            f"Signed electronically  ·  {signed_signature.get('signed_at','').split('T')[0]}",
-            s["small"],
-        ))
-    elif signed_signature and signed_signature.get("image_bytes"):
-        try:
-            sig_left_lines.append(Spacer(1, 0.10 * inch))
-            sig_left_lines.append(Image(BytesIO(signed_signature["image_bytes"]),
-                                        width=2.5 * inch, height=0.6 * inch,
-                                        kind="proportional"))
-            sig_left_lines.append(Paragraph(
-                "_______________________________________",
-                s["small"],
-            ))
-            sig_left_lines.append(Paragraph(
-                f"Signed electronically  ·  {signed_signature.get('signed_at','').split('T')[0]}",
-                s["small"],
-            ))
-        except Exception:
-            sig_left_lines.append(Paragraph(
-                "(drawn signature could not be rendered)", s["small"],
-            ))
-    else:
-        sig_left_lines.append(Spacer(1, 0.20 * inch))
-        sig_left_lines.append(Paragraph(
-            "_______________________________________", s["small"],
-        ))
-
-    sig_right_lines.append(Spacer(1, 0.20 * inch))
-    sig_right_lines.append(Paragraph("_______________________________________", s["small"]))
-    sig_right_lines.append(Paragraph(SEALTECH["name"], s["small"]))
-
-    sig_table = Table([[sig_left_lines, sig_right_lines]], colWidths=[3.75 * inch, 3.75 * inch])
-    sig_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 14),
-    ]))
     story.append(sig_table)
 
     doc.build(story)

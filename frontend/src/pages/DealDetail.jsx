@@ -1861,11 +1861,11 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
               <textarea
                 value={form.description || ""}
                 onChange={(e) => set("description", e.target.value)}
-                rows={8}
+                rows={14}
                 data-testid="wo-description"
                 className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-xs font-mono"
               />
-              <div className="text-[10px] text-zinc-500 mt-1">Auto-populated from the spec sheet. Edit freely — HTML tags &lt;b&gt;, &lt;br/&gt; supported.</div>
+              <div className="text-[10px] text-zinc-500 mt-1">Edit freely — the box on the PDF auto-grows to push the signatures to the bottom of the page. HTML tags <b>&lt;b&gt;</b>, <b>&lt;br/&gt;</b> supported.</div>
             </div>
             {/* Library spec picker — pulls PDFs uploaded under
                 Library → Western Colloid → Specifications. Ticked specs are
