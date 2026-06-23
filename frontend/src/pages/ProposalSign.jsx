@@ -425,7 +425,7 @@ export default function ProposalSign() {
         )}
 
         <div className="text-center text-[10px] text-zinc-400 pt-4 border-t border-zinc-200">
-          SealTech Building Solutions  ·  720-715-9955  ·  info@sealtechbuildingsolutions.com
+          SealTech Building Solutions  ·  720-715-9955  ·  scope@sealtechsolutions.co
         </div>
       </div>
     </div>

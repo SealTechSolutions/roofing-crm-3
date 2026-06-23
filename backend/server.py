@@ -2110,7 +2110,7 @@ async def email_purchase_order(deal_id: str, vendor_id: str, body: dict = Body(d
       <p style="margin: 16px 0;">Could you confirm receipt, lead time, and pricing? Please call <b>Darren Oliver at 720-715-9955</b> if you have any questions or to discuss volume pricing.</p>
       <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
         <b style="color: #0A0A0A;">{po['requested_by'].get('name') or 'SealTech Building Solutions'}</b><br/>
-        SealTech Building Solutions  ·  720-715-9955  ·  info@sealtechbuildingsolutions.com
+        SealTech Building Solutions  ·  720-715-9955  ·  scope@sealtechsolutions.co
       </p>
     </body></html>
     """
@@ -2668,7 +2668,7 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
         f"If you have any questions, please reply to this email.\n\n"
         f"Thank you for your business,\n"
         f"SealTech Building Solutions\n"
-        f"720-715-9955  ·  info@sealtechbuildingsolutions.com"
+        f"720-715-9955  ·  scope@sealtechsolutions.co"
     )
 
     body_html = f"""
@@ -2692,7 +2692,7 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
       <p style="margin: 16px 0;">If you have any questions, please reply to this email.</p>
       <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
         <b style="color: #0A0A0A;">SealTech Building Solutions</b><br/>
-        720-715-9955  ·  info@sealtechbuildingsolutions.com  ·  www.sealtechbuildingsolutions.com
+        720-715-9955  ·  scope@sealtechsolutions.co  ·  www.sealtechbuildingsolutions.com
       </p>
     </body></html>
     """
@@ -2909,7 +2909,7 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
         f"please reply to this email or call us at 720-715-9955 so we can reconcile your account.\n\n"
         f"Thank you for your business,\n"
         f"SealTech Building Solutions\n"
-        f"720-715-9955  ·  info@sealtechbuildingsolutions.com"
+        f"720-715-9955  ·  scope@sealtechsolutions.co"
     )
 
     fees_html = ""
@@ -2941,7 +2941,7 @@ async def email_statement(contact_id: str, body: dict = Body(...), current=Depen
       <p style="margin: 16px 0;">If any of the invoices listed have already been paid, or if you have questions about any of them, please reply to this email or call us at 720-715-9955 so we can reconcile your account.</p>
       <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
         <b style="color: #0A0A0A;">SealTech Building Solutions</b><br/>
-        720-715-9955  ·  info@sealtechbuildingsolutions.com  ·  www.sealtechbuildingsolutions.com
+        720-715-9955  ·  scope@sealtechsolutions.co  ·  www.sealtechbuildingsolutions.com
       </p>
     </body></html>
     """
@@ -4213,7 +4213,7 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
         + f"If you have any questions, please reply to this email or call us at 720-715-9955.\n\n"
         f"Thank you,\n"
         f"SealTech Building Solutions\n"
-        f"720-715-9955  ·  info@sealtechbuildingsolutions.com"
+        f"720-715-9955  ·  scope@sealtechsolutions.co"
     )
     sign_off_html = (
         f'<p style="margin: 20px 0;"><a href="{sign_off_url}" style="background:#062B67;color:white;'
@@ -4232,7 +4232,7 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
       <p style="margin: 16px 0;">If you have any questions, please reply to this email or call us at 720-715-9955.</p>
       <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
         <b style="color: #0A0A0A;">SealTech Building Solutions</b><br/>
-        720-715-9955  ·  info@sealtechbuildingsolutions.com  ·  www.sealtechbuildingsolutions.com
+        720-715-9955  ·  scope@sealtechsolutions.co  ·  www.sealtechbuildingsolutions.com
       </p>
     </body></html>
     """

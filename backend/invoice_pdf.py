@@ -50,7 +50,7 @@ def _footer(canvas, doc):
     canvas.line(0.5 * inch, 0.6 * inch, 8.0 * inch, 0.6 * inch)
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(GRAY)
-    canvas.drawString(0.5 * inch, 0.45 * inch, "SealTech Building Solutions  -  720-715-9955  -  info@sealtechbuildingsolutions.com  -  www.sealtechbuildingsolutions.com")
+    canvas.drawString(0.5 * inch, 0.45 * inch, "SealTech Building Solutions  -  720-715-9955  -  scope@sealtechsolutions.co  -  www.sealtechbuildingsolutions.com")
     canvas.drawRightString(8.0 * inch, 0.45 * inch, f"{doc.page} | Page")
     canvas.restoreState()
 
@@ -156,7 +156,7 @@ def build_invoice_pdf(inv: dict, late_fee_rate_pct: float = 1.5) -> bytes:
         "<b>SealTech Building Solutions</b><br/>"
         "2278 Mannatt Ct<br/>"
         "Castle Rock, CO 80104<br/>"
-        "<font color='#52525B'>720-715-9955  ·  info@sealtechbuildingsolutions.com</font>"
+        "<font color='#52525B'>720-715-9955  ·  scope@sealtechsolutions.co</font>"
     )
 
     addr_table = Table([
