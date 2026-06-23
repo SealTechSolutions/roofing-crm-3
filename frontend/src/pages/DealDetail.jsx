@@ -1745,7 +1745,13 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
         setLibrarySpecs((libR.data || []).slice().sort((a, b) => (a.display_name || a.original_filename || "").localeCompare(b.display_name || b.original_filename || "")));
         setSelectedLibraryIds(draftR.data?.existing?.library_file_ids || []);
       } catch (e) {
-        toast.error(e?.response?.data?.detail || e.message);
+        const status = e?.response?.status;
+        if (status === 404) {
+          toast.error("This deal can't be found — it may have been deleted. Refresh the page.", { duration: 8000 });
+          onClose?.();
+        } else {
+          toast.error(e?.response?.data?.detail || e.message);
+        }
       } finally {
         setLoading(false);
       }
@@ -1799,7 +1805,15 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
       const r = await api.post(`/deals/${dealId}/work-order/send`, { ...form, library_file_ids: selectedLibraryIds });
       onSent?.(r.data);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || e.message);
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail;
+      if (status === 404) {
+        toast.error("This deal can't be found in the database — it may have been deleted. Refresh the page and try again.", { duration: 8000 });
+      } else if (detail) {
+        toast.error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      } else {
+        toast.error(`Work order send failed (HTTP ${status || "?"}) — ${e.message}`);
+      }
     } finally {
       setSubmitting(false);
     }

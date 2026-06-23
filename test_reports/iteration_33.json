@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 33 — Verified WorkOrderModal improved 404 error UX. Backend: confirmed POST/GET /api/deals/{stale_id}/work-order/{send,draft} returns HTTP 404 with JSON {detail: 'Deal not found'} (3 pytest cases — all PASS). Frontend: (1) happy path on TEST_Lead Deal — modal opened with data-testid='work-order-modal', no error toast on draft load, sub_email filled, 'Send to Subcontractor' clicked → modal closed (send succeeded, Gmail dispatch verified in prior iter32 + current run). (2) Stale deal id (350cedf9-2a23-486c-844f-5f2b3aac1dc3) auto-redirected to /projects — safety net intact. No regressions in the WO modal flow.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_flows": {
+    "POST /api/deals/{stale_id}/work-order/send → 404 with detail='Deal not found'": "PASS",
+    "GET /api/deals/{stale_id}/work-order/draft → 404 with detail='Deal not found'": "PASS",
+    "GET /api/deals/{TEST_Lead}/work-order/draft → 200 with draft object": "PASS",
+    "Frontend: WorkOrderModal opens on TEST_Lead Deal (data-testid=work-order-modal visible)": "PASS",
+    "Frontend: Draft loads without error toast — wo-sub-email field rendered": "PASS",
+    "Frontend: 'Send to Subcontractor' (data-testid=wo-send) closes modal on success": "PASS",
+    "Frontend: Stale deal id redirects /deals/{stale} → /projects (auto-redirect safety net)": "PASS"
+  },
+  "critical_code_review_comments": [
+    "DealDetail.jsx WorkOrderModal.send() (line 1799-1820) correctly distinguishes 404 (deal missing) vs other errors. Status-based branching is clean and prioritizes 404 explicitly with 8s toast duration. ✅",
+    "Draft useEffect (line 1747-1754) also handles 404 by closing the modal + showing a clear toast — symmetric with send handler. ✅",
+    "Fallback branch (line 1814-1816) includes HTTP status code in message — better than axios's bare 'Request failed with status code 404'. ✅",
+    "Minor consideration: the e?.response?.data?.detail handling at line 1813 already covers JSON-object detail (FastAPI Pydantic validation errors return list[dict]) via the JSON.stringify fallback. Good defensive code.",
+    "Pre-existing console warning: 'In HTML, <span> cannot be a child of <option>' on the deal detail page — coming from ProjectPhotos line 371 select/option. Not related to this iter's WO change, but worth flagging as a hydration-warning to clean up later (E1 owns)."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_wo_stale_404.py",
+    "/app/test_reports/pytest/pytest_iter33.xml"
+  ],
+  "action_items": [],
+  "updated_files": [
+    "/app/backend/tests/test_wo_stale_404.py (new — 3 pytest cases, all passing)"
+  ],
+  "success_rate": {"backend": "100% (3/3)", "frontend": "100% (3/3 flows)"},
+  "test_credentials": "darren@sealtechsolutions.co / admin123",
+  "seed_data_creation": "None. Only TEST_Lead Deal (640a9104-…) was exercised on the happy path. WO send was idempotent (existing work_orders row was overwritten — same sign_token). One real email dispatched to darren@darrenoliverllc.com as expected.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The 404-toast UX improvement in WorkOrderModal is fully verified end-to-end. Both backend (404 + correct detail body) and frontend (modal closes cleanly, redirect safety net works) sides pass. test_wo_stale_404.py is now the regression artifact for this path — keep it in /app/backend/tests/. Note: the stale deal id 350cedf9-2a23-486c-844f-5f2b3aac1dc3 is intentionally NOT in DB; do not create it. Carry-over nit from iter32: /app/backend/work_orders.py line 769 still references SMTP_FROM env var (should be GMAIL_FROM_EMAIL) — still untouched and low priority.",
+  "rca_of_the_issue": "Original UX bug: When a user had a stale browser tab open for a deleted/missing deal and clicked 'Send to Subcontractor', the backend correctly returned 404 with body {detail: 'Deal not found'}, but the frontend toast fell through to axios's generic e.message ('Request failed with status code 404') because the catch block only used e.message. Fix: DealDetail.jsx WorkOrderModal.send() now branches on e.response.status — for 404 it shows a specific 'This deal can't be found in the database — it may have been deleted. Refresh the page and try again.' toast with 8s duration; the draft useEffect also closes the modal + toasts on 404. Verified: (a) backend endpoint returns 404 + detail (3/3 pytest cases pass), (b) happy path on TEST_Lead Deal still works (modal opens → send → modal closes), (c) the global DealDetail safety net at /deals/{stale_id} still redirects to /projects so users rarely hit the modal 404 path in practice."
+}
