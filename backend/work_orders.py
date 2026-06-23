@@ -532,6 +532,7 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
                 "wo_date", "project_name", "project_address", "contractor",
                 "sub_company", "sub_address", "sub_contact", "sub_email",
                 "work_date", "description", "total", "notes",
+                "library_file_ids",
             ]},
         }
         if existing:
@@ -560,9 +561,28 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
         attachments = [{"bytes": pdf_bytes, "filename": "SealTech-WorkOrder.pdf", "mime": "application/pdf"}]
         if spec_pdf_bytes:
             attachments.append({"bytes": spec_pdf_bytes, "filename": "SealTech-SpecSheet.pdf", "mime": "application/pdf"})
+        # Optional Library file attachments (e.g. Western Colloid manufacturer
+        # spec PDFs the rep picked in the modal). Fetched from object storage
+        # by id; skipped silently if any file is missing.
+        for lib_id in (body.get("library_file_ids") or []):
+            try:
+                lf = await db.library_files.find_one({"id": lib_id, "is_deleted": False}, {"_id": 0})
+                if not lf or not lf.get("storage_path"):
+                    continue
+                from storage import get_object
+                lb = get_object(lf["storage_path"])
+                if lb:
+                    attachments.append({
+                        "bytes": lb,
+                        "filename": lf.get("original_filename") or f"{lf.get('display_name') or 'spec'}.pdf",
+                        "mime": lf.get("content_type") or "application/pdf",
+                    })
+            except Exception:
+                continue
         ok = _send_email(sub_email, f"Work Order — {doc.get('project_name')}", html, attachments=attachments)
         return {"ok": True, "email_sent": ok, "sign_token": sign_token, "sign_url": sign_url,
-                "work_order_id": wo_id, "spec_attached": bool(spec_pdf_bytes)}
+                "work_order_id": wo_id, "spec_attached": bool(spec_pdf_bytes),
+                "library_files_attached": len(attachments) - 1 - (1 if spec_pdf_bytes else 0)}
 
     @router.get("/{deal_id}/work-order/pdf")
     async def admin_pdf(deal_id: str, _user=Depends(get_current_user)):

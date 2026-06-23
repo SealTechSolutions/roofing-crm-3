@@ -1725,17 +1725,25 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
   // Subcontractor roster — drives the "Contractor" dropdown so the rep can
   // pick a vendor and auto-fill all sub fields in one shot.
   const [subs, setSubs] = useState([]);
+  // Western Colloid manufacturer specs from the Library — picker lets the rep
+  // attach one or more to the outbound WO email AND drop a reference line
+  // into the description so the sub knows which spec governs the job.
+  const [librarySpecs, setLibrarySpecs] = useState([]);
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const [draftR, subsR] = await Promise.all([
+        const [draftR, subsR, libR] = await Promise.all([
           api.get(`/deals/${dealId}/work-order/draft`),
           api.get("/vendors?kind=Subcontractor").catch(() => ({ data: [] })),
+          api.get("/library/files?category=Western%20Colloid&subcategory=Specifications").catch(() => ({ data: [] })),
         ]);
         setForm(draftR.data?.existing ? { ...draftR.data.draft, ...draftR.data.existing } : draftR.data?.draft || {});
         setExisting(draftR.data?.existing || null);
         setSubs((subsR.data || []).slice().sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+        setLibrarySpecs((libR.data || []).slice().sort((a, b) => (a.display_name || a.original_filename || "").localeCompare(b.display_name || b.original_filename || "")));
+        setSelectedLibraryIds(draftR.data?.existing?.library_file_ids || []);
       } catch (e) {
         toast.error(e?.response?.data?.detail || e.message);
       } finally {
@@ -1851,6 +1859,34 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
               />
               <div className="text-[10px] text-zinc-500 mt-1">Auto-populated from the spec sheet. Edit freely — HTML tags &lt;b&gt;, &lt;br/&gt; supported.</div>
             </div>
+            {/* Library spec picker — pulls PDFs uploaded under
+                Library → Western Colloid → Specifications. Ticked specs are
+                attached to the outbound email AND referenced in the
+                description. */}
+            <div className="border border-zinc-200 rounded-sm">
+              <div className="px-3 py-2 bg-zinc-50 border-b border-zinc-200 text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                Attach Manufacturer Specs <span className="text-zinc-400 normal-case font-normal">(Library → Western Colloid → Specifications)</span>
+              </div>
+              <div className="p-3 max-h-40 overflow-y-auto space-y-1">
+                {librarySpecs.length === 0 && (
+                  <div className="text-[11px] text-zinc-500 italic">No specs in Library yet. Upload PDFs under Library → Western Colloid → Specifications to make them available here.</div>
+                )}
+                {librarySpecs.map((lf) => (
+                  <label key={lf.id} className="flex items-start gap-2 text-xs cursor-pointer hover:bg-zinc-50 px-2 py-1 rounded-sm">
+                    <input type="checkbox" checked={selectedLibraryIds.includes(lf.id)} onChange={() => toggleLibraryFile(lf)} data-testid={`wo-lib-${lf.id}`} className="mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-zinc-900 truncate">{lf.display_name || lf.original_filename}</div>
+                      {lf.description && <div className="text-[10px] text-zinc-500 truncate">{lf.description}</div>}
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {selectedLibraryIds.length > 0 && (
+                <div className="px-3 py-2 bg-blue-50 border-t border-blue-200 text-[11px] text-blue-900">
+                  <b>{selectedLibraryIds.length}</b> spec{selectedLibraryIds.length === 1 ? "" : "s"} will be attached to the email.
+                </div>
+              )}
+            </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Total ($)</label>
               <input type="number" step="0.01" value={form.total || 0} onChange={(e) => set("total", Number(e.target.value))} data-testid="wo-total" className="w-48 h-10 px-3 border border-zinc-300 rounded-sm text-sm font-mono text-right" />
@@ -1860,7 +1896,7 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
               <textarea value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={3} placeholder="Leave blank to use the standard Work Order language (subcontractor agrees to perform the Work per manufacturer specs, furnishes labor/materials/insurance/supervision/equipment, etc.)" data-testid="wo-notes" className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-xs" />
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-sm p-3 text-[11px] text-blue-900">
-              <b>The email to the sub will include 2 attachments:</b> this Work Order PDF + the customer-signed Spec Sheet PDF so they see the same scope of work the customer agreed to.
+              <b>Email attachments:</b> Work Order PDF + customer-signed Spec Sheet PDF + any Manufacturer Specs you ticked above.
             </div>
           </div>
         )}
