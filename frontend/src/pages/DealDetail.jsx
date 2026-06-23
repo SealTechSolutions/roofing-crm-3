@@ -1922,7 +1922,9 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
               <textarea value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={3} placeholder="Leave blank to use the standard Work Order language (subcontractor agrees to perform the Work per manufacturer specs, furnishes labor/materials/insurance/supervision/equipment, etc.)" data-testid="wo-notes" className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-xs" />
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-sm p-3 text-[11px] text-blue-900">
-              <b>Email attachments:</b> Work Order PDF + customer-signed Spec Sheet PDF + any Manufacturer Specs you ticked above.
+              <b>Email attachments:</b> Work Order PDF + {selectedLibraryIds.length > 0
+                ? `${selectedLibraryIds.length} Manufacturer Spec${selectedLibraryIds.length === 1 ? "" : "s"} (auto SealTech Spec Sheet is replaced)`
+                : "the auto-generated SealTech Spec Sheet"}.
             </div>
           </div>
         )}
