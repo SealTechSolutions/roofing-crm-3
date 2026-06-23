@@ -6,10 +6,11 @@ clean. Each kind of CRM email is sent FROM the matching role address:
     assessments  → assessments@sealtechsolutions.co   (assessment scheduling, reports)
     scope        → scope@sealtechsolutions.co         (proposals, scope emails, sales follow-ups)
     finance      → finance@sealtechsolutions.co       (invoices, statements, late notices, payables)
-    projects     → projects@sealtechsolutions.co      (POs, project comms, COI requests)
+    projects     → projects@sealtechsolutions.co      (POs, work orders, project comms, COI requests)
     maintenance  → maintenance@sealtechsolutions.co   (maintenance visit reminders)
+    repairs      → repairs@sealtechsolutions.co       (reserved — repair requests / new-website inbound; not yet routed)
 
-All five aliases are configured as Gmail "Send As" on darren@ so SMTP login
+All six aliases are configured as Gmail "Send As" on darren@ so SMTP login
 stays on the primary account. We just set the From header to the role
 address; Gmail accepts it because the alias is verified upstream.
 
@@ -24,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, EmailStr
 
 
-CATEGORIES = ("assessments", "scope", "finance", "projects", "maintenance")
+CATEGORIES = ("assessments", "scope", "finance", "projects", "maintenance", "repairs")
 SETTINGS_DOC_ID = "email_routing"
 
 
@@ -50,6 +51,7 @@ class EmailRoutingSettings(BaseModel):
     finance: str = ""
     projects: str = ""
     maintenance: str = ""
+    repairs: str = ""
 
     def resolved(self) -> dict:
         """Return the doc with empty values filled from env defaults."""
@@ -67,6 +69,7 @@ class EmailRoutingIn(BaseModel):
     finance: Optional[EmailStr] = None
     projects: Optional[EmailStr] = None
     maintenance: Optional[EmailStr] = None
+    repairs: Optional[EmailStr] = None
 
 
 async def get_settings(db) -> EmailRoutingSettings:
