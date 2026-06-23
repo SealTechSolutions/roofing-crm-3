@@ -21,8 +21,9 @@ export default function WorkOrderSign() {
   const [accepted, setAccepted] = useState(false);
 
   // Dynamically load each cursive font from Google Fonts so the live preview
-  // looks like the signed PDF (PDF uses Helvetica-Oblique as stand-in to keep
-  // the file self-contained — the font selection is metadata).
+  // matches the signed PDF — the backend ships the same six TTFs (Caveat,
+  // Dancing Script, Great Vibes, Sacramento, Allura, Pacifico) and renders
+  // the user's choice directly into the Work Order PDF.
   useEffect(() => {
     const link = document.createElement("link");
     link.href = `https://fonts.googleapis.com/css2?${CURSIVE_FONTS.map((f) => `family=${encodeURIComponent(f)}`).join("&")}&display=swap`;
