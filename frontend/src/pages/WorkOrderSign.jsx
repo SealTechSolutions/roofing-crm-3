@@ -119,7 +119,7 @@ export default function WorkOrderSign() {
           <a
             href={`${API_BASE}/work-order/${token}/pdf`}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             data-testid="wo-sign-open-pdf"
             className="mt-3 inline-flex items-center gap-2 px-4 h-10 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm"
           >
