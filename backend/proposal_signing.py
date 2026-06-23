@@ -21,7 +21,7 @@ import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Body, Request
+from fastapi import APIRouter, Depends, HTTPException, Body, Request, Response
 from fastapi.responses import StreamingResponse
 
 from storage import put_object, get_object, APP_NAME
@@ -56,7 +56,7 @@ async def ensure_proposal_token(db, deal_id: str) -> str:
     return token
 
 
-def create_public_router(db, get_current_user, compute_scope_data, auto_create_deposit_invoice=None):
+def create_public_router(db, get_current_user, compute_scope_data, auto_create_deposit_invoice=None, build_signed_pdf_fn=None):
     """Public + authed routers for the proposal signing flow.
 
     `compute_scope_data` is injected from server.py so we don't reimport the
@@ -68,6 +68,12 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
     invoked AFTER a successful sign that spawns a Draft deposit invoice. When
     omitted (or it returns None) the sign flow still succeeds — the invoice
     side-effect is purely additive.
+
+    `build_signed_pdf_fn(deal_dict) -> bytes` is the shared spec-sheet PDF
+    builder (server._build_spec_pdf_for_deal stripped of the auth/user lookup
+    so the public download endpoint can reuse it). When provided, the
+    `/public/proposal/{token}/pdf` endpoint becomes available — lets the
+    customer grab a copy of their signed scope from the confirmation card.
     """
     router = APIRouter(prefix="/public/proposal", tags=["Public Proposal Signing"])
 
@@ -272,5 +278,30 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
             raise HTTPException(404, "Signature file missing")
         content, _ = get_object(rec["storage_path"])
         return StreamingResponse(io.BytesIO(content), media_type=rec.get("content_type", "image/png"))
+
+    @router.get("/{token}/pdf")
+    async def public_signed_pdf(token: str):
+        """Public download of the signed scope PDF. Surfaced from the
+        post-sign confirmation card ("Download Signed Copy") so the
+        customer always has a copy on hand without needing email access."""
+        if build_signed_pdf_fn is None:
+            raise HTTPException(503, "Signed-copy download is not enabled on this server")
+        deal = await db.deals.find_one(
+            {"proposal_sign_token": token, "is_deleted": {"$ne": True}},
+            {"_id": 0},
+        )
+        if not deal:
+            raise HTTPException(404, "Proposal link not found or revoked")
+        # Don't gate on `scope_signed_at` — reps may want to share the same
+        # link as a preview. The PDF body itself shows the signature only
+        # when the deal has actually been signed, so this is safe.
+        pdf_bytes = await build_signed_pdf_fn(deal)
+        safe_title = (deal.get("title") or "project").replace(" ", "_").replace("/", "_")
+        filename = f"sealtech-scope-{safe_title}-signed.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     return router

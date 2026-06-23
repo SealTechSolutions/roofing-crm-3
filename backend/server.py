@@ -6799,7 +6799,24 @@ async def _auto_create_deposit_invoice(deal_id: str, percentage: float = 50.0) -
     return strip_id(data)
 
 
-api_router.include_router(_proposal_signing.create_public_router(db, get_current_user, _compute_scope_for_signing, _auto_create_deposit_invoice))
+async def _build_signed_scope_pdf_public(deal: dict) -> bytes:
+    """Public-side spec sheet builder for /public/proposal/{token}/pdf.
+    Resolves the deal owner so the "presented by" cover info matches what
+    the customer originally received over email."""
+    owner_id = deal.get("assigned_to_id") or deal.get("created_by_id")
+    user_doc = None
+    if owner_id:
+        user_doc = await db.users.find_one({"id": owner_id}, {"_id": 0})
+    return await _build_spec_pdf_for_deal(deal, user_doc or {})
+
+
+api_router.include_router(_proposal_signing.create_public_router(
+    db,
+    get_current_user,
+    _compute_scope_for_signing,
+    _auto_create_deposit_invoice,
+    build_signed_pdf_fn=_build_signed_scope_pdf_public,
+))
 
 
 # ---------- User Guide PDFs ----------

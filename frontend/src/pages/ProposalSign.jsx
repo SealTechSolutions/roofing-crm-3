@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
-import { CheckCircle2, FileText, ShieldCheck, AlertCircle, RotateCcw } from "lucide-react";
+import { CheckCircle2, FileText, ShieldCheck, AlertCircle, RotateCcw, Download } from "lucide-react";
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL;
 
@@ -307,6 +307,15 @@ export default function ProposalSign() {
                         Thank you. Your SealTech project team will be in touch shortly to coordinate the deposit and schedule.
                       </p>
                     )}
+                    <a
+                      href={`${API_BASE}/api/public/proposal/${token}/pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="proposal-download-signed-pdf"
+                      className="mt-4 inline-flex items-center gap-2 px-4 h-10 text-[11px] font-bold uppercase tracking-[0.15em] bg-emerald-700 hover:bg-emerald-800 text-white rounded-sm transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download Signed Copy (PDF)
+                    </a>
                   </div>
                 </div>
               );
