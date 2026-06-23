@@ -305,9 +305,12 @@ def build_work_order_pdf(wo: dict, signed_signature: Optional[dict] = None,
 
 # ------------------ Scope auto-populate ------------------
 def _auto_scope_from_deal(deal: dict, db) -> str:
-    """Build a default DESCRIPTION blurb from the deal's resolved scope —
-    pulls the Inspection & Prep + Application bullets (the two scope sections
-    the customer signs off on) so the sub sees the same scope of work."""
+    """Build a default DESCRIPTION blurb for the Work Order from the deal's
+    resolved scope. Pulls scope_1 (Inspection & Prep — same for everyone) +
+    the template's `wo_scope_2` if present (Work-Order-tailored), otherwise
+    scope_2 (customer-facing). FARM templates ship a wo_scope_2 that ends
+    with a "Manufacturer Spec:" placeholder so the rep pastes the spec from
+    Library → Western Colloid → Specifications before sending."""
     try:
         from spec_sheet import _resolve_template, _apply_scope_overrides
         base = _resolve_template(deal.get("proposed_roof_type") or "")
@@ -316,9 +319,13 @@ def _auto_scope_from_deal(deal: dict, db) -> str:
         if eff.get("scope_1"):
             chunks.append(f"<b>{eff.get('scope_1_title', 'Inspection and Prep')}</b>")
             chunks.extend([f"• {b}" for b in eff["scope_1"]])
-        if eff.get("scope_2"):
-            chunks.append(f"<br/><b>{eff.get('scope_2_title', 'Application')}</b>")
-            chunks.extend([f"• {b}" for b in eff["scope_2"]])
+        # Prefer the WO-specific scope_2 when the template supplies one — keeps
+        # the sub-facing version distinct from the customer spec sheet.
+        wo_title = base.get("wo_scope_2_title") or eff.get("scope_2_title", "Application")
+        wo_bullets = base.get("wo_scope_2") or eff.get("scope_2") or []
+        if wo_bullets:
+            chunks.append(f"<br/><b>{wo_title}</b>")
+            chunks.extend([f"• {b}" for b in wo_bullets])
         return "<br/>".join(chunks)
     except Exception:
         return ""

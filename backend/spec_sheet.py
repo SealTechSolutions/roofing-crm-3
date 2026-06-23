@@ -672,6 +672,16 @@ FARM_TEMPLATE = {
     "scope_2": [
         "<b>Flashing:</b> All penetrations will be flashed with a 5-course system of mastic and fabric before and during application. Then one of the following systems will be applied based on the selected warranty tier:",
     ],
+    # Work-Order-only override of scope_2. The customer-facing spec sheet
+    # still uses scope_2 above (with the tier-table comparison). The sub
+    # gets a leaner, manufacturer-spec-driven version that ends with a
+    # blank "Manufacturer Spec:" placeholder the rep fills before sending.
+    "wo_scope_2_title": "FARM Application",
+    "wo_scope_2": [
+        "All penetrations will be flashed with a 5-course system of mastic and fabric before and during application.",
+        "Apply the following Manufacturer Spec if provided, or the written spec noted below.",
+        "<b>Manufacturer Spec:</b> [paste the spec from Library → Western Colloid → Specifications here, or type your own]",
+    ],
     "tier_table": {
         "headers": ["25-YEAR SYSTEM", "20-YEAR SYSTEM", "15-YEAR SYSTEM", "10-YEAR SYSTEM"],
         "rows": [
