@@ -88,7 +88,7 @@ def test_calculator_settings(headers):
     assert r.status_code == 200
     s = r.json()
     assert float(s.get("markup_pct", 0)) == 15.0, f"markup_pct={s.get('markup_pct')}"
-    assert float(s.get("handling_pct", 0)) == 10.0, f"handling_pct={s.get('handling_pct')}"
+    assert float(s.get("handling_pct", 0)) == 12.0, f"handling_pct={s.get('handling_pct')}"
     assert s.get("handling_basis") == "marked_up"
 
 

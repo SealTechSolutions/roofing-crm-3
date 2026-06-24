@@ -179,7 +179,7 @@ export default function Calculator() {
   const [products, setProducts] = useState([]);
   const [systems, setSystems] = useState([]);
   const [recipes, setRecipes] = useState({}); // {system_id: [recipe_rows]}
-  const [settings, setSettings] = useState({ markup_pct: 15, handling_pct: 10, handling_basis: "marked_up", waste_pct: 0, overhead_pct: 10, profit_pct: 10 });
+  const [settings, setSettings] = useState({ markup_pct: 20, handling_pct: 12, handling_basis: "marked_up", waste_pct: 0, overhead_pct: 20, profit_pct: 20 });
   const [loading, setLoading] = useState(true);
 
   // Persisted prefs (loaded once on mount via the lazy initialiser).
@@ -997,7 +997,7 @@ export default function Calculator() {
         <div className="text-xs flex flex-col justify-center">
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Handling Fee</div>
           <div className="font-mono text-base">
-            {settings.handling_pct}% {settings.handling_basis === "marked_up" ? "(on shipping-included total)" : "(on raw cost)"}
+            {settings.handling_pct}% {settings.handling_basis === "marked_up" ? "(on Tax and Delivery-included total)" : "(on raw cost)"}
           </div>
         </div>
       </div>
