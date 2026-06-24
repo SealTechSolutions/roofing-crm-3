@@ -188,7 +188,7 @@ def create_router(db, get_current_user):
         rows = await db.roofing_systems.find(
             {"is_deleted": {"$ne": True}},
             {"_id": 0},
-        ).sort([("vendor", 1), ("warranty_years", 1), ("name", 1)]).to_list(200)
+        ).sort([("vendor", 1), ("sort_order", 1), ("warranty_years", -1), ("name", 1)]).to_list(200)
         return rows
 
     @router.post("/systems")

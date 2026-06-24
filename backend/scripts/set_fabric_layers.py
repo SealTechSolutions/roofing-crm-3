@@ -16,7 +16,7 @@ load_dotenv("/app/backend/.env")
 
 # system_name -> (fabric_type, layer_count)
 LAYER_MAP = {
-    "25-Year Gravel System (E/A)":      ("soft", 3),  # confirmed by Darren
+    "15-Year Gravel System (E/A)":      ("soft", 3),  # confirmed by Darren (renamed from 25-Year Gravel)
     "20-Year Gravel System (E/A)":      ("soft", 3),  # confirmed by Darren
     "25-Year Membrane System (E/A)":    ("firm", 3),
     "20-Year Membrane System (E/A)":    ("firm", 3),  # math-verified (13 rolls @ 42 sq)

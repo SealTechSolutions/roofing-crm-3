@@ -92,14 +92,14 @@ def test_calculator_settings(headers):
     assert s.get("handling_basis") == "marked_up"
 
 
-# 25-yr Gravel system math
-def test_25yr_gravel_packing_math(headers):
-    """For 10000 SF × 25-yr Gravel (E/A): 26 gal/100sf emulsion → 2600 gal
+# 15-yr Gravel system math (renamed from "25-yr Gravel" on 2026-06-24; same recipe, just relabeled)
+def test_15yr_gravel_packing_math(headers):
+    """For 10000 SF × 15-yr Gravel (E/A): 26 gal/100sf emulsion → 2600 gal
        packed as 9×275 + 2×55 + 3×5 (exact)."""
     systems = requests.get(f"{BASE_URL}/api/systems", headers=headers, timeout=15).json()
     products = requests.get(f"{BASE_URL}/api/products", headers=headers, timeout=15).json()
-    target = next((s for s in systems if "25" in str(s.get("warranty_years", "")) and "Gravel" in s["name"] and s.get("vendor") == "Western Colloid"), None)
-    assert target is not None, "could not find 25-yr WC Gravel system"
+    target = next((s for s in systems if "15" in str(s.get("warranty_years", "")) and "Gravel" in s["name"] and s.get("vendor") == "Western Colloid"), None)
+    assert target is not None, "could not find 15-yr WC Gravel system"
     rec = requests.get(f"{BASE_URL}/api/systems/{target['id']}/recipe", headers=headers, timeout=15).json()
     # Find Asphalt Emulsion (300 or similar SKU) row
     emul = None

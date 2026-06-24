@@ -739,12 +739,19 @@ export default function Calculator() {
     return Array.from(set).sort();
   }, [systems]);
 
-  /** Filtered systems list for the currently-picked manufacturer
-   *  (sorted by warranty DESC for high → low presentation). */
+  /** Filtered systems list for the currently-picked manufacturer.
+   *  Honors the admin-set `sort_order` field first (so Darren can pin the
+   *  exact left-rail sequence in the DB), then falls back to warranty DESC
+   *  for any system that hasn't been assigned an order yet. */
   const filteredSystems = useMemo(() => {
     return systems
       .filter((s) => (s.vendor || "Unknown") === selectedVendor)
-      .sort((a, b) => (b.warranty_years || 0) - (a.warranty_years || 0));
+      .sort((a, b) => {
+        const ao = (a.sort_order ?? 9999);
+        const bo = (b.sort_order ?? 9999);
+        if (ao !== bo) return ao - bo;
+        return (b.warranty_years || 0) - (a.warranty_years || 0);
+      });
   }, [systems, selectedVendor]);
 
   // Auto-select the deal's "winning system" when entering Materials mode.
