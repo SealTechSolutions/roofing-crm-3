@@ -595,23 +595,32 @@ BUR_TEMPLATE = {
 
 METAL_TEMPLATE = {
     "title": "METAL ROOF RESTORATION SCOPE",
+    # Custom Page-1 Inclusions copy (verbatim from Darren). Each entry is a
+    # plain string OR a format-template — when {sqft} / {sq} appear they're
+    # substituted with the deal's actual total_sqft + computed roof-square
+    # count at render time. Falls back to the generic 3-bullet list when
+    # this field isn't set.
+    "inclusions_template": [
+        "Install approximately {sqft:,.0f} square feet ({sq} roofing squares) of {color} elastomeric roof coating system over the existing metal roof, including roof panels, ribs, vertical surfaces, and associated flashings.",
+        "Furnish all labor, materials, equipment, supervision, safety measures, and insurance necessary to complete the work.",
+        "Provide the standard manufacturer's warranty applicable to the selected coating system and warranty term.",
+    ],
     "scope_1_title": "Inspection and Repairs",
     "scope_1": [
-        "Survey all seams, fasteners, ridge caps, valleys, and penetrations for failures.",
-        "Identify rust, oil-canning, fastener back-out, and panel deflection.",
-        "Replace all failed or backed-out fasteners with oversized neoprene-gasketed screws.",
-        "Replace severely rusted or perforated panels with matching gauge and profile.",
-        "Re-secure loose ridge caps, gable trim, and gutter line metal.",
+        "Inspect all seams, fasteners, ridge caps, valleys, transitions, and roof penetrations for signs of failure or deterioration.",
+        "Identify and document areas exhibiting rust, oxidation, oil canning, fastener back-out, panel movement, or structural deflection.",
+        "Replace loose, failed, or backed-out fasteners with oversized fasteners equipped with neoprene sealing washers as necessary.",
+        "Repair or replace rusted, damaged, or perforated metal panels with matching gauge and profile materials as required to provide a sound substrate.",
+        "Re-secure loose ridge caps, gable trim, eave metal, and gutter edge components as necessary.",
     ],
-    "scope_2_title": "Surface Prep and Coating System",
+    "scope_2_title": "Surface Prep and Roof System",
     "scope_2": [
-        "Power-wash entire roof surface to remove dirt, chalk, oxidation, and loose debris; allow to fully dry.",
-        "Spot-prime all rusted areas with rust-inhibitive primer; full-prime if more than 25% rust coverage.",
-        "Apply butyl seam tape over all panel laps; embed polyester fabric in fluid-applied membrane over tape.",
-        "Treat all fastener heads with elastomeric sealant or fabric-reinforced patch.",
-        "Apply base coat of acrylic or silicone elastomeric coating to specified mil thickness.",
-        "Apply top coat of acrylic or silicone elastomeric coating at specified mil thickness across the entire field.",
-        "Final walk-through and quality inspection with the owner.",
+        "Pressure wash the entire roof surface to remove dirt, oxidation, chalking, contaminants, and loose debris. Allow the roof to dry completely prior to coating application.",
+        "Prime all rusted areas with a rust-inhibitive metal primer. If rust affects more than 25% of the roof area, a full-field primer application may be recommended.",
+        "Seal and reinforce all exposed fastener heads using an approved elastomeric sealant and/or fabric-reinforced repair system.",
+        "Apply a base coat of the selected acrylic or silicone elastomeric coating at the manufacturer's specified coverage rate and dry thickness.",
+        "Apply a finish coat of the same selected acrylic or silicone elastomeric coating over the entire roof surface to achieve the specified total dry-film thickness and warranty requirements.",
+        "Perform a final quality-control inspection and project walkthrough with the owner upon completion.",
     ],
 }
 
@@ -1506,7 +1515,13 @@ def build_spec_sheet(
     # compact. Render the cover photo first (top of breathing-room) so the
     # Inclusions blurb sits just under the image — matches the customer's
     # expected proposal layout (photo of the actual roof, then scope summary).
-    if template.get("tier_table"):
+    # For templates with a tier_table (e.g. FARM/SILICONE) — or those that
+    # define their own `inclusions_template` (e.g. Metal Roof Restoration) —
+    # Page 1 hosts the cover photo + Inclusions block right under the pricing
+    # table. Templates without either still get a bare Page 1 with just the
+    # header + pricing (matches the original Tile / Shingle restoration layout).
+    page1_has_inclusions = bool(template.get("tier_table")) or bool(template.get("inclusions_template"))
+    if page1_has_inclusions:
         story.append(Spacer(1, 0.02 * inch))
         if cover_photo_bytes:
             try:
@@ -1524,21 +1539,32 @@ def build_spec_sheet(
         total_sqft_p1 = data.get("total_sqft", 0) or 0
         sq_p1 = int(round(total_sqft_p1 / 100))
         color_p1 = data.get("color", "white")
-        raw_label = data.get("roof_type_label") or (roof_type or "roof system")
-        if "farm" in raw_label.lower() or "fluid applied reinforced membrane" in raw_label.lower():
-            label_p1 = "FARM (fluid applied reinforced membrane)"
-            system_word = "system"
+        # If the template ships its own Inclusions copy (Metal Roof
+        # Restoration in particular), interpolate the dynamic SF/SQ/color
+        # values and use those bullets verbatim — preserves Darren's exact
+        # wording for that scope. Otherwise fall back to the generic FARM /
+        # SILICONE Inclusions list below.
+        if template.get("inclusions_template"):
+            inc_bullets = [
+                bullet.format(sqft=total_sqft_p1, sq=sq_p1, color=color_p1)
+                for bullet in template["inclusions_template"]
+            ]
         else:
-            label_p1 = raw_label
-            # For Silicone deals, the customer-facing scope reads as "silicone
-            # roofing system" — we keep the word "roofing" so the bullet ties
-            # back to the SILICONE ROOF SCOPE title and the tier-table on Page 2.
-            system_word = "roofing system"
-        inc_bullets = [
-            f"Install approximately {total_sqft_p1:,.0f} SF ({sq_p1} SQ) of a {color_p1} {label_p1} {system_word}.",
-            "Provide all labor, materials, equipment, supervision, and insurance required for installation.",
-            "Include the standard warranty corresponding to the selected system warranty term.",
-        ]
+            raw_label = data.get("roof_type_label") or (roof_type or "roof system")
+            if "farm" in raw_label.lower() or "fluid applied reinforced membrane" in raw_label.lower():
+                label_p1 = "FARM (fluid applied reinforced membrane)"
+                system_word = "system"
+            else:
+                label_p1 = raw_label
+                # For Silicone deals, the customer-facing scope reads as "silicone
+                # roofing system" — we keep the word "roofing" so the bullet ties
+                # back to the SILICONE ROOF SCOPE title and the tier-table on Page 2.
+                system_word = "roofing system"
+            inc_bullets = [
+                f"Install approximately {total_sqft_p1:,.0f} SF ({sq_p1} SQ) of a {color_p1} {label_p1} {system_word}.",
+                "Provide all labor, materials, equipment, supervision, and insurance required for installation.",
+                "Include the standard warranty corresponding to the selected system warranty term.",
+            ]
         # Append the rep's typed Custom Add-Ons (Calculator → "Custom Add-Ons"
         # rows). Each row becomes its own Inclusions bullet so the customer
         # sees the itemized list — e.g. "Metal Flashing — $650.00 included".

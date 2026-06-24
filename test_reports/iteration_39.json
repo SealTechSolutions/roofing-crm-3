@@ -1,0 +1,42 @@
+{
+  "summary": "Iter 39: Validated the Metal Roof Restoration spec-sheet fix end-to-end. Backend unit tests (5/5 pass via direct build_spec_sheet calls) and live E2E tests (2/2 pass against /api/deals/{id}/spec-sheet.pdf) confirm: (1) Page 1 now has the cover-photo placeholder + Inclusions header for the Metal scope, (2) Darren's verbatim 3 Inclusions bullets render with {sqft}/{sq}/{color} interpolation, (3) Page 2 uses the new 'Inspection and Repairs' + 'Surface Prep and Roof System' headers with all 11 verbatim bullets present, (4) FARM regression intact (generic Inclusions copy, no metal-specific leakage), (5) color override 'dark bronze' interpolates correctly. TEST_Lead Deal restored to original proposed_roof_type='Silicone' after E2E run. ONE LAYOUT FLOW ISSUE FOUND: when a deal has no total_sqft and no cover photo, the long Inclusions bullets overflow from PDF page 1 onto page 2, pushing the scope_1/scope_2 sections to page 3. The bullets are still rendered (content is correct), but the visual page layout doesn't match the implied 'all on Page 1' design. Reported as a design note, not a blocker.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/deals/{id}/spec-sheet.pdf (Metal)", "issue": "When a deal has total_sqft=0 + no cover photo, the 3 long Inclusions bullets overflow from PDF page 1 onto page 2. The full Page-1 budget = header + pricing table + placeholder photo block (2.3in) + Inclusions header + 3 long bullets doesn't fit in one US-Letter page. Content is correct, but the customer-facing PDF shows Inclusions header on page 1 and bullets dangling on page 2."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Metal spec-sheet PDF Page 1 layout", "issues": ["Inclusions bullets overflow to Page 2 when total_sqft=0 + no cover photo present. Consider tightening cover-photo placeholder height (2.3in -> ~1.8in) or shrinking bullet font OR breaking the 1st bullet into two shorter sentences."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_metal_scope.py",
+    "/app/backend/tests/test_metal_scope_e2e.py",
+    "/app/test_reports/pytest/pytest_iter39_all.xml"
+  ],
+  "action_items": [
+    "(Optional) Tighten Page-1 layout for the Metal scope so all 3 Inclusions bullets fit on Page 1 even when total_sqft=0 + no cover photo. Options: (a) reduce cover-photo placeholder height from 2.3in to ~1.8in, (b) drop the small caption under the placeholder, (c) reduce body font size by 0.5pt, or (d) split bullet #1 into two shorter sentences.",
+    "(Optional, defensive) Add 'metalroofrestoration' alias to ROOF_TEMPLATE_MAP in spec_sheet.py L786 so future callers passing 'Metal Roof Restoration' as proposed_roof_type still resolve to METAL_TEMPLATE (today only 'Metal' works — the long form falls back to SILICONE_TEMPLATE silently). The frontend currently only sends 'Metal', so this is a robustness improvement, not a live bug."
+  ],
+  "critical_code_review_comments": [
+    "spec_sheet.py L1523 — page1_has_inclusions = tier_table OR inclusions_template — correct, both gates now satisfied for METAL_TEMPLATE.",
+    "spec_sheet.py L1547-1551 — inclusions_template branch uses str.format(sqft=, sq=, color=) — works correctly, including the {sqft:,.0f} thousands formatter (verified with 696 -> '696' and would format 1696 -> '1,696').",
+    "spec_sheet.py L786 — ROOF_TEMPLATE_MAP has 'metal' key only. If someone ever passes 'Metal Roof Restoration' as proposed_roof_type (matches the scope title verbatim), _resolve_template will silently fall back to SILICONE_TEMPLATE — confirmed by direct unit test. Today's UI dropdown only emits 'Metal' so it's not a live bug, but it's a defensive gap worth fixing.",
+    "METAL_TEMPLATE Page-1 layout — total content (header + pricing table + 2.3in placeholder + Inclusions header + 3 long bullets) overflows US-Letter when no cover photo is set. FARM works because the photo is typically uploaded. Recommend trimming whitespace OR shrinking placeholder."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_metal_scope.py (new)",
+    "/app/backend/tests/test_metal_scope_e2e.py (new)"
+  ],
+  "success_rate": {"backend": "100% (7/7 — 5 unit + 2 live E2E)", "frontend": "N/A — spec-sheet PDF is a backend-rendered artifact, no UI behavior to test"},
+  "test_credentials": "darren@sealtechsolutions.co / admin123 (admin)",
+  "seed_data_creation": "None — used existing TEST_Lead Deal (id=640a9104-0bd5-44dd-9f13-51e4b8cd2e4e). Toggled proposed_roof_type to 'Metal' for the E2E run, restored to original 'Silicone' at teardown (verified post-run).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Metal Roof Restoration spec-sheet fix is fully verified. Regression suite at /app/backend/tests/test_metal_scope.py covers unit-level (build_spec_sheet direct calls) and /app/backend/tests/test_metal_scope_e2e.py covers the live /api/deals/{id}/spec-sheet.pdf endpoint with deal mutation + teardown. Run with `REACT_APP_BACKEND_URL=<url> pytest /app/backend/tests/test_metal_scope.py /app/backend/tests/test_metal_scope_e2e.py -v`. Layout overflow is a known design issue (Inclusions overflow to page 2 when total_sqft=0 + no cover photo) — not blocking but worth a Page-1 tightening pass. Also: the frontend dropdown emits 'Metal' (not 'Metal Roof Restoration') — _resolve_template recognizes only the short form; adding 'metalroofrestoration' alias to ROOF_TEMPLATE_MAP would be defensive.",
+  "rca of the issue": "Original bug: Darren's Metal Roof Restoration spec PDF was missing the Image Holder (cover photo placeholder) AND the Inclusions section on Page 1; both rendered on FARM/Silicone scopes. Page 2 also needed a copy refresh. Root cause: in /app/backend/spec_sheet.py the page-1 cover + Inclusions block was gated on `if template.get('tier_table'):`. METAL_TEMPLATE doesn't define tier_table (it has a single coating system, not a multi-warranty comparison), so the entire Page-1 cover+Inclusions branch was skipped silently. Fix applied (verified this iter): (a) added `inclusions_template` field to METAL_TEMPLATE with Darren's 3 verbatim bullets containing {sqft}/{sq}/{color} placeholders; (b) widened the page-1 gate from `tier_table only` to `tier_table OR inclusions_template`; (c) new rendering branch substitutes the placeholders into the template bullets; (d) replaced scope_1 + scope_2 titles + bullet lists with Darren's new wording. All assertions pass against both direct build_spec_sheet calls AND the live spec-sheet.pdf endpoint. FARM regression: still uses generic 3-bullet wording (no leakage); color literal interpolates (e.g. 'dark bronze'); SF/SQ math correct (696 -> 7 squares). One minor layout issue: when a deal has no total_sqft and no cover photo, the 3 long Inclusions bullets push past the Page-1 budget and overflow to Page 2 — content is correct, layout is not pixel-perfect to the design intent. Recommend a Page-1 trim pass."
+}
