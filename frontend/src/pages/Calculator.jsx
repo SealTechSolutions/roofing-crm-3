@@ -187,6 +187,14 @@ export default function Calculator() {
   const [allowedSizes, setAllowedSizes] = useState(initialPrefs.allowedSizes || { tote: true, drum: true, pail: true });
   const [selectedSystemIds, setSelectedSystemIds] = useState([]);
   const [addons, setAddons] = useState({});      // {addon_id: qty} (shared across compared systems)
+  // Two free-form rows the rep can type into on Western Colloid jobs —
+  // label + customer-facing $ amount. Added flat to every compared system's
+  // customer price (after OH/Profit, treated as retail dollars the rep
+  // already priced themselves). Empty rows are ignored.
+  const [customAddons, setCustomAddons] = useState([
+    { label: "", cost: "" },
+    { label: "", cost: "" },
+  ]);
   // Per-warranty-band labor dollar amount. Rep types this per job — different
   // every roof. Map: {25: 6300, 20: 5800, 15: 4500, 10: 3500}. Persisted to the
   // deal as labor_25yr_add / _20yr_add / _15yr_add / _10yr_add when "Set" fires.
@@ -463,6 +471,13 @@ export default function Calculator() {
     const overhead = subtotal * (ohPct / 100);
     const profit   = (subtotal + overhead) * (prPct / 100);
     const customerBase = subtotal + overhead + profit;
+    // Custom add-ons (the 2 free-form rows on the WC rail). These are retail
+    // dollars the rep priced themselves — added flat AFTER OH+Profit so we
+    // don't double-mark-up. Empty rows skipped.
+    const customAddonTotal = (customAddons || []).reduce((acc, row) => {
+      const c = Number(row?.cost || 0);
+      return acc + (isFinite(c) ? c : 0);
+    }, 0);
     // NDL upgrade $ = same compounded markup applied to the surcharge so the
     // upgrade row carries identical margin as the base. This is what we
     // publish on the PDF's "[OPTIONAL] Manufacturer Warranty" line.
@@ -470,10 +485,10 @@ export default function Calculator() {
     // Displayed customer price = base + NDL only if rep ticked the toggle in
     // the calculator. The toggle is for the rep's internal pricing reference;
     // the PDF always shows base as the headline and NDL as an option.
-    const customer = customerBase + (isNdl ? ndlUpgradeDelta : 0);
+    const customer = customerBase + (isNdl ? ndlUpgradeDelta : 0) + customAddonTotal;
     const pricePerSf = sf > 0 ? customer / sf : 0;
 
-    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, ndlUpgradeDelta, customerBase, laborAdd, subtotal, overhead, profit, ohPct, prPct, customer, pricePerSf };
+    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, ndlUpgradeDelta, customerBase, customAddonTotal, laborAdd, subtotal, overhead, profit, ohPct, prPct, customer, pricePerSf };
   };
 
   const columns = useMemo(() => {
@@ -481,7 +496,7 @@ export default function Calculator() {
       .map((id) => systems.find((s) => s.id === id))
       .filter(Boolean)
       .map(computeBom);
-  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, allowedSizes, deal, laborByWarranty, overheadByWarranty, profitByWarranty, ndlByWarranty]);
+  }, [selectedSystemIds, recipes, products, totalSf, waste, settings, addons, customAddons, allowedSizes, deal, laborByWarranty, overheadByWarranty, profitByWarranty, ndlByWarranty]);
 
   // ────────────────────────────────────────────────────────────────────
   //   Calculator → Deal action handlers (split by mode)
@@ -1031,6 +1046,54 @@ export default function Calculator() {
                   Adding any granule qty auto-applies the SESCO LTL freight ($2,000 flat per order).
                 </div>
               )}
+
+              {/* Free-form custom add-on rows (Western Colloid only). Each
+                  row is label + $ amount, added flat to every compared
+                  system's customer price. Useful for one-off items (e.g.
+                  "Skylight curb flashing — $850"). Empty rows are ignored. */}
+              {selectedVendor !== "Everest Systems" && (
+                <div className="pt-3 border-t border-dashed border-zinc-300 space-y-2">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                    Custom Add-Ons
+                  </div>
+                  {customAddons.map((row, idx) => (
+                    <div key={idx} className="grid grid-cols-[1fr_90px] gap-2 items-center">
+                      <input
+                        type="text"
+                        value={row.label}
+                        onChange={(e) => {
+                          const next = [...customAddons];
+                          next[idx] = { ...next[idx], label: e.target.value };
+                          setCustomAddons(next);
+                        }}
+                        placeholder={`Add-on #${idx + 1} description`}
+                        data-testid={`custom-addon-label-${idx}`}
+                        className="border border-zinc-300 px-2 h-8 text-xs focus:outline-none focus:border-blue-700"
+                      />
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400 pointer-events-none">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={row.cost}
+                          onChange={(e) => {
+                            const next = [...customAddons];
+                            next[idx] = { ...next[idx], cost: e.target.value };
+                            setCustomAddons(next);
+                          }}
+                          placeholder="0.00"
+                          data-testid={`custom-addon-cost-${idx}`}
+                          className="border border-zinc-300 pl-5 pr-2 h-8 w-full text-xs font-mono focus:outline-none focus:border-blue-700"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <div className="text-[10px] text-zinc-500 italic leading-snug">
+                    Customer-facing dollars (no OH/Profit applied). Added flat to every system column. Leave blank to skip.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </aside>
@@ -1106,7 +1169,7 @@ export default function Calculator() {
 }
 
 function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, onPushMaterials, onPushAndPo, savingToDeal, testIdSuffix, onLaborChange, onOverheadChange, onProfitChange, onNdlChange }) {
-  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, laborAdd, overhead, profit, ohPct, prPct, customer, pricePerSf } = col;
+  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, laborAdd, overhead, profit, ohPct, prPct, customer, pricePerSf, customAddonTotal } = col;
   const hasRecipe = lines.length > 0;
   const optionLetter = { 25: "A", 20: "B", 15: "C", 10: "D" }[system.warranty_years];
   return (
@@ -1262,6 +1325,15 @@ function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, on
             onChange={onProfitChange}
             testId={`profit-pct-${testIdSuffix}`}
           />
+        )}
+        {/* Custom add-ons (rep-entered free-form rows) — show as a separate
+            line so the rep can see exactly how much the WC add-ons bumped
+            the customer total. Only renders when there's a non-zero amount. */}
+        {(customAddonTotal || 0) > 0 && (
+          <div className="flex items-baseline justify-between text-xs font-mono pt-1 text-zinc-700">
+            <span className="text-zinc-600">+ Custom Add-Ons</span>
+            <span data-testid={`custom-addon-total-${testIdSuffix}`}>{formatCurrency(customAddonTotal)}</span>
+          </div>
         )}
         <div className="border-t border-zinc-300 pt-1.5 mt-1.5 flex items-baseline justify-between">
           <div>
