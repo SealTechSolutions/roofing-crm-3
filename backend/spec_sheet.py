@@ -1657,10 +1657,12 @@ def build_spec_sheet(
     else:
         story.append(Spacer(1, 0.06 * inch))
 
-    # Inclusions block — for tier_table templates (FARM) this is rendered on
-    # Page 1 instead, so skip it here. For Construction Project / Other we also skip —
-    # the free-form Custom Scope already enumerates exactly what's included.
-    if not template.get("tier_table") and not template.get("dynamic_scope"):
+    # Inclusions block — for tier_table templates (FARM) AND templates with
+    # their own `inclusions_template` (Metal Roof Restoration) this is
+    # rendered on Page 1 instead, so skip it here. For Construction Project /
+    # Other we also skip — the free-form Custom Scope already enumerates
+    # exactly what's included.
+    if not template.get("tier_table") and not template.get("dynamic_scope") and not template.get("inclusions_template"):
         story.append(Paragraph("Inclusions", s["h2"]))
         total_sqft = data.get("total_sqft", 0) or 0
         sq = int(round(total_sqft / 100))
@@ -1670,8 +1672,10 @@ def build_spec_sheet(
         story.append(Paragraph(inc_text, s["body"]))
         story.append(Spacer(1, 0.10 * inch if spread else 0.06 * inch))
 
-    # Cover photo (skipped when template has a tier_table — the table itself fills the visual space)
-    if not template.get("tier_table"):
+    # Cover photo (skipped when template has a tier_table — the table itself
+    # fills the visual space — or when an inclusions_template was set
+    # because the cover photo already rendered on Page 1 alongside it).
+    if not template.get("tier_table") and not template.get("inclusions_template"):
         photo_h = 1.6 * inch if spread else 1.2 * inch
         if cover_photo_bytes:
             try:

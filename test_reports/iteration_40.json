@@ -1,0 +1,38 @@
+{
+  "summary": "Iter 40 verified the 2-line gate-widening fix in spec_sheet.py (lines 1665 + 1678) that suppresses the duplicate Page-2 Inclusions block + cover-photo placeholder on the Metal Roof Restoration scope. 15/15 tests pass: 6 new unit tests (test_metal_page2_dedup.py) + 2 new live E2E tests (test_metal_page2_dedup_e2e.py) + 7 iter-39 regression tests (test_metal_scope.py + test_metal_scope_e2e.py). Critical assertions confirmed: (1) Metal Page 2 NO LONGER contains 'Approximately 696 SF (7 SQ)', 'Cover photo placeholder', or a second 'Inclusions' header — Page 2 now goes straight from scope_1+scope_2 to Exclusions. (2) Metal Page 1 still has the legitimate Inclusions header + Darren's 3 verbatim bullets + cover-photo placeholder from iter 39. (3) Metal PDF is now 3 pages (was 4 in iter 39) when total_sqft=696. (4) FARM regression intact — tier_table templates were never affected. (5) Tile/Shingle templates STILL render their legitimate Page-2 Inclusions + cover-photo block (proved gate-widening didn't over-strip). (6) Live E2E against /api/deals/640a9104.../spec-sheet.pdf with proposed_roof_type='Metal' confirms cross-document dedup (exactly 1 Inclusions header + 1 Cover photo placeholder across the whole PDF); deal restored to original at teardown.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/deals/{id}/spec-sheet.pdf (Metal)", "issue": "Pre-existing iter-39 overflow still present (not a dedup regression): when a deal has total_sqft=0 + no cover photo, the long Inclusions bullets overflow Page 1 onto Page 2, producing a 4-page doc instead of the intended 3-page layout. Confirmed on TEST_Lead Deal. Content is correct, just visual page flow. Action item from iter 39 still open."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_metal_page2_dedup.py",
+    "/app/backend/tests/test_metal_page2_dedup_e2e.py",
+    "/app/test_reports/pytest/pytest_iter40_full.xml"
+  ],
+  "action_items": [
+    "(Carried over from iter 39, still open) Tighten Metal Page-1 layout so when total_sqft=0 + no cover photo, the 3 Inclusions bullets still fit on Page 1. Options: shrink cover-photo placeholder height (2.3in -> ~1.8in), drop the small caption, reduce body font 0.5pt, or split bullet #1 into two shorter sentences. Cosmetic only — content is correct."
+  ],
+  "critical_code_review_comments": [
+    "spec_sheet.py L1665 — widened gate now correctly reads `if not template.get('tier_table') and not template.get('dynamic_scope') and not template.get('inclusions_template'):` — matches the symmetric Page-1 gate at L1523. Surgical and minimal.",
+    "spec_sheet.py L1678 — cover-photo gate symmetrically updated: `if not template.get('tier_table') and not template.get('inclusions_template'):`. Correct.",
+    "Gate logic is now consistent: Page-1 renders Inclusions+cover when (tier_table OR inclusions_template); Page-2 renders Inclusions+cover when (NOT tier_table AND NOT inclusions_template AND NOT dynamic_scope). Mutually exclusive — no template can render both. Verified with Metal (inclusions_template), FARM (tier_table), Tile/Shingle (neither), and Construction (dynamic_scope) cases."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_metal_page2_dedup.py (new)",
+    "/app/backend/tests/test_metal_page2_dedup_e2e.py (new)"
+  ],
+  "success_rate": {"backend": "100% (15/15 — 8 new + 7 regression)", "frontend": "N/A — spec-sheet PDF is backend-rendered"},
+  "test_credentials": "darren@sealtechsolutions.co / admin123 (admin)",
+  "seed_data_creation": "None. Used existing TEST_Lead Deal 640a9104-0bd5-44dd-9f13-51e4b8cd2e4e. proposed_roof_type toggled to 'Metal' for live E2E and restored at teardown (verified post-run).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 40 dedup fix is fully verified. Regression suite to run: `pytest /app/backend/tests/test_metal_page2_dedup.py /app/backend/tests/test_metal_page2_dedup_e2e.py /app/backend/tests/test_metal_scope.py /app/backend/tests/test_metal_scope_e2e.py -v`. The iter-39 Page-1 overflow design issue (carried over) is still open but not a blocker — content correct, just spills to next page when total_sqft=0+no cover. Gate logic at spec_sheet.py L1523 (Page-1) and L1665+L1678 (Page-2) is now mutually exclusive and symmetric — be careful with any future template additions to set exactly ONE of {tier_table, inclusions_template, dynamic_scope} or none (templates with none get the default Page-2 Inclusions block).",
+  "rca of the issue": "User Darren reported a SECOND Inclusions block + cover-photo placeholder still rendering on Page 2 of the Metal scope PDF after iter 39, showing the OLD generic copy 'Approximately 696 SF (7 SQ) white metal system, including walls and flashings.' followed by another empty cover-photo box. ROOT CAUSE: spec_sheet.py had two Page-2 gates that didn't account for iter-39's new inclusions_template field. (a) L1665 Page-2 Inclusions gate: `if not template.get('tier_table') and not template.get('dynamic_scope')` — METAL_TEMPLATE has neither, so this branch ran. (b) L1678 Page-2 cover-photo gate: `if not template.get('tier_table')` — METAL_TEMPLATE has no tier_table, so this branch also ran. Result: both Page-1 (added iter 39) AND Page-2 (original) copies rendered, producing the duplicate the user saw. FIX (2-line surgical): widened both gates to also exclude `inclusions_template`. Now templates with their own Page-1 Inclusions copy don't get a second Page-2 copy. VERIFICATION: 15/15 tests pass including direct content assertions (no 'Approximately 696 SF', no 'Cover photo placeholder', no second 'Inclusions' header on Page 2), page-count drop from 4 -> 3, AND cross-template regression (Tile/Shingle still get their Page-2 Inclusions because they have neither flag, FARM still suppressed via tier_table). MITIGATION: any future template addition with custom Page-1 Inclusions copy MUST set `inclusions_template` so the symmetric gate suppresses the Page-2 default."
+}
