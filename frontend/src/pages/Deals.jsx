@@ -9,6 +9,7 @@ import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import GrammarCheck from "@/components/GrammarCheck";
 import MiniPipeline from "@/components/MiniPipeline";
+import { useAuth } from "@/context/AuthContext";
 
 
 /** Live preview chip that shows which spec-sheet template will render
@@ -116,6 +117,8 @@ const empty = {
 };
 
 export default function Deals() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [items, setItems] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [properties, setProperties] = useState([]);
@@ -477,8 +480,14 @@ export default function Deals() {
                 <Select data-testid="deal-proposed-roof" value={form.proposed_roof_type} onChange={(v) => setForm({ ...form, proposed_roof_type: v })} options={options.roof_types} />
                 <ScopePreview currentRoof={form.current_roof_type} proposedRoof={form.proposed_roof_type} />
               </Field>
-              <Field label="Assigned To">
-                <Select data-testid="deal-assigned-to" value={form.assigned_to_user_id || ""} onChange={(v) => setForm({ ...form, assigned_to_user_id: v })} options={userOpts} />
+              <Field label={isAdmin ? "Assigned To" : "Assigned To (admin only)"}>
+                <Select
+                  data-testid="deal-assigned-to"
+                  value={form.assigned_to_user_id || ""}
+                  onChange={(v) => setForm({ ...form, assigned_to_user_id: v })}
+                  options={userOpts}
+                  disabled={!isAdmin}
+                />
               </Field>
             </Grid2>
 

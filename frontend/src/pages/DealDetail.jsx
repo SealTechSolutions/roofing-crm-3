@@ -16,6 +16,14 @@ import ScopeEditorModal from "@/components/ScopeEditorModal";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 import DealSchedulePanel from "@/components/DealSchedulePanel";
 
+// Resolve a deal's assigned_to_user_id to a human-readable name. Falls back
+// to the raw id (handy during dev) and then to "—" when nothing matches.
+function assignedRepLabel(deal, users) {
+  if (!deal?.assigned_to_user_id) return "—";
+  const u = (users || []).find((x) => x.id === deal.assigned_to_user_id);
+  return u ? (u.name || u.email || u.id) : "Unknown rep";
+}
+
 export default function DealDetail() {
   const { id } = useParams();
   const [sp] = useSearchParams();
@@ -24,6 +32,7 @@ export default function DealDetail() {
   const [contact, setContact] = useState(null);
   const [property, setProperty] = useState(null);
   const [vendors, setVendors] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);  // for the Assigned Rep label resolver
   const [options, setOptions] = useState({});
   const [saving, setSaving] = useState(false);
   const [vendorBills, setVendorBills] = useState([]);  // actual bills linked to this project
@@ -81,6 +90,12 @@ export default function DealDetail() {
       .then((r) => setFinalInvoicePreview(r.data))
       .catch(() => setFinalInvoicePreview(null));
   }, [deal?.status, id]);
+
+  // Load the user roster once so we can resolve assigned_to_user_id → name
+  // for the badge under the deal title.
+  useEffect(() => {
+    api.get("/users").then((r) => setAllUsers(r.data || [])).catch(() => setAllUsers([]));
+  }, []);
 
   /**
    * Open the freshly-drafted Final invoice (or the pre-existing one) in the
@@ -382,6 +397,18 @@ export default function DealDetail() {
           </div>
           <h1 className="font-heading text-3xl sm:text-4xl font-black tracking-tight" data-testid="deal-title">{deal.title}</h1>
           <div className="mt-2 text-xs uppercase tracking-wider text-zinc-500">{deal.lead_source} · {deal.project_type}</div>
+          {deal.assigned_to_user_id && (
+            <div
+              className="mt-1 text-[11px] text-zinc-600"
+              data-testid="deal-assigned-rep-badge"
+              title="Whoever is shown here owns this project — only an admin can reassign it from the Edit Deal modal."
+            >
+              <span className="text-zinc-400 uppercase tracking-wider font-bold">Assigned Rep ·</span>{" "}
+              <span className="font-medium text-zinc-800">
+                {assignedRepLabel(deal, allUsers)}
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button

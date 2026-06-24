@@ -6,6 +6,7 @@ import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { US_STATES, DEFAULT_STATE } from "@/constants/states";
 import { maskPhoneInput, maskTaxIdInput, formatPhoneDisplay } from "@/lib/format";
+import { useAuth } from "@/context/AuthContext";
 
 const CONTACT_TYPES = ["Owner", "Property Manager", "Tenant", "Other"];
 
@@ -31,10 +32,14 @@ const empty = {
   billing_zip: "",
   website: "",
   late_fee_rate_pct: null,
+  assigned_to_user_id: "",
 };
 
 export default function Contacts() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [items, setItems] = useState([]);
+  const [users, setUsers] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
@@ -44,6 +49,10 @@ export default function Contacts() {
 
   const load = () => api.get("/contacts").then((r) => setItems(r.data));
   useEffect(() => { load(); }, []);
+  // Active users list — drives the "Assigned To" dropdown for admins.
+  useEffect(() => {
+    api.get("/users").then((r) => setUsers(r.data || [])).catch(() => setUsers([]));
+  }, []);
 
   const openCreate = () => { setEditing(null); setForm(empty); setOpen(true); };
   const openEdit = (c) => {
@@ -286,6 +295,28 @@ export default function Contacts() {
                   </button>
                 )}
               </div>
+            </Field>
+
+            {/* Assigned Rep — only an admin can change who owns this
+                contact. For non-admins the dropdown is shown read-only so
+                the rep can still see who it's tied to. */}
+            <Field
+              label={isAdmin ? "Assigned Rep" : "Assigned Rep (admin only)"}
+              hint="Whoever's name is shown here is the rep of record for this customer — drives Dashboard 'My Contacts' filters, From-name on emails, and any future commission attribution."
+            >
+              <Select
+                data-testid="contact-assigned-to"
+                value={form.assigned_to_user_id || ""}
+                onChange={(v) => setForm({ ...form, assigned_to_user_id: v })}
+                options={[
+                  { value: "", label: "— Auto-assign to me —" },
+                  ...users.filter((u) => u.is_active !== false).map((u) => ({
+                    value: u.id,
+                    label: u.name || u.email,
+                  })),
+                ]}
+                disabled={!isAdmin}
+              />
             </Field>
 
             <div className="flex justify-end gap-2 pt-4 border-t border-zinc-200">

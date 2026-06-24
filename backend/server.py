@@ -1048,8 +1048,16 @@ async def create_contact(body: ContactIn, current=Depends(get_current_user)):
     data["id"] = str(uuid.uuid4())
     data["created_at"] = now_iso()
     data["created_by_user_id"] = current["id"]
-    if not data.get("assigned_to_user_id"):
+    # Only admins may assign a contact to another rep — non-admins always
+    # own the contact they enter. Prevents reps from re-routing each other's
+    # customers and keeps the office-admin handoff workflow centralized.
+    requested_assignee = (data.get("assigned_to_user_id") or "").strip() or None
+    if requested_assignee and requested_assignee != current["id"] and not is_admin(current):
+        raise HTTPException(403, "Only an admin can assign a contact to a different rep")
+    if not requested_assignee:
         data["assigned_to_user_id"] = current["id"]
+    else:
+        data["assigned_to_user_id"] = requested_assignee
     await db.contacts.insert_one(data.copy())
     return strip_id(data)
 
@@ -1064,6 +1072,9 @@ async def get_contact(contact_id: str, current=Depends(get_current_user)):
 
 @api_router.put("/contacts/{contact_id}", response_model=Contact)
 async def update_contact(contact_id: str, body: ContactIn, current=Depends(get_current_user)):
+    existing = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Contact not found")
     data = body.model_dump()
     if data["billing_same_as_address"]:
         data["billing_address"] = data["address"]
@@ -1071,6 +1082,15 @@ async def update_contact(contact_id: str, body: ContactIn, current=Depends(get_c
         data["billing_city"] = data["city"]
         data["billing_state"] = data["state"]
         data["billing_zip"] = data["zip_code"]
+    # Lock the assignee field on update for non-admins. We accept their
+    # submission only when it matches the existing value (i.e. they didn't
+    # change it). Any divergence requires admin role.
+    new_assignee = (data.get("assigned_to_user_id") or "").strip() or None
+    prev_assignee = existing.get("assigned_to_user_id")
+    if new_assignee != prev_assignee and not is_admin(current):
+        # Silently restore to the existing value rather than 403 — keeps the
+        # form submission resilient when non-admins POST the full record.
+        data["assigned_to_user_id"] = prev_assignee
     result = await db.contacts.update_one({"id": contact_id}, {"$set": data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -1279,8 +1299,15 @@ async def create_deal(body: DealIn, current=Depends(get_current_user)):
     data["id"] = str(uuid.uuid4())
     data["created_at"] = now_iso()
     data["created_by_user_id"] = current["id"]
-    if not data.get("assigned_to_user_id"):
+    # Same admin-gate as contacts: only an admin can route a new deal to
+    # another rep. Non-admins always own what they enter.
+    requested_assignee = (data.get("assigned_to_user_id") or "").strip() or None
+    if requested_assignee and requested_assignee != current["id"] and not is_admin(current):
+        raise HTTPException(403, "Only an admin can assign a deal to a different rep")
+    if not requested_assignee:
         data["assigned_to_user_id"] = current["id"]
+    else:
+        data["assigned_to_user_id"] = requested_assignee
     await db.deals.insert_one(data.copy())
     return strip_id(data)
 
@@ -1420,6 +1447,14 @@ async def update_deal(deal_id: str, body: DealIn, current=Depends(get_current_us
         if not owns:
             raise HTTPException(status_code=403, detail="Not your project")
     data = normalize_deal(body.model_dump())
+    # Lock the assignee field on update for non-admins. Silently restore to
+    # the existing value rather than 403 — keeps the form submission
+    # resilient when non-admins POST the full record without re-rendering
+    # the dropdown.
+    new_assignee = (data.get("assigned_to_user_id") or "").strip() or None
+    prev_assignee = existing.get("assigned_to_user_id")
+    if new_assignee != prev_assignee and not is_admin(current):
+        data["assigned_to_user_id"] = prev_assignee
     # Track status changes for the activity timeline
     prev_status = (existing or {}).get("status")
     new_status = data.get("status")
@@ -1432,6 +1467,16 @@ async def update_deal(deal_id: str, body: DealIn, current=Depends(get_current_us
             "user_id": current["id"],
         })
         data["status_history"] = history
+    # Track reassignments separately so admins can audit who moved deals.
+    if (data.get("assigned_to_user_id") or None) != (prev_assignee or None):
+        reassign_log = list((existing or {}).get("reassignment_history") or [])
+        reassign_log.append({
+            "from": prev_assignee,
+            "to": data.get("assigned_to_user_id"),
+            "at": datetime.now(timezone.utc).isoformat(),
+            "by_user_id": current["id"],
+        })
+        data["reassignment_history"] = reassign_log
     await db.deals.update_one({"id": deal_id}, {"$set": data})
     doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
     # Fire-and-forget push to Google Calendar
