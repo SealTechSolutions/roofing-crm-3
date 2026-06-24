@@ -1206,15 +1206,14 @@ def _scope_block(s, title, items, spaced=False):
     stays for the longer FARM/Silicone scopes that already fill the page."""
     elems = [Paragraph(title, s["h2"])]
     if spaced:
-        # ParagraphStyle with extra leading + a touch of spaceAfter per bullet.
-        # Values are tuned to give visible bullet separation without bloating
-        # the page count — bigger gaps push short scopes (Metal Roof) onto a
-        # 4th page which we don't want.
+        # 8pt spaceAfter gives clearly-visible bullet separation while keeping
+        # the page count stable at 3. Combined with leading=12 (slightly
+        # tighter than 13 to free a few pt) the gap is unmistakable.
         bullet_style = ParagraphStyle(
             "scope_bullet_spaced",
             parent=s["body"],
-            leading=13,
-            spaceAfter=3,
+            leading=12,
+            spaceAfter=8,
             leftIndent=10,
             bulletIndent=0,
         )
@@ -1604,10 +1603,27 @@ def build_spec_sheet(
                 continue
             inc_bullets.append(f"{lbl} — ${cost:,.2f} included.")
         story.append(Paragraph("Inclusions", s["h2"]))
-        story.append(Paragraph(
-            "<br/>".join([f"•&nbsp;&nbsp;{b}" for b in inc_bullets]),
-            s["body"],
-        ))
+        # When a template uses the new per-bullet spacing on Page 2 (Metal
+        # Roof Restoration etc.), apply the SAME spacing here on Page 1 so
+        # the whole document reads with consistent rhythm. FARM/Silicone
+        # tier_table templates keep the original tight `<br/>`-joined
+        # format because they have more bullets to fit.
+        if template.get("inclusions_template"):
+            inc_bullet_style = ParagraphStyle(
+                "inc_bullet_spaced",
+                parent=s["body"],
+                leading=12,
+                spaceAfter=8,
+                leftIndent=10,
+                bulletIndent=0,
+            )
+            for b in inc_bullets:
+                story.append(Paragraph(f"•&nbsp;&nbsp;{b}", inc_bullet_style))
+        else:
+            story.append(Paragraph(
+                "<br/>".join([f"•&nbsp;&nbsp;{b}" for b in inc_bullets]),
+                s["body"],
+            ))
 
     story.append(PageBreak())
 
