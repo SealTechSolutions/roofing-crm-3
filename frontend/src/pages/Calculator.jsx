@@ -992,12 +992,12 @@ export default function Calculator() {
         </div>
         <div className="text-xs flex flex-col justify-center">
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Shipping</div>
-          <div className="font-mono text-base">{settings.markup_pct}% on raw materials</div>
+          <div className="font-mono text-xs whitespace-nowrap">{settings.markup_pct}% on raw materials</div>
         </div>
         <div className="text-xs flex flex-col justify-center">
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Handling Fee</div>
-          <div className="font-mono text-base">
-            {settings.handling_pct}% {settings.handling_basis === "marked_up" ? "(on Tax and Delivery-included total)" : "(on raw cost)"}
+          <div className="font-mono text-xs whitespace-nowrap">
+            {settings.handling_pct}% {settings.handling_basis === "marked_up" ? "(on Tax & Delivery-included total)" : "(on raw cost)"}
           </div>
         </div>
       </div>
