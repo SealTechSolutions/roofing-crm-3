@@ -1196,10 +1196,31 @@ def _pricing_table(s, doc, template: dict | None = None):
     return elems
 
 
-def _scope_block(s, title, items):
+def _scope_block(s, title, items, spaced=False):
+    """Render a scope section: title header + bulleted list.
+
+    When `spaced=True` each bullet becomes its own Paragraph with extra
+    `spaceAfter` so the section breathes vertically — useful for short
+    Page-2 layouts (e.g. Metal Roof Restoration) that would otherwise leave
+    a big empty band at the bottom of the page. Default tight rendering
+    stays for the longer FARM/Silicone scopes that already fill the page."""
     elems = [Paragraph(title, s["h2"])]
-    bullets = "<br/>".join([f"•&nbsp;&nbsp;{i}" for i in items])
-    elems.append(Paragraph(bullets, s["body"]))
+    if spaced:
+        # ParagraphStyle with extra leading + spaceAfter per bullet so the
+        # list has visible gaps between each line item.
+        bullet_style = ParagraphStyle(
+            "scope_bullet_spaced",
+            parent=s["body"],
+            leading=15,
+            spaceAfter=8,
+            leftIndent=10,
+            bulletIndent=0,
+        )
+        for it in items:
+            elems.append(Paragraph(f"•&nbsp;&nbsp;{it}", bullet_style))
+    else:
+        bullets = "<br/>".join([f"•&nbsp;&nbsp;{i}" for i in items])
+        elems.append(Paragraph(bullets, s["body"]))
     return elems
 
 
@@ -1590,17 +1611,25 @@ def build_spec_sheet(
 
     # ---- Page 2: Scope ----
     spread = bool(template.get("spread_page_2")) and not template.get("tier_table")
-    story.extend(_scope_block(s, template["scope_1_title"], template["scope_1"]))
+    # Custom-inclusions templates (Metal Roof Restoration) have short scope
+    # sections that leave the bottom half of Page 2 empty — render each
+    # bullet as its own spaced paragraph so the page breathes.
+    bullet_spaced = bool(template.get("inclusions_template"))
+    story.extend(_scope_block(s, template["scope_1_title"], template["scope_1"], spaced=bullet_spaced))
     # Page 2 breathing room varies by template: FARM (tier_table) gets a small
     # bump, restoration scopes with fewer bullets ("spread_page_2") get a
-    # bigger bump so the page fills out nicely.
+    # bigger bump so the page fills out nicely. Custom-inclusion templates
+    # get the most space because their per-bullet padding already
+    # consumes some vertical room.
     if template.get("tier_table"):
         story.append(Spacer(1, 0.08 * inch))
+    elif bullet_spaced:
+        story.append(Spacer(1, 0.30 * inch))
     elif spread:
         story.append(Spacer(1, 0.14 * inch))
     else:
         story.append(Spacer(1, 0.05 * inch))
-    story.extend(_scope_block(s, template["scope_2_title"], template["scope_2"]))
+    story.extend(_scope_block(s, template["scope_2_title"], template["scope_2"], spaced=bullet_spaced))
 
     # Optional tier comparison table (used by FARM and similar multi-warranty systems)
     if template.get("tier_table"):
