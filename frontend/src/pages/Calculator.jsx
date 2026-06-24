@@ -38,6 +38,9 @@ const ADDON_TEMPLATES = [
   { id: "walk_pads_yellow", label: "Walk Pads (Burnt Yellow)", sku: "850 SWS Yellow", unit: "gal",   default_qty: 0 },
   // Prep / sealants
   { id: "roof_wash",        label: "Roof Wash & Prep",         sku: "9000",           unit: "gal",   default_qty: 0 },
+  // Spray Elastic Cement comes ONLY in drums (no smaller pack). Qty entered
+  // in gallons, packed automatically into 55-gal drums by the calc engine.
+  { id: "flash_cement_spray", label: "Spray Elastic Cement",   sku: "800 Spray",      unit: "gal",   default_qty: 0 },
   { id: "flash_cement_w",   label: "Elastic Cement White",     sku: "800 W",          unit: "gal",   default_qty: 0 },
   { id: "flash_cement_b",   label: "Elastic Cement Black",     sku: "801 B",          unit: "gal",   default_qty: 0 },
   // Reinforcing fabric strips (sold by the roll — qty here is # of rolls)
