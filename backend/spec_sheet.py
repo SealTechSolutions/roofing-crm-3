@@ -1539,6 +1539,15 @@ def build_spec_sheet(
             "Provide all labor, materials, equipment, supervision, and insurance required for installation.",
             "Include the standard warranty corresponding to the selected system warranty term.",
         ]
+        # Append the rep's typed Custom Add-Ons (Calculator → "Custom Add-Ons"
+        # rows). Each row becomes its own Inclusions bullet so the customer
+        # sees the itemized list — e.g. "Metal Flashing — $650.00 included".
+        for ca in (data.get("calc_custom_addons") or []):
+            lbl = (ca.get("label") or "").strip()
+            cost = float(ca.get("cost") or 0)
+            if not lbl or cost <= 0:
+                continue
+            inc_bullets.append(f"{lbl} — ${cost:,.2f} included.")
         story.append(Paragraph("Inclusions", s["h2"]))
         story.append(Paragraph(
             "<br/>".join([f"•&nbsp;&nbsp;{b}" for b in inc_bullets]),

@@ -1,0 +1,31 @@
+{
+  "summary": "Iter 38: End-to-end validation of the Calculator Custom Add-Ons → Spec Sheet PDF feature. Verified the Pydantic round-trip (calc_custom_addons no longer silently dropped from DealIn), spec-sheet PDF renders each {label, cost} row as an Inclusions bullet on page 1 (pdfminer extract_text confirmed 'Metal Flashing' + '$650', 'Skylight curb' + '$425'), empty list renders only the 3 default bullets with no crash, and invalid rows (blank label OR cost==0) are silently filtered out. Frontend Playwright proved the critical persistence + re-hydration path: typed 'Test Item One' / $199 + picked first system + clicked 'Set → Option A' + RELOADED the page → the input still shows 'Test Item One' / '199' (deal.calc_custom_addons round-trip works). Sandbox deal cleaned up (calc_custom_addons=[]) at end. 5/5 pytest passed, frontend rehydration confirmed.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_calc_custom_addons.py",
+    "/app/test_reports/pytest/pytest_iter38.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py L487 — DealIn.calc_custom_addons declared as List[Dict[str, Any]] with default_factory=list. This is the correct fix for the Pydantic ConfigDict(extra='ignore') drop-silently behavior. Round-trip verified.",
+    "spec_sheet.py L1545-1550 — filter logic `if not lbl or cost <= 0: continue` correctly drops blank-label and zero-cost rows BEFORE appending. Defensive against the rep typing only a label or only a cost.",
+    "Calculator.jsx L290-300 — rehydration pads savedAddons to length 2 so the UI always renders exactly 2 input rows. Good guard against the calc showing 0 rows when the deal had 1 saved.",
+    "Calculator.jsx L562-564 & L626-628 — both setOptionOnDeal() and setAllOptionsOnDeal() POST calc_custom_addons with the same .map().filter() shape, so 'Set → Option A' and the bulk 'Set Compared Options' button stay in sync. No drift risk.",
+    "Calculator.jsx is 1455 lines — still above the >700-line guideline. Not blocking, but the previous iter's note about splitting CompareColumn into its own module still stands (non-blocking)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_calc_custom_addons.py (new)"
+  ],
+  "success_rate": { "backend": "100% (5/5)", "frontend": "100% (rehydrate + backend round-trip verified end-to-end)" },
+  "test_credentials": "darren@sealtechsolutions.co / admin123 (admin)",
+  "seed_data_creation": "None — used existing sandbox deal 640a9104-0bd5-44dd-9f13-51e4b8cd2e4e (TEST_Lead Deal). Cleared calc_custom_addons back to [] at end of testing (both pytest fixture-style cleanup and explicit frontend-script cleanup).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Calc Custom Add-Ons persistence + spec-sheet rendering is verified end-to-end. Backend regression test at /app/backend/tests/test_calc_custom_addons.py covers: (1) PUT/GET round-trip, (2) PDF bullet rendering via pdfminer extract_text, (3) empty list safety, (4) invalid row filtering, (5) cleanup. Run with `REACT_APP_BACKEND_URL=<url> pytest /app/backend/tests/test_calc_custom_addons.py -v`. Frontend critical path: /calculator?deal=<id> → fill custom-addon-label-0/cost-0 → pick a system (Total SF must be > 0, sandbox deal has no sqft so fill it first) → click set-option-0 → reload → values rehydrate from deal.calc_custom_addons. The PDF endpoint is /api/deals/{id}/spec-sheet.pdf — bullets appear in the 'Inclusions' section of page 1.",
+  "rca of the issue": "Original bug: Darren typed Custom Add-Ons (e.g. 'Metal Flashing $650') in the Calculator, the total dollar bump made it onto deal.proposal_option_3 (because Set → Option A/B/C/D POSTs the final customer price), but the per-row labels never reached the database — the customer's spec sheet PDF only showed the 3 generic Inclusions bullets, never the itemized list of what the bump was for. Root cause: customAddons was useState() session-only, and DealIn (Pydantic model with ConfigDict(extra='ignore')) silently DROPPED any incoming field not declared on the model — so even when the calc had POSTed the rows, Pydantic stripped them before MongoDB ever saw them. Fix applied (verified in this iteration): (a) declare calc_custom_addons on DealIn so Pydantic preserves it, (b) calc POSTs the .map(trim).filter(non-empty rows) shape, (c) calc re-hydrates from deal.calc_custom_addons on load, (d) /spec-sheet.pdf endpoint surfaces the field, (e) spec_sheet.py appends each {label, cost} as an Inclusions bullet. All 5 backend tests + frontend reload-rehydrate test pass."
+}

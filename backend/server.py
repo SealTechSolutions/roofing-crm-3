@@ -9,7 +9,7 @@ import logging
 import uuid
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict, Any
 
 import bcrypt
 import jwt
@@ -481,6 +481,10 @@ class DealIn(BaseModel):
     perimeter_lnft: float = 0.0
     avg_parapet_height: float = 0.0
     total_sqft: float = 0.0
+    # Free-form rep-entered Calculator add-ons (e.g. "Skylight curb flashing $850").
+    # List of {label, cost} dicts; rendered on the spec sheet as separate
+    # scope-inclusion bullets so the customer sees what they're paying for.
+    calc_custom_addons: List[Dict[str, Any]] = Field(default_factory=list)
     proposal_option_1: float = 0.0
     proposal_option_2: float = 0.0
     proposal_option_3: float = 0.0
@@ -4742,6 +4746,10 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
         # Per-deal bullet overrides — surface to build_spec_sheet so the editor
         # changes win over the template defaults on this project's PDF only.
         "scope_overrides": deal.get("scope_overrides") or {},
+        # Free-form Custom Add-Ons typed in the Calculator (e.g. Metal Flashing
+        # $650). Rendered as additional Inclusions bullets so the customer
+        # sees what items are baked into the totals.
+        "calc_custom_addons": deal.get("calc_custom_addons") or [],
     }
 
     # Fetch cover photo if set

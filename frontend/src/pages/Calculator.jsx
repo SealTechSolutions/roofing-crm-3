@@ -284,6 +284,20 @@ export default function Calculator() {
         15: !!r.data.warranty_15yr_ndl,
         10: !!r.data.warranty_10yr_ndl,
       });
+      // Re-hydrate the rep's typed Custom Add-Ons (rows that have a label
+      // and a cost). Always keep 2 visible rows — pad with empties if the
+      // deal had 0 or 1 saved.
+      const savedAddons = Array.isArray(r.data.calc_custom_addons)
+        ? r.data.calc_custom_addons.map((x) => ({
+            label: String(x.label || ""),
+            cost: x.cost != null ? String(x.cost) : "",
+          }))
+        : [];
+      const padded = [
+        savedAddons[0] || { label: "", cost: "" },
+        savedAddons[1] || { label: "", cost: "" },
+      ];
+      setCustomAddons(padded);
       // Auto-switch to Materials & PO mode if the customer has signed off
       // (Darren can manually toggle back to Estimate if needed).
       if (r.data.scope_signed_at) setMode("materials");
@@ -541,6 +555,13 @@ export default function Calculator() {
       if (laborField) body[laborField] = Math.round((col.laborAdd || 0) * 100) / 100;
       if (ohField) body[ohField] = col.ohPct;
       if (prField) body[prField] = col.prPct;
+      // Persist the rep's typed custom add-ons (e.g. Metal Flashing $650) so
+      // the spec sheet PDF can render them as visible scope-inclusion bullets
+      // — and so re-opening the calc on this deal restores the same rows.
+      // Only non-empty rows are saved.
+      body.calc_custom_addons = (customAddons || [])
+        .map((r) => ({ label: (r.label || "").trim(), cost: Number(r.cost || 0) }))
+        .filter((r) => r.label && r.cost > 0);
       // For Everest, persist the NDL UPGRADE delta in warranty_*_add (so the
       // PDF can render it as an optional add-on) — and remember the toggle
       // state in warranty_*_ndl so the calculator restores the same view.
@@ -601,6 +622,10 @@ export default function Calculator() {
     setSavingToDeal(true);
     try {
       const body = { ...deal, ...updates };
+      // Persist the rep's typed Custom Add-Ons alongside the per-option prices.
+      body.calc_custom_addons = (customAddons || [])
+        .map((r) => ({ label: (r.label || "").trim(), cost: Number(r.cost || 0) }))
+        .filter((r) => r.label && r.cost > 0);
       ["id","created_at","updated_at","created_by",
        "materials_cost","labor_cost","subcontractor_cost","other_expenses_total",
        "total_costs","profit","margin_pct","is_deleted","deleted_at","deleted_by",
