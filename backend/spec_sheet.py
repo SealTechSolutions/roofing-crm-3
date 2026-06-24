@@ -1206,13 +1206,15 @@ def _scope_block(s, title, items, spaced=False):
     stays for the longer FARM/Silicone scopes that already fill the page."""
     elems = [Paragraph(title, s["h2"])]
     if spaced:
-        # ParagraphStyle with extra leading + spaceAfter per bullet so the
-        # list has visible gaps between each line item.
+        # ParagraphStyle with extra leading + a touch of spaceAfter per bullet.
+        # Values are tuned to give visible bullet separation without bloating
+        # the page count — bigger gaps push short scopes (Metal Roof) onto a
+        # 4th page which we don't want.
         bullet_style = ParagraphStyle(
             "scope_bullet_spaced",
             parent=s["body"],
-            leading=15,
-            spaceAfter=8,
+            leading=13,
+            spaceAfter=3,
             leftIndent=10,
             bulletIndent=0,
         )
@@ -1624,7 +1626,7 @@ def build_spec_sheet(
     if template.get("tier_table"):
         story.append(Spacer(1, 0.08 * inch))
     elif bullet_spaced:
-        story.append(Spacer(1, 0.30 * inch))
+        story.append(Spacer(1, 0.12 * inch))
     elif spread:
         story.append(Spacer(1, 0.14 * inch))
     else:
