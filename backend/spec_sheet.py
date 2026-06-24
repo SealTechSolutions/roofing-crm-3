@@ -784,6 +784,8 @@ ROOF_TEMPLATE_MAP = {
     "burbuiltup": BUR_TEMPLATE,
     "builtup": BUR_TEMPLATE,
     "metal": METAL_TEMPLATE,
+    "metalroofrestoration": METAL_TEMPLATE,
+    "metalrestoration": METAL_TEMPLATE,
     "shingle": SHINGLE_TEMPLATE,
     "asphaltshingle": SHINGLE_TEMPLATE,
     "tile": TILE_TEMPLATE,
@@ -1531,7 +1533,11 @@ def build_spec_sheet(
             except Exception:
                 story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
         else:
-            ph = Table([[" "]], colWidths=[7.5 * inch], rowHeights=[2.3 * inch])
+            # When no cover photo is uploaded yet, use a slightly shorter
+            # placeholder (1.8" instead of 2.3") so Page 1 has enough vertical
+            # room to fit the Inclusions bullets without overflowing.
+            # Real photos still use the full 2.3" frame above.
+            ph = Table([[" "]], colWidths=[7.5 * inch], rowHeights=[1.8 * inch])
             ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
             story.append(ph)
             story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))
