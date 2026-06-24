@@ -37,7 +37,7 @@ UNITS = ["gal", "pail", "roll", "sf", "lf", "ea", "bag", "tube", "box"]
 COVERAGE_BASIS = ["per_100sf", "per_sf", "per_lf", "per_each_optional"]
 
 DEFAULT_SETTINGS = {
-    "markup_pct": 15.0,        # 15% shipping markup on raw material
+    "markup_pct": 20.0,        # 20% shipping markup on raw material
     "handling_pct": 10.0,      # 10% handling fee applied to the marked-up total
     "handling_basis": "marked_up",  # "marked_up" or "raw"
     "waste_pct": 0.0,          # optional waste factor added to qty
