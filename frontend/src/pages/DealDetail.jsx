@@ -44,6 +44,7 @@ export default function DealDetail() {
   const [scopeEditorOpen, setScopeEditorOpen] = useState(false);
   const [sendToFieldOpen, setSendToFieldOpen] = useState(false);
   const [workOrderOpen, setWorkOrderOpen] = useState(false);
+  const [workOrderKind, setWorkOrderKind] = useState("work-order");
   const [finalInvoicePreview, setFinalInvoicePreview] = useState(null); // {contract_total, already_invoiced, final_amount, existing_final_invoice_id?}
   const [closedBannerDismissed, setClosedBannerDismissed] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
@@ -480,11 +481,19 @@ export default function DealDetail() {
           </button>
           <button
             data-testid="send-work-order"
-            onClick={() => setWorkOrderOpen(true)}
+            onClick={() => { setWorkOrderKind("work-order"); setWorkOrderOpen(true); }}
             title="Issue a Work Order to the subcontractor — includes the spec sheet"
             className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
           >
             <FileText className="w-4 h-4" /> Send Work Order
+          </button>
+          <button
+            data-testid="send-change-order"
+            onClick={() => { setWorkOrderKind("change-order"); setWorkOrderOpen(true); }}
+            title="Issue a Change Order amending the original Work Order — no spec sheet attached"
+            className="inline-flex items-center gap-2 border border-amber-600 text-amber-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-amber-50 rounded-sm transition-colors"
+          >
+            <FileText className="w-4 h-4" /> Send Change Order
           </button>
           <button
             data-testid="new-assessment-from-deal"
@@ -1412,11 +1421,13 @@ export default function DealDetail() {
       {workOrderOpen && (
         <WorkOrderModal
           dealId={id}
+          kind={workOrderKind}
           onClose={() => setWorkOrderOpen(false)}
           onSent={(res) => {
+            const label = workOrderKind === "change-order" ? "Change order" : "Work order";
             toast.success(res?.email_sent
-              ? `Work order emailed to ${res?.sign_url ? "the sub" : "subcontractor"}`
-              : "Work order saved (email could not be sent — check SMTP)");
+              ? `${label} emailed to the sub`
+              : `${label} saved (email could not be sent — check SMTP)`);
             setWorkOrderOpen(false);
             reload();
           }}
@@ -1744,7 +1755,8 @@ function EmailScopeModal({ dealId, dealTitle, dealType, primaryContactEmail, onC
  * Preview (PDF) OR Send. Sending persists the WO, attaches the spec sheet,
  * emails the sub with a public sign link, and toasts back.
  */
-function WorkOrderModal({ dealId, onClose, onSent }) {
+function WorkOrderModal({ dealId, onClose, onSent, kind = "work-order" }) {
+  const isCO = kind === "change-order";
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({});
@@ -1755,22 +1767,28 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
   // Western Colloid manufacturer specs from the Library — picker lets the rep
   // attach one or more to the outbound WO email AND drop a reference line
   // into the description so the sub knows which spec governs the job.
+  // Change Orders skip this picker entirely (no spec attached to a CO).
   const [librarySpecs, setLibrarySpecs] = useState([]);
   const [selectedLibraryIds, setSelectedLibraryIds] = useState([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const [draftR, subsR, libR] = await Promise.all([
-          api.get(`/deals/${dealId}/work-order/draft`),
+        const reqs = [
+          api.get(`/deals/${dealId}/work-order/draft`, { params: { kind } }),
           api.get("/vendors?kind=Subcontractor").catch(() => ({ data: [] })),
-          api.get("/library/files?category=Western%20Colloid&subcategory=Specifications").catch(() => ({ data: [] })),
-        ]);
+        ];
+        if (!isCO) {
+          reqs.push(api.get("/library/files?category=Western%20Colloid&subcategory=Specifications").catch(() => ({ data: [] })));
+        }
+        const [draftR, subsR, libR] = await Promise.all(reqs);
         setForm(draftR.data?.existing ? { ...draftR.data.draft, ...draftR.data.existing } : draftR.data?.draft || {});
         setExisting(draftR.data?.existing || null);
         setSubs((subsR.data || []).slice().sort((a, b) => (a.name || "").localeCompare(b.name || "")));
-        setLibrarySpecs((libR.data || []).slice().sort((a, b) => (a.display_name || a.original_filename || "").localeCompare(b.display_name || b.original_filename || "")));
-        setSelectedLibraryIds(draftR.data?.existing?.library_file_ids || []);
+        if (libR) {
+          setLibrarySpecs((libR.data || []).slice().sort((a, b) => (a.display_name || a.original_filename || "").localeCompare(b.display_name || b.original_filename || "")));
+          setSelectedLibraryIds(draftR.data?.existing?.library_file_ids || []);
+        }
       } catch (e) {
         const status = e?.response?.status;
         if (status === 404) {
@@ -1783,7 +1801,7 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
         setLoading(false);
       }
     })();
-  }, [dealId]);
+  }, [dealId, kind]);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -1814,7 +1832,7 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
 
   const preview = async () => {
     try {
-      const r = await api.post(`/deals/${dealId}/work-order/preview`, { ...form, library_file_ids: selectedLibraryIds }, { responseType: "blob" });
+      const r = await api.post(`/deals/${dealId}/work-order/preview`, { ...form, kind, library_file_ids: selectedLibraryIds }, { responseType: "blob" });
       const url = URL.createObjectURL(r.data);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 30000);
@@ -1829,7 +1847,7 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
     }
     setSubmitting(true);
     try {
-      const r = await api.post(`/deals/${dealId}/work-order/send`, { ...form, library_file_ids: selectedLibraryIds });
+      const r = await api.post(`/deals/${dealId}/work-order/send`, { ...form, kind, library_file_ids: selectedLibraryIds });
       onSent?.(r.data);
     } catch (e) {
       const status = e?.response?.status;
@@ -1851,11 +1869,20 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
       <div className="bg-white rounded-sm max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="work-order-modal">
         <div className="px-5 py-4 border-b border-zinc-200 flex items-center justify-between">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700">Issue Work Order</div>
-            <h2 className="font-heading text-xl font-black">Send Work Order to Subcontractor</h2>
+            <div className={`text-[10px] font-bold uppercase tracking-[0.2em] ${isCO ? "text-amber-700" : "text-blue-700"}`}>
+              {isCO ? "Issue Change Order" : "Issue Work Order"}
+            </div>
+            <h2 className="font-heading text-xl font-black">
+              {isCO ? "Send Change Order to Subcontractor" : "Send Work Order to Subcontractor"}
+            </h2>
+            {isCO && (
+              <div className="text-[11px] text-amber-700 mt-1">
+                A Change Order amends the previously executed Work Order. Stage will NOT change on signature. Spec sheet is NOT attached.
+              </div>
+            )}
             {existing && (
               <div className="text-[11px] text-amber-700 mt-1">
-                ⚠ A work order already exists for this deal. Saving will overwrite it
+                ⚠ A {isCO ? "change order" : "work order"} already exists for this deal. Saving will overwrite it
                 {existing.signed_at && " — but the existing signature will NOT be invalidated; the sub will need to sign the new version."}
               </div>
             )}
@@ -1898,20 +1925,28 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
               <div className="text-[10px] text-zinc-500 mt-1">Picking a sub auto-fills the company name, address, contact, and email below. Edit any field after.</div>
             </div>
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Description (scope of work)</label>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">
+                {isCO ? "Change Order Description (what's changing)" : "Description (scope of work)"}
+              </label>
               <textarea
                 value={form.description || ""}
                 onChange={(e) => set("description", e.target.value)}
-                rows={14}
+                rows={isCO ? 8 : 14}
                 data-testid="wo-description"
+                placeholder={isCO ? "e.g. ADD: 800 SF of additional silicone at the south wing roof — +$7,800.00.\nREMOVE: Walk-pad bundle near AC unit (relocated by GC) — -$650.00." : ""}
                 className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-xs font-mono"
               />
-              <div className="text-[10px] text-zinc-500 mt-1">Edit freely — the box on the PDF auto-grows to push the signatures to the bottom of the page. HTML tags <b>&lt;b&gt;</b>, <b>&lt;br/&gt;</b> supported.</div>
+              <div className="text-[10px] text-zinc-500 mt-1">
+                {isCO
+                  ? "Type just the delta — added/removed scope and net price change. HTML tags <b>&lt;b&gt;</b>, <b>&lt;br/&gt;</b> supported."
+                  : <>Edit freely — the box on the PDF auto-grows to push the signatures to the bottom of the page. HTML tags <b>&lt;b&gt;</b>, <b>&lt;br/&gt;</b> supported.</>}
+              </div>
             </div>
             {/* Library spec picker — pulls PDFs uploaded under
                 Library → Western Colloid → Specifications. Ticked specs are
                 attached to the outbound email AND referenced in the
-                description. */}
+                description. Change Orders skip this picker entirely. */}
+            {!isCO && (
             <div className="border border-zinc-200 rounded-sm">
               <div className="px-3 py-2 bg-zinc-50 border-b border-zinc-200 text-[10px] font-bold uppercase tracking-wider text-zinc-600">
                 Attach Manufacturer Specs <span className="text-zinc-400 normal-case font-normal">(Library → Western Colloid → Specifications)</span>
@@ -1940,25 +1975,28 @@ function WorkOrderModal({ dealId, onClose, onSent }) {
                 </div>
               )}
             </div>
+            )}
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Total ($)</label>
               <input type="number" step="0.01" value={form.total || 0} onChange={(e) => set("total", Number(e.target.value))} data-testid="wo-total" className="w-48 h-10 px-3 border border-zinc-300 rounded-sm text-sm font-mono text-right" />
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Notes (override default Master-Subcontractor text)</label>
-              <textarea value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={3} placeholder="Leave blank to use the standard Work Order language (subcontractor agrees to perform the Work per manufacturer specs, furnishes labor/materials/insurance/supervision/equipment, etc.)" data-testid="wo-notes" className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-xs" />
+              <textarea value={form.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={3} placeholder={isCO ? "" : "Leave blank to use the standard Work Order language (subcontractor agrees to perform the Work per manufacturer specs, furnishes labor/materials/insurance/supervision/equipment, etc.)"} data-testid="wo-notes" className="w-full px-3 py-2 border border-zinc-300 rounded-sm text-xs" />
             </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-sm p-3 text-[11px] text-blue-900">
-              <b>Email attachments:</b> Work Order PDF + {selectedLibraryIds.length > 0
-                ? `${selectedLibraryIds.length} Manufacturer Spec${selectedLibraryIds.length === 1 ? "" : "s"} (auto SealTech Spec Sheet is replaced)`
-                : "the auto-generated SealTech Spec Sheet"}.
+            <div className={`${isCO ? "bg-amber-50 border-amber-200 text-amber-900" : "bg-blue-50 border-blue-200 text-blue-900"} border rounded-sm p-3 text-[11px]`}>
+              <b>Email attachments:</b> {isCO
+                ? "Change Order PDF only (no spec sheet — this amends the original Work Order)."
+                : <>Work Order PDF + {selectedLibraryIds.length > 0
+                  ? `${selectedLibraryIds.length} Manufacturer Spec${selectedLibraryIds.length === 1 ? "" : "s"} (auto SealTech Spec Sheet is replaced)`
+                  : "the auto-generated SealTech Spec Sheet"}.</>}
             </div>
           </div>
         )}
         <div className="px-5 py-4 border-t border-zinc-200 flex items-center justify-end gap-2">
           <button type="button" onClick={onClose} className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-zinc-300 rounded-sm hover:bg-zinc-50">Cancel</button>
           <button type="button" onClick={preview} disabled={loading} data-testid="wo-preview" className="px-4 h-10 text-xs font-bold uppercase tracking-wider border border-blue-700 text-blue-700 hover:bg-blue-50 rounded-sm disabled:opacity-50">Preview PDF</button>
-          <button type="button" onClick={send} disabled={loading || submitting} data-testid="wo-send" className="px-4 h-10 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm disabled:opacity-50">{submitting ? "Sending…" : "Send to Subcontractor"}</button>
+          <button type="button" onClick={send} disabled={loading || submitting} data-testid="wo-send" className={`px-4 h-10 text-xs font-bold uppercase tracking-wider text-white rounded-sm disabled:opacity-50 ${isCO ? "bg-amber-600 hover:bg-amber-700" : "bg-blue-700 hover:bg-blue-800"}`}>{submitting ? "Sending…" : (isCO ? "Send Change Order to Sub" : "Send to Subcontractor")}</button>
         </div>
       </div>
     </div>

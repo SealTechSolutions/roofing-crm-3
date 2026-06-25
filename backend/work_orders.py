@@ -573,14 +573,30 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
     router = APIRouter(prefix="/deals", tags=["work-orders"])
 
     @router.get("/{deal_id}/work-order/draft")
-    async def get_draft(deal_id: str, _user=Depends(get_current_user)):
-        """Return an auto-populated Work Order draft for the deal so the rep
-        can edit any field before sending. Includes the existing persisted
-        work_orders row if one exists; otherwise builds from the deal."""
+    async def get_draft(deal_id: str, kind: str = "work-order", _user=Depends(get_current_user)):
+        """Return an auto-populated Work Order (or Change Order) draft for the
+        deal so the rep can edit any field before sending. Includes the
+        existing persisted work_orders row if one matches the requested
+        `kind`; otherwise builds from the deal.
+
+        Change Orders default to a blank description so the rep types only
+        the delta from the original scope (e.g. "Add 800 SF of TPO at south
+        wing — $7,800") instead of repeating the original Work Order."""
+        if kind not in ("work-order", "change-order"):
+            kind = "work-order"
         deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
         if not deal:
             raise HTTPException(404, "Deal not found")
-        existing = await db.work_orders.find_one({"deal_id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+        existing = await db.work_orders.find_one(
+            {"deal_id": deal_id, "kind": kind, "is_deleted": {"$ne": True}}, {"_id": 0},
+        )
+        # Back-compat: legacy WO rows have no `kind` field. Treat any
+        # missing-kind row as a "work-order".
+        if not existing and kind == "work-order":
+            existing = await db.work_orders.find_one(
+                {"deal_id": deal_id, "kind": {"$exists": False}, "is_deleted": {"$ne": True}},
+                {"_id": 0},
+            )
         prop = None
         if deal.get("property_id"):
             prop = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
@@ -593,10 +609,17 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
             )
         # Default total = chosen amount on the deal (the price the customer is paying)
         chosen = float(deal.get("chosen_amount") or 0)
+        # For a Change Order, the description starts blank and the total
+        # starts at $0 — the rep types only the delta (added/removed scope +
+        # price change). For a regular Work Order, auto-populate from the
+        # deal's resolved scope and the chosen contract amount.
+        is_co = (kind == "change-order")
         return {
             "existing": existing,
+            "kind": kind,
             "draft": {
                 "deal_id": deal_id,
+                "kind": kind,
                 "wo_date": datetime.now(timezone.utc).strftime("%m/%d/%Y"),
                 "project_name": deal.get("title") or "",
                 "project_address": (prop or {}).get("address") or deal.get("title") or "",
@@ -606,9 +629,13 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
                 "sub_contact": (sub or {}).get("contact_name") or "",
                 "sub_email": (sub or {}).get("email") or "",
                 "work_date": datetime.now(timezone.utc).strftime("%m/%d/%Y"),
-                "description": _auto_scope_from_deal(deal, db),
-                "total": chosen,
-                "notes": "",
+                "description": "" if is_co else _auto_scope_from_deal(deal, db),
+                "total": 0.0 if is_co else chosen,
+                "notes": "" if not is_co else (
+                    "This Change Order amends the previously executed Work "
+                    "Order for this project. All other terms of the original "
+                    "Work Order remain in full force and effect."
+                ),
             },
         }
 
@@ -618,10 +645,12 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
         deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
         if not deal:
             raise HTTPException(404, "Deal not found")
-        pdf = build_work_order_pdf(body)
+        kind = body.get("kind") if body.get("kind") in ("work-order", "change-order") else "work-order"
+        pdf = build_work_order_pdf(body, kind=kind)
+        filename = "ChangeOrder-preview.pdf" if kind == "change-order" else "WorkOrder-preview.pdf"
         return StreamingResponse(
             BytesIO(pdf), media_type="application/pdf",
-            headers={"Content-Disposition": 'inline; filename="WorkOrder-preview.pdf"'},
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
 
     @router.post("/{deal_id}/work-order/send")
@@ -635,13 +664,28 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
         sub_email = (body.get("sub_email") or "").strip()
         if not sub_email or "@" not in sub_email:
             raise HTTPException(400, "Subcontractor email is required to send the work order.")
-        # Upsert the WO row + mint a sign token if one doesn't exist
-        existing = await db.work_orders.find_one({"deal_id": deal_id, "is_deleted": {"$ne": True}})
+        # Document kind — defaults to "work-order" so legacy callers keep
+        # working without changes. Change Orders are stored as separate rows
+        # (their own sign_token + lifecycle) so a deal can carry one or more
+        # COs alongside the original WO without mutating it.
+        kind = body.get("kind") if body.get("kind") in ("work-order", "change-order") else "work-order"
+        is_co = (kind == "change-order")
+        # Upsert the WO/CO row + mint a sign token if one doesn't exist
+        existing = await db.work_orders.find_one(
+            {"deal_id": deal_id, "kind": kind, "is_deleted": {"$ne": True}},
+        )
+        if not existing and not is_co:
+            # Back-compat: legacy WO rows have no `kind` field — match them
+            # so resending a WO updates the existing row in place.
+            existing = await db.work_orders.find_one(
+                {"deal_id": deal_id, "kind": {"$exists": False}, "is_deleted": {"$ne": True}},
+            )
         sign_token = (existing or {}).get("sign_token") or secrets.token_urlsafe(24)
         wo_id = (existing or {}).get("id") or secrets.token_urlsafe(16)
         doc = {
             "id": wo_id,
             "deal_id": deal_id,
+            "kind": kind,
             "sign_token": sign_token,
             "status": "sent",
             "sent_at": _now_iso(),
@@ -661,21 +705,32 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
             doc["created_at"] = _now_iso()
             await db.work_orders.insert_one(doc)
 
-        # Render the WO PDF. When the rep has explicitly attached one or more
-        # manufacturer-spec PDFs from the Library, we use THOSE as the scope
-        # packet and skip the auto-generated SealTech spec sheet — otherwise
-        # subs get two scope documents and don't know which one to follow.
-        # When no library files are selected, the deal's spec sheet is still
-        # attached so the sub always has a scope to reference.
-        pdf_bytes = build_work_order_pdf(doc)
+        # Render the WO/CO PDF. When the rep has explicitly attached one or
+        # more manufacturer-spec PDFs from the Library, we use THOSE as the
+        # scope packet and skip the auto-generated SealTech spec sheet —
+        # otherwise subs get two scope documents and don't know which one to
+        # follow. When no library files are selected, the deal's spec sheet
+        # is still attached so the sub always has a scope to reference.
+        # Change Orders never bundle the spec sheet — they should be small
+        # delta documents the sub can read in 30 seconds.
+        pdf_bytes = build_work_order_pdf(doc, kind=kind)
         selected_lib_ids = body.get("library_file_ids") or []
-        if selected_lib_ids:
-            spec_pdf_bytes = None  # library files replace the auto spec sheet
+        if selected_lib_ids or is_co:
+            spec_pdf_bytes = None  # library files / change orders skip auto spec
         else:
             spec_pdf_bytes = await _build_deal_spec_pdf(db, deal)
         sign_url = f"{app_url_for_public_links.rstrip('/')}/work-order/sign/{sign_token}"
-        # Build the body language to match what's actually attached
-        if selected_lib_ids:
+        # Build the body language to match what's actually attached and the
+        # document kind (Work Order vs Change Order).
+        doc_label = "Change Order" if is_co else "Work Order"
+        cta_label = "REVIEW &amp; SIGN CHANGE ORDER" if is_co else "REVIEW &amp; SIGN WORK ORDER"
+        if is_co:
+            packet_line = (
+                "<p>Attached: the Change Order amending the previously executed "
+                "Work Order. Please review and click below to e-sign and accept "
+                "the revised scope:</p>"
+            )
+        elif selected_lib_ids:
             packet_line = (
                 "<p>Attached: the Work Order itself plus the manufacturer "
                 "specification(s) the customer signed off on. Please review "
@@ -690,15 +745,17 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
             )
         html = (
             f"<p>Hello {doc.get('sub_contact') or doc.get('sub_company') or 'team'},</p>"
-            f"<p>SealTech Building Solutions has issued you a Work Order for "
+            f"<p>SealTech Building Solutions has issued you a {doc_label} for "
             f"<b>{doc.get('project_name')}</b> at <b>{doc.get('project_address')}</b>.</p>"
-            f"<p>Total: <b>${float(doc.get('total') or 0):,.2f}</b></p>"
+            f"<p>Total{(' (this Change Order)' if is_co else '')}: "
+            f"<b>${float(doc.get('total') or 0):,.2f}</b></p>"
             f"{packet_line}"
-            f'<p><a href="{sign_url}" style="background:#062B67;color:#fff;padding:10px 18px;text-decoration:none;border-radius:4px;display:inline-block;font-weight:bold;">REVIEW &amp; SIGN WORK ORDER</a></p>'
+            f'<p><a href="{sign_url}" style="background:#062B67;color:#fff;padding:10px 18px;text-decoration:none;border-radius:4px;display:inline-block;font-weight:bold;">{cta_label}</a></p>'
             f"<p>Or copy the link:<br/><code>{sign_url}</code></p>"
             f"<p>— SealTech Building Solutions</p>"
         )
-        attachments = [{"bytes": pdf_bytes, "filename": "SealTech-WorkOrder.pdf", "mime": "application/pdf"}]
+        wo_filename = "SealTech-ChangeOrder.pdf" if is_co else "SealTech-WorkOrder.pdf"
+        attachments = [{"bytes": pdf_bytes, "filename": wo_filename, "mime": "application/pdf"}]
         if spec_pdf_bytes:
             attachments.append({"bytes": spec_pdf_bytes, "filename": "SealTech-SpecSheet.pdf", "mime": "application/pdf"})
         # Optional Library file attachments (e.g. Western Colloid manufacturer
@@ -734,7 +791,8 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
             wo_from = await get_from_for_category(db, "projects") or None
         except Exception:
             wo_from = None
-        ok = _send_email(sub_email, f"Work Order — {doc.get('project_name')}",
+        ok = _send_email(sub_email,
+                         f"{'Change Order' if is_co else 'Work Order'} — {doc.get('project_name')}",
                           html, attachments=attachments, from_email=wo_from)
         import logging
         _log = logging.getLogger(__name__)
@@ -746,17 +804,32 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
                 "library_files_attached": len(attachments) - 1 - (1 if spec_pdf_bytes else 0)}
 
     @router.get("/{deal_id}/work-order/pdf")
-    async def admin_pdf(deal_id: str, _user=Depends(get_current_user)):
-        """Internal: download the most recent persisted Work Order PDF
-        (signed if the sub has e-signed, otherwise the unsigned version)."""
-        wo = await db.work_orders.find_one({"deal_id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    async def admin_pdf(deal_id: str, kind: str = "work-order", _user=Depends(get_current_user)):
+        """Internal: download the most recent persisted Work Order (or
+        Change Order) PDF — signed if the sub has e-signed, otherwise the
+        unsigned version. `?kind=change-order` returns the latest CO."""
+        if kind not in ("work-order", "change-order"):
+            kind = "work-order"
+        query = {"deal_id": deal_id, "kind": kind, "is_deleted": {"$ne": True}}
+        wo = await db.work_orders.find_one(query, {"_id": 0}, sort=[("sent_at", -1)])
+        if not wo and kind == "work-order":
+            # Legacy rows have no `kind` field — fall back so older deals
+            # still serve their original Work Order via this endpoint.
+            wo = await db.work_orders.find_one(
+                {"deal_id": deal_id, "kind": {"$exists": False}, "is_deleted": {"$ne": True}},
+                {"_id": 0},
+            )
         if not wo:
-            raise HTTPException(404, "No Work Order has been created for this deal yet.")
+            raise HTTPException(
+                404,
+                f"No {'Change Order' if kind == 'change-order' else 'Work Order'} has been created for this deal yet.",
+            )
         signed_sig = wo.get("signed_signature")  # populated after public sign
-        pdf = build_work_order_pdf(wo, signed_signature=signed_sig)
+        pdf = build_work_order_pdf(wo, signed_signature=signed_sig, kind=kind)
+        fname = "SealTech-ChangeOrder.pdf" if kind == "change-order" else "SealTech-WorkOrder.pdf"
         return StreamingResponse(
             BytesIO(pdf), media_type="application/pdf",
-            headers={"Content-Disposition": 'inline; filename="SealTech-WorkOrder.pdf"'},
+            headers={"Content-Disposition": f'inline; filename="{fname}"'},
         )
 
     return router
@@ -773,6 +846,7 @@ def create_public_router(db, app_url_for_public_links: str):
             raise HTTPException(404, "Work order not found or revoked")
         return {
             "id": wo["id"],
+            "kind": wo.get("kind") or "work-order",
             "already_signed": bool(wo.get("signed_at")),
             "signed_at": wo.get("signed_at"),
             "signed_by_name": wo.get("signed_by_name"),
@@ -788,10 +862,12 @@ def create_public_router(db, app_url_for_public_links: str):
         wo = await db.work_orders.find_one({"sign_token": token, "is_deleted": {"$ne": True}}, {"_id": 0})
         if not wo:
             raise HTTPException(404, "Work order not found or revoked")
-        pdf = build_work_order_pdf(wo, signed_signature=wo.get("signed_signature"))
+        kind = wo.get("kind") or "work-order"
+        pdf = build_work_order_pdf(wo, signed_signature=wo.get("signed_signature"), kind=kind)
+        fname = "SealTech-ChangeOrder.pdf" if kind == "change-order" else "SealTech-WorkOrder.pdf"
         return StreamingResponse(
             BytesIO(pdf), media_type="application/pdf",
-            headers={"Content-Disposition": 'inline; filename="SealTech-WorkOrder.pdf"'},
+            headers={"Content-Disposition": f'inline; filename="{fname}"'},
         )
 
     @router.post("/{token}/sign")
@@ -825,7 +901,9 @@ def create_public_router(db, app_url_for_public_links: str):
             signed_signature.update(text=signed_text or name, font=signed_font or "Caveat")
 
         # Build the signed PDF and stash it on a Mongo file ref (for audit + library)
-        pdf_bytes = build_work_order_pdf(wo, signed_signature=signed_signature)
+        kind = wo.get("kind") or "work-order"
+        is_co = (kind == "change-order")
+        pdf_bytes = build_work_order_pdf(wo, signed_signature=signed_signature, kind=kind)
         signed_file_id = secrets.token_urlsafe(16)
         # Persist signed signature as plain dict (image_bytes excluded so we can
         # re-render later — we keep just text/font; drawn signatures get
@@ -860,8 +938,12 @@ def create_public_router(db, app_url_for_public_links: str):
             }},
         )
 
-        # Flip the deal to "Sub Engaged" stage + accepted flag
-        await _flip_to_sub_engaged(db, wo["deal_id"])
+        # Flip the deal to "Sub Engaged" stage + accepted flag — ONLY for
+        # the initial Work Order. Change Orders amend an existing
+        # engagement, so they don't re-trigger the stage flip (the deal is
+        # already past "Sub Engaged" by the time a CO is needed).
+        if not is_co:
+            await _flip_to_sub_engaged(db, wo["deal_id"])
 
         # Notify the rep (deal's assigned user, or any admin if not set)
         deal = await db.deals.find_one({"id": wo["deal_id"]}, {"_id": 0, "assigned_user_id": 1, "title": 1})
@@ -877,13 +959,20 @@ def create_public_router(db, app_url_for_public_links: str):
                 rep_from = await get_from_for_category(db, "projects") or None
             except Exception:
                 rep_from = None
+            doc_label = "Change Order" if is_co else "Work Order"
+            stage_line = (
+                "<p>The deal has been moved to the <b>Sub Engaged</b> stage.</p>"
+                if not is_co else
+                "<p>The deal's stage is unchanged — this Change Order amends the previously executed Work Order.</p>"
+            )
             _send_email(
                 rep_email,
-                f"Work Order signed — {wo.get('project_name')}",
-                f"<p><b>{name}</b> just signed the Work Order for <b>{wo.get('project_name')}</b>.</p>"
+                f"{doc_label} signed — {wo.get('project_name')}",
+                f"<p><b>{name}</b> just signed the {doc_label} for <b>{wo.get('project_name')}</b>.</p>"
                 f"<p>Signed at: {signed_signature['signed_at']}.</p>"
-                f"<p>The deal has been moved to the <b>Sub Engaged</b> stage.</p>",
-                attachments=[{"bytes": pdf_bytes, "filename": "SealTech-WorkOrder-Signed.pdf",
+                f"{stage_line}",
+                attachments=[{"bytes": pdf_bytes,
+                              "filename": ("SealTech-ChangeOrder-Signed.pdf" if is_co else "SealTech-WorkOrder-Signed.pdf"),
                               "mime": "application/pdf"}],
                 from_email=rep_from,
             )

@@ -7,8 +7,8 @@ Full-stack CRM for a commercial roofing/construction business with Auth (JWT), D
 Production-ready PWA CRM. JWT auth, Visual Deals Kanban, offline-capable field camera, ReportLab PDF generation (Assessments, Proposals, Spec Sheets, Brochures, Work Orders), In-App Scope Editor, Public Proposal & Subcontractor Work Order E-signing, Material Calculator with sizing/warranties/auto-sync, category-aware email routing, custom Work Order/Scope PDF rendering with signatures, admin-only Assigned Rep tracking.
 
 ## Recently completed
-- 2026-02 — Calculator: Overhead default → 30% (config, UI, live `calculator_settings` singleton).
-- 2026-02 — Calculator: Shipping → 20%, Handling → 12% defaults, font sizing tightened to 1-line.
+- 2026-02 — **Work Order Phase 2**: drawn-signature canvas on Subcontractor WO E-sign (Type ⇄ Draw tabs, retina-crisp HTML5 canvas with touch + mouse), and Change Order document variant (separate "Send Change Order" entry point on deal page, blank-description draft, amber UI accents, no spec-sheet attachment, no Sub Engaged stage flip on CO signature). End-to-end tested with both typed cursive and drawn PNG signatures.
+- 2026-02 — Calculator: Overhead default → 30%, Shipping → 20%, Handling → 12%.
 - 2026-02 — Calculator: Custom Add-Ons section now available on **Everest/Silicone** vendor (previously WC-only).
 - 2026-02 — Calculator: Added "Spray Elastic Cement" add-on row (WC).
 - 2026-02 — Calculator: WC system reordering + renamed 25-Yr→15-Yr Gravel.
@@ -18,7 +18,6 @@ Production-ready PWA CRM. JWT auth, Visual Deals Kanban, offline-capable field c
 - 2026-02 — Admin-only Assigned Rep dropdown + badges on deals/contacts.
 
 ## Active backlog
-- **P0 — Work Order Phase 2**: drawn-signature canvas on Subcontractor WO E-sign + Change Order variant.
 - **P0 — Sales Brochures**: Brochure #2 (Silicone), Brochure #3 (FARM vs Silicone side-by-side).
 - **P1 — Commission Module** (spec at `/app/memory/COMMISSION_PRD.md`): blocked on user confirmation of flat % vs tiered, refund reversals, signature flow.
 - **P1 — WSC Fork Strategy**: branding-constants refactor → `branding.py` first, then decide fork vs multi-tenant tag.
