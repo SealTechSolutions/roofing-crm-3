@@ -179,7 +179,7 @@ export default function Calculator() {
   const [products, setProducts] = useState([]);
   const [systems, setSystems] = useState([]);
   const [recipes, setRecipes] = useState({}); // {system_id: [recipe_rows]}
-  const [settings, setSettings] = useState({ markup_pct: 20, handling_pct: 12, handling_basis: "marked_up", waste_pct: 0, overhead_pct: 20, profit_pct: 20 });
+  const [settings, setSettings] = useState({ markup_pct: 20, handling_pct: 12, handling_basis: "marked_up", waste_pct: 0, overhead_pct: 30, profit_pct: 20 });
   const [loading, setLoading] = useState(true);
 
   // Persisted prefs (loaded once on mount via the lazy initialiser).
@@ -1075,12 +1075,12 @@ export default function Calculator() {
                 </div>
               )}
 
-              {/* Free-form custom add-on rows (Western Colloid only). Each
-                  row is label + $ amount, added flat to every compared
-                  system's customer price. Useful for one-off items (e.g.
-                  "Skylight curb flashing — $850"). Empty rows are ignored. */}
-              {selectedVendor !== "Everest Systems" && (
-                <div className="pt-3 border-t border-dashed border-zinc-300 space-y-2">
+              {/* Free-form custom add-on rows (available on every vendor —
+                  Western Colloid AND Everest/Silicone). Each row is label +
+                  $ amount, added flat to every compared system's customer
+                  price. Useful for one-off items (e.g. "Skylight curb
+                  flashing — $850"). Empty rows are ignored. */}
+              <div className="pt-3 border-t border-dashed border-zinc-300 space-y-2">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
                     Custom Add-Ons
                   </div>
@@ -1120,8 +1120,7 @@ export default function Calculator() {
                   <div className="text-[10px] text-zinc-500 italic leading-snug">
                     Customer-facing dollars (no OH/Profit applied). Added flat to every system column. Leave blank to skip.
                   </div>
-                </div>
-              )}
+              </div>
             </div>
           </div>
         </aside>
