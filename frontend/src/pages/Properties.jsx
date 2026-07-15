@@ -7,6 +7,7 @@ import { ExportButtons, ImportButton } from "@/components/ExportImport";
 import { US_STATES, DEFAULT_STATE } from "@/constants/states";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { formatPhoneDisplay } from "@/lib/format";
+import { ScopesButton } from "@/components/ScopesModal";
 
 const empty = {
   property_name: "",
@@ -124,6 +125,7 @@ export default function Properties() {
                   <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{formatPhoneDisplay(p.property_contact_phone)}</td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1">
+                      <ScopesButton propertyId={p.id} testIdPrefix="property-scopes" />
                       <button data-testid={`edit-property-${p.id}`} onClick={() => openEdit(p)} className="p-1.5 hover:bg-zinc-200 rounded-sm"><Pencil className="w-3.5 h-3.5" /></button>
                       <button data-testid={`delete-property-${p.id}`} onClick={() => remove(p)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>

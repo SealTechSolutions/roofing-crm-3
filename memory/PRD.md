@@ -7,7 +7,9 @@ Full-stack CRM for a commercial roofing/construction business with Auth (JWT), D
 Production-ready PWA CRM. JWT auth, Visual Deals Kanban, offline-capable field camera, ReportLab PDF generation (Assessments, Proposals, Spec Sheets, Brochures, Work Orders), In-App Scope Editor, Public Proposal & Subcontractor Work Order E-signing, Material Calculator with sizing/warranties/auto-sync, category-aware email routing, custom Work Order/Scope PDF rendering with signatures, admin-only Assigned Rep tracking.
 
 ## Recently completed
-- 2026-02 — **Work Order Phase 2**: drawn-signature canvas on Subcontractor WO E-sign (Type ⇄ Draw tabs, retina-crisp HTML5 canvas with touch + mouse), and Change Order document variant (separate "Send Change Order" entry point on deal page, blank-description draft, amber UI accents, no spec-sheet attachment, no Sub Engaged stage flip on CO signature). End-to-end tested with both typed cursive and drawn PNG signatures.
+- 2026-02 — **Scopes discoverability**: new `/api/scopes` endpoint + sidebar **Scopes** page (list every scope-ready deal with search, roof-type facets, and per-row Download button), Dashboard **Recent Scopes** widget (top 6 with one-click download), and **"Scopes (N)"** chip on every Contact / Property row that opens a mini-modal listing that record's scopes.
+- 2026-02 — Assessment PDF page-9 & page-10 fixes: aligned blue & green callout boxes to 7.3" width matching their tables, trimmed 1/8" padding, `KeepTogether` on Restoration Suitability tail keeps whole block on page 9, Option 3 fits back on page 10 (doc 14→12 pages).
+- 2026-02 — **Work Order Phase 2**: drawn-signature canvas + Change Order variant.
 - 2026-02 — Calculator: Overhead default → 30%, Shipping → 20%, Handling → 12%.
 - 2026-02 — Calculator: Custom Add-Ons section now available on **Everest/Silicone** vendor (previously WC-only).
 - 2026-02 — Calculator: Added "Spray Elastic Cement" add-on row (WC).

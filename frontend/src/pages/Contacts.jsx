@@ -3,6 +3,7 @@ import { api, formatApiError } from "@/lib/api";
 import { Plus, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
+import { ScopesButton } from "@/components/ScopesModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { US_STATES, DEFAULT_STATE } from "@/constants/states";
 import { maskPhoneInput, maskTaxIdInput, formatPhoneDisplay } from "@/lib/format";
@@ -159,6 +160,7 @@ export default function Contacts() {
                   <td className="px-6 py-3 text-zinc-600 text-xs">{[c.city, c.state].filter(Boolean).join(", ")}</td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1">
+                      <ScopesButton contactId={c.id} testIdPrefix="contact-scopes" />
                       <button data-testid={`edit-contact-${c.id}`} onClick={() => openEdit(c)} className="p-1.5 hover:bg-zinc-200 rounded-sm"><Pencil className="w-3.5 h-3.5" /></button>
                       <button data-testid={`delete-contact-${c.id}`} onClick={() => setConfirmTarget(c)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>

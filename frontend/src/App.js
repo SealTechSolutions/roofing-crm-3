@@ -35,6 +35,7 @@ import Tasks from "@/pages/Tasks";
 import Integrations from "@/pages/Integrations";
 import Schedule from "@/pages/Schedule";
 import FieldCapture from "@/pages/FieldCapture";
+import Scopes from "@/pages/Scopes";
 import PWAControls from "@/components/PWAControls";
 import "@/App.css";
 
@@ -121,6 +122,7 @@ function App() {
               <Route path="/materials" element={<Materials />} />
               <Route path="/library" element={<Library />} />
               <Route path="/assessments" element={<Assessments />} />
+              <Route path="/scopes" element={<Scopes />} />
               <Route path="/catalog" element={<ProductCatalog />} />
               <Route path="/calculator" element={<Calculator />} />
               <Route path="/assessments/new" element={<AssessmentEditor />} />

@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { Link } from "react-router-dom";
-import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail, AlarmClock, Flame, Send, CalendarDays, Clock, MapPin, GraduationCap, ArrowRight, RotateCcw, Trash2 as TrashIcon } from "lucide-react";
+import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wrench, Wallet, Truck, PackageCheck, ChevronRight, BookMarked, ShieldAlert, Mail, AlarmClock, Flame, Send, CalendarDays, Clock, MapPin, GraduationCap, ArrowRight, RotateCcw, Trash2 as TrashIcon, FileText, Download } from "lucide-react";
 import { ExportButtons } from "@/components/ExportImport";
 import { toast } from "sonner";
+import { openScopePdf } from "@/components/ScopesModal";
 
 const KPI = ({ label, value, hint, icon: Icon, testId }) => (
   <div className="bg-white border border-zinc-200 p-6 rounded-sm" data-testid={testId}>
@@ -22,11 +23,16 @@ export default function Dashboard() {
   const [revWindow, setRevWindow] = useState("ytd");
   const [revData, setRevData] = useState(null);
   const [motion, setMotion] = useState(null);
+  // Top 6 scope-ready deals for the Recent Scopes widget. Fetched from the
+  // same /scopes endpoint the /scopes page uses so ordering stays
+  // consistent between the dashboard shortcut and the full list.
+  const [recentScopes, setRecentScopes] = useState([]);
 
   useEffect(() => {
     api.get("/dashboard/summary").then((r) => setData(r.data));
     api.get("/deals").then((r) => setDeals(r.data));
     api.get("/dashboard/materials-in-motion").then((r) => setMotion(r.data)).catch(() => {});
+    api.get("/scopes", { params: { limit: 6 } }).then((r) => setRecentScopes(r.data || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -192,6 +198,62 @@ export default function Dashboard() {
         <div className="px-6 py-3 border-t border-zinc-100 text-[10px] uppercase tracking-wider text-zinc-500">
           <span className="text-blue-700 font-bold">Note:</span> &quot;Received&quot; currently uses Paid milestone amounts as a proxy. Once invoicing is added, this will track actual invoiced + collected amounts.
         </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-sm">
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-blue-700" />
+            <h2 className="font-heading text-lg font-bold tracking-tight">Recent Scopes</h2>
+          </div>
+          <Link to="/scopes" data-testid="see-all-scopes" className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 hover:underline">
+            See All →
+          </Link>
+        </div>
+        {recentScopes.length === 0 ? (
+          <div className="p-8 text-center">
+            <div className="text-sm text-zinc-500 mb-1">No scopes yet.</div>
+            <div className="text-xs text-zinc-400">Open a deal and set the <b>Proposed Roof Type</b> to enable scope generation.</div>
+          </div>
+        ) : (
+          <table className="w-full text-sm" data-testid="recent-scopes-table">
+            <thead>
+              <tr className="border-b-2 border-zinc-950 text-left">
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider">Project</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider">Roof Type</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider">Contact</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Amount</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Scope</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentScopes.map((s) => (
+                <tr key={s.id} className="border-b border-zinc-100 hover:bg-zinc-50" data-testid={`dashboard-scope-row-${s.id}`}>
+                  <td className="px-6 py-3">
+                    <Link to={`/deals/${s.id}`} className="font-bold text-zinc-950 hover:text-blue-700">{s.title || "(untitled)"}</Link>
+                  </td>
+                  <td className="px-6 py-3">
+                    <span className="inline-flex items-center px-2 h-6 text-[10px] font-bold uppercase tracking-wider bg-zinc-100 text-zinc-700 rounded-sm">
+                      {s.roof_type || "—"}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3 text-zinc-600 text-xs">{s.primary_contact_name || "—"}</td>
+                  <td className="px-6 py-3 text-right font-mono text-xs">{formatCurrency(s.chosen_amount)}</td>
+                  <td className="px-6 py-3 text-right">
+                    <button
+                      onClick={() => openScopePdf(s.id, s.title)}
+                      data-testid={`dashboard-scope-download-${s.id}`}
+                      title="Download / view the scope PDF"
+                      className="inline-flex items-center gap-1 px-2 h-7 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm"
+                    >
+                      <Download className="w-3 h-3" /> Scope
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div className="bg-white border border-zinc-200 rounded-sm">

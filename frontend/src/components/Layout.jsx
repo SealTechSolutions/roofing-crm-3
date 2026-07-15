@@ -16,6 +16,7 @@ const ALL_NAV = [
   { to: "/tasks", label: "Tasks", icon: CheckSquare, testId: "nav-tasks" },
   { to: "/field", label: "Field Camera", icon: Camera, testId: "nav-field" },
   { to: "/assessments", label: "Assessments", icon: ClipboardCheck, testId: "nav-assessments" },
+  { to: "/scopes", label: "Scopes", icon: FileText, testId: "nav-scopes" },
   { to: "/catalog", label: "Product Catalog", icon: Package, testId: "nav-catalog" },
   { to: "/maintenance", label: "Maintenance", icon: Wrench, testId: "nav-maintenance" },
   { to: "/invoices", label: "Invoices", icon: Receipt, testId: "nav-invoices" },

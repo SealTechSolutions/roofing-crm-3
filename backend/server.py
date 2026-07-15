@@ -4606,6 +4606,96 @@ async def deal_sign_link(deal_id: str, current: dict = Depends(get_current_user)
     }
 
 
+@api_router.get("/scopes")
+async def list_scopes(
+    contact_id: Optional[str] = Query(None),
+    property_id: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=500),
+    _user=Depends(get_current_user),
+):
+    """Lightweight list of scope-ready deals — used by the sidebar Scopes page,
+    the Dashboard "Recent Scopes" widget, and the per-Contact/Property Scopes
+    drill-down. A deal is considered "scope-ready" when it has a
+    proposed_roof_type set (that's what drives which spec-sheet template
+    renders).
+
+    Filters:
+      - contact_id: only scopes tied to that contact (deal.contact_id or in deal.contact_ids)
+      - property_id: only scopes tied to that property
+      - q: substring match against deal.title / property_name / primary_contact_name
+      - limit: cap the number of returned rows (default 200, max 500)
+
+    Returns rows sorted by updated_at desc (falling back to created_at) so the
+    UI's "recent" ordering is server-authoritative.
+    """
+    query: dict = {"is_deleted": {"$ne": True}, "proposed_roof_type": {"$exists": True, "$nin": [None, ""]}}
+    if contact_id:
+        # A deal can either point to a single contact_id OR have a list of contact_ids
+        query["$or"] = [{"contact_id": contact_id}, {"contact_ids": contact_id}]
+    if property_id:
+        query["property_id"] = property_id
+    projection = {
+        "_id": 0, "id": 1, "title": 1, "proposed_roof_type": 1, "roof_type_label": 1,
+        "chosen_amount": 1, "stage": 1, "status": 1, "updated_at": 1, "created_at": 1,
+        "contact_id": 1, "property_id": 1, "assigned_user_id": 1, "assigned_user_name": 1,
+        "primary_contact_name": 1, "property_name": 1, "property_address": 1,
+    }
+    docs = await db.deals.find(query, projection).to_list(length=1000)
+
+    # Enrich w/ contact & property names for rows where the joined fields
+    # weren't denormalized on write. Keeps the list page useful even for
+    # older deals imported before those denormalized fields existed.
+    contact_ids = list({d.get("contact_id") for d in docs if d.get("contact_id") and not d.get("primary_contact_name")})
+    prop_ids = list({d.get("property_id") for d in docs if d.get("property_id") and not d.get("property_name")})
+    contact_map: dict = {}
+    property_map: dict = {}
+    if contact_ids:
+        async for c in db.contacts.find({"id": {"$in": contact_ids}}, {"_id": 0, "id": 1, "contact_name": 1, "company_name": 1}):
+            contact_map[c["id"]] = c.get("contact_name") or c.get("company_name") or ""
+    if prop_ids:
+        async for p in db.properties.find({"id": {"$in": prop_ids}}, {"_id": 0, "id": 1, "property_name": 1, "address": 1}):
+            property_map[p["id"]] = {"name": p.get("property_name") or "", "address": p.get("address") or ""}
+
+    def _q_match(d: dict) -> bool:
+        if not q:
+            return True
+        needle = q.lower().strip()
+        haystack = " ".join([
+            (d.get("title") or ""),
+            (d.get("primary_contact_name") or contact_map.get(d.get("contact_id") or "", "")),
+            (d.get("property_name") or (property_map.get(d.get("property_id") or "") or {}).get("name", "")),
+            (d.get("property_address") or (property_map.get(d.get("property_id") or "") or {}).get("address", "")),
+            (d.get("roof_type_label") or d.get("proposed_roof_type") or ""),
+        ]).lower()
+        return needle in haystack
+
+    out = []
+    for d in docs:
+        if not _q_match(d):
+            continue
+        pmap = property_map.get(d.get("property_id") or "") or {}
+        out.append({
+            "id": d.get("id"),
+            "title": d.get("title"),
+            "roof_type": d.get("roof_type_label") or d.get("proposed_roof_type"),
+            "chosen_amount": d.get("chosen_amount") or 0,
+            "stage": d.get("stage"),
+            "status": d.get("status"),
+            "contact_id": d.get("contact_id"),
+            "property_id": d.get("property_id"),
+            "assigned_user_id": d.get("assigned_user_id"),
+            "assigned_user_name": d.get("assigned_user_name"),
+            "primary_contact_name": d.get("primary_contact_name") or contact_map.get(d.get("contact_id") or "", ""),
+            "property_name": d.get("property_name") or pmap.get("name", ""),
+            "property_address": d.get("property_address") or pmap.get("address", ""),
+            "updated_at": d.get("updated_at"),
+            "created_at": d.get("created_at"),
+        })
+    out.sort(key=lambda x: x.get("updated_at") or x.get("created_at") or "", reverse=True)
+    return out[:limit]
+
+
 @api_router.get("/deals/{deal_id}/spec-sheet.pdf")
 async def deal_spec_sheet(
     deal_id: str,
