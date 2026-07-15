@@ -1,9 +1,9 @@
 """SealTech Building Solutions — sales brochures.
 
-Three brochures total (this file currently ships #1):
+Three brochures ship from this module:
   1. FARM-only       — Fluid Applied Reinforced Membrane (Western Colloid).
-  2. Silicone-only   — Everest Silkoxy systems (planned).
-  3. FARM + Silicone — combined, FARM-led with 1-2 silicone pages (planned).
+  2. Silicone-only   — Everest Silkoxy silicone restoration systems.
+  3. FARM + Silicone — FARM-led combined pitch with a side-by-side comparison.
 
 All brochures share the same brand styling (blue + bronze, matching the spec
 sheet PDFs) and pull their photos from `/app/backend/brochure_assets/`. The
@@ -436,6 +436,559 @@ def build_farm_brochure() -> bytes:
 
 
 # =====================================================================
+# Brochure #2 — Silicone Restoration (Everest Silkoxy)
+# =====================================================================
+def _new_doc(title: str) -> tuple:
+    """Boilerplate shared by all brochure builders — same margins, footer,
+    frame, and buffer setup. Returns (doc, buf, frame_ready)."""
+    buf = BytesIO()
+    doc = BaseDocTemplate(
+        buf, pagesize=LETTER,
+        leftMargin=0.5 * inch, rightMargin=0.5 * inch,
+        topMargin=0.45 * inch, bottomMargin=0.55 * inch,
+        title=title, author="SealTech Building Solutions",
+    )
+    frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height,
+                  leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+    doc.addPageTemplates([PageTemplate(id="main", frames=[frame], onPage=_draw_footer)])
+    return doc, buf
+
+
+def build_silicone_brochure() -> bytes:
+    """SealTech-branded 6-page sales brochure for Everest Silkoxy silicone
+    restoration systems.
+
+    Layout mirrors the FARM brochure so the two documents feel like a set
+    when a rep leaves both with a prospect — same cover treatment, same
+    footer, same closing CTA band. The differentiation is in the messaging:
+    silicone leads on ponding-water resilience, 89%+ solar reflectivity, and
+    NDL warranty tiers up to 25 years at meaningfully lower cost/SF than a
+    tear-off replacement.
+    """
+    s = _styles()
+    doc, buf = _new_doc("SealTech Building Solutions — Silicone Restoration Systems")
+    story = []
+
+    # ============ PAGE 1 — Cover ============
+    if os.path.exists(LOGO):
+        story.append(_image(LOGO, 3.0 * inch, 1.0 * inch))
+    story.append(Spacer(1, 0.05 * inch))
+    story.append(_image(os.path.join(ASSETS, "hero_aerial.jpg"), 7.5 * inch, 3.6 * inch))
+    story.append(Spacer(1, 0.10 * inch))
+    story.append(_section_band("Silicone Roof Restoration Systems", s, color=BLUE))
+    story.append(Spacer(1, 0.10 * inch))
+    story.append(Paragraph(
+        "<b>The Fastest, Cleanest Way to Waterproof &amp; Restore a Low-Slope Roof</b>",
+        s["h2"],
+    ))
+    story.append(Paragraph(
+        "One-coat. Impermeable to water. Reflects up to <b>89% of solar radiation</b>. "
+        "No tear-offs, no landfill waste, and NDL warranty options through 25 years — at a "
+        "fraction of the cost of a full replacement.",
+        s["lead"],
+    ))
+    story.append(Spacer(1, 0.10 * inch))
+    cta = Table(
+        [[Paragraph(f"CALL US NOW — <b>{PHONE}</b>", s["tagline"])]],
+        colWidths=[7.5 * inch],
+    )
+    cta.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), BRONZE),
+        ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+    ]))
+    story.append(cta)
+    story.append(PageBreak())
+
+    # ============ PAGE 2 — What is silicone restoration? ============
+    story.append(Paragraph("Silicone Roof Restoration", s["h1"]))
+    story.append(Paragraph(
+        "One-component. Solvent-free. Cures to a permanently waterproof membrane.",
+        s["kicker"],
+    ))
+    story.append(Spacer(1, 0.08 * inch))
+
+    left_col = [
+        Paragraph("<b>What is a Silicone Roof Restoration?</b>", s["h3"]),
+        Paragraph(
+            "Silicone restoration is a single-component, solvent-free liquid membrane sprayed or "
+            "rolled directly over your existing roof. Once cured, it forms a seamless, monolithic "
+            "surface that is <b>impermeable to water</b> — silicone does not re-emulsify, "
+            "chalk, or degrade in ponding water the way acrylic or asphalt-based coatings do.",
+            s["body"],
+        ),
+        Paragraph(
+            "Because the system is installed <b>over the existing roof</b>, there is no tear-off, "
+            "no exposed substrate, and no landfill waste. A typical restoration is complete in a "
+            "fraction of the time (and cost) of a replacement — and the roof stays in service the "
+            "entire time.",
+            s["body"],
+        ),
+        Paragraph(
+            "Silicone is uniquely suited to <b>ponding-water conditions</b>, extreme UV, and "
+            "buildings where a shorter install window matters. Backed by up to a 25-year NDL "
+            "warranty from Everest Systems, with an optional granule finish for hail and "
+            "walkability.",
+            s["body"],
+        ),
+    ]
+    right_col = [
+        _image(os.path.join(ASSETS, "sub_roof_detail.jpg"), 3.3 * inch, 2.2 * inch),
+        Spacer(1, 0.10 * inch),
+        Paragraph("<b>The Benefits</b>", s["h3"]),
+        _bullet_block([
+            "<b>NDL warranty options: 10 / 15 / 20 / 25 year</b> — labor + materials.",
+            "<b>Impermeable to water</b> — engineered for ponding-water conditions.",
+            "One-coat application — dramatically faster install than multi-layer coatings.",
+            "Reflects up to <b>89% of solar radiation</b> → measurable energy savings.",
+            "<b>No tear-offs.</b> Installs over TPO, EPDM, PVC, modbit, metal, foam.",
+            "Optional <b>ceramic-granule finish</b> for FM 4470 hail resistance &amp; walkability.",
+            "Solvent-free · low VOC · Energy Star &amp; CRRC listed.",
+            "<b>Renewable</b> — recoat before warranty expiration to extend the warranty period.",
+        ], s),
+    ]
+    body_table = Table([[left_col, right_col]], colWidths=[3.9 * inch, 3.6 * inch])
+    body_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(body_table)
+    story.append(PageBreak())
+
+    # ============ PAGE 3 — Why silicone (vs. other coatings) ============
+    story.append(Paragraph("Why Silicone?", s["h1"]))
+    story.append(Spacer(1, 0.06 * inch))
+
+    left_col = [
+        Paragraph("<b>Silicone vs. Acrylic &amp; Urethane Coatings</b>", s["h3"]),
+        _bullet_block([
+            "<b>Silicone stays put in water.</b> Acrylic re-emulsifies (weakens &amp; washes) in ponding water — silicone does not.",
+            "<b>UV inert.</b> Silicone doesn't chalk or dust off over time; the membrane you install in year 1 is the membrane you have in year 20.",
+            "<b>One coat.</b> A single high-solids application replaces the multi-coat systems that acrylics require.",
+            "<b>Solvent-free.</b> Low VOC · safer for occupied buildings and adjacent tenants.",
+            "<b>Cool roof performance.</b> Reflects up to 89% of solar radiation — significant summer HVAC savings.",
+        ], s),
+        Spacer(1, 0.05 * inch),
+        _image(os.path.join(ASSETS, "diagram_layers.png"), 3.5 * inch, 2.3 * inch),
+    ]
+    right_col = [
+        Paragraph("<b>Silicone vs. Full Replacement</b>", s["h3"]),
+        _bullet_block([
+            "Restoration typically costs <b>30–50% less</b> than a tear-off + replacement.",
+            "<b>No downtime.</b> Roof stays fully in service throughout the project — no interior protection, no tenant disruption.",
+            "<b>Zero landfill.</b> No demolition debris, no shingle-and-membrane waste stream.",
+            "<b>Preserves capital.</b> Restoration is often qualified as a repair/maintenance expense, not a capitalized replacement.",
+            "<b>Renewable.</b> Recoat before warranty end to extend another 10-15 years — the roof never has to be torn off.",
+        ], s),
+        Spacer(1, 0.05 * inch),
+        Paragraph(
+            "Silicone is the right answer when the substrate is sound but the surface is worn — "
+            "and it is the only restoration chemistry engineered to <b>thrive in standing water</b>.",
+            s["body"],
+        ),
+    ]
+    body_table = Table([[left_col, right_col]], colWidths=[3.7 * inch, 3.8 * inch])
+    body_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(body_table)
+    story.append(Spacer(1, 0.10 * inch))
+    story.append(Paragraph(
+        "<i>Everest Silkoxy silicone is trusted across warehouse, retail, education, healthcare, "
+        "and municipal portfolios — a preferred choice wherever tear-off cost, downtime, or "
+        "ponding water make replacement impractical.</i>",
+        s["small"],
+    ))
+    story.append(PageBreak())
+
+    # ============ PAGE 4 — Warranty & Finish Options ============
+    story.append(Paragraph("Warranty &amp; Finish Options", s["h1"]))
+    story.append(Spacer(1, 0.04 * inch))
+    story.append(_image(os.path.join(ASSETS, "hvac_detail.jpg"), 7.5 * inch, 2.4 * inch))
+    story.append(Spacer(1, 0.08 * inch))
+
+    story.append(Paragraph("<b>NDL Warranty Tiers</b>", s["h3"]))
+    story.append(Paragraph(
+        "Every SealTech silicone restoration ships with a <b>No-Dollar-Limit</b> manufacturer "
+        "warranty covering both materials AND labor. NDL means there is no per-repair or lifetime "
+        "cap — if a warrantable defect occurs, it is fixed at the manufacturer's expense.",
+        s["body"],
+    ))
+    story.append(Spacer(1, 0.06 * inch))
+
+    war = Table(
+        [[Paragraph(
+            "<b>Available Warranty Terms:</b>&nbsp;&nbsp;10-Year · 15-Year · 20-Year · 25-Year NDL<br/>"
+            "All NDL (No-Dollar-Limit) · Renewable at term end · Transferable to new owner. "
+            "Hail Riders and enhanced Wind Uplift coverage available on all tiers.",
+            s["body"],
+        )]],
+        colWidths=[7.5 * inch],
+    )
+    war.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), LIGHT), ("BOX", (0, 0), (-1, -1), 1, BRONZE),
+        ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+    ]))
+    story.append(war)
+    story.append(Spacer(1, 0.12 * inch))
+
+    finish_left = [
+        Paragraph("<b>Finish Options</b>", s["h3"]),
+        Paragraph(
+            "<b>Standard:</b> Bright White (highest reflectivity — Energy Star &amp; CRRC listed)<br/>"
+            "<b>Premium colors:</b> Grey · Tan · Custom color-match on request<br/>"
+            "<b>Ceramic Granule Finish:</b> Broadcast into the wet silicone for FM 4470 hail "
+            "resistance and increased walkability at HVAC service paths and rooftop equipment.",
+            s["body"],
+        ),
+        Spacer(1, 0.05 * inch),
+        Paragraph(
+            "The granule option is the most common upgrade for hospitals, schools, and any "
+            "building with heavy rooftop foot traffic — the silicone below stays waterproof, "
+            "the granules take the wear.",
+            s["small"],
+        ),
+    ]
+    finish_right = [_image(os.path.join(ASSETS, "staples_center.jpg"), 3.0 * inch, 1.8 * inch)]
+    ft = Table([[finish_left, finish_right]], colWidths=[4.2 * inch, 3.3 * inch])
+    ft.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(ft)
+    story.append(PageBreak())
+
+    # ============ PAGE 5 — Ideal Candidates & Featured Projects ============
+    story.append(Paragraph("Ideal Silicone Candidates", s["h1"]))
+    story.append(Spacer(1, 0.06 * inch))
+    story.append(_image(os.path.join(ASSETS, "featured_facility_aerial.jpg"), 7.5 * inch, 2.6 * inch))
+    story.append(Spacer(1, 0.10 * inch))
+
+    left_col = [
+        Paragraph("<b>Best-Fit Buildings</b>", s["h3"]),
+        _bullet_block([
+            "<b>Ponding-water roofs</b> where drainage can't be economically re-pitched.",
+            "<b>TPO / PVC / EPDM</b> single-plies at 12+ years — surface worn but seams sound.",
+            "<b>Modified-bitumen &amp; BUR</b> roofs approaching end of service life.",
+            "<b>Metal roofs</b> with rusting fastener heads and worn factory paint.",
+            "Buildings where tenant disruption or downtime rules out a full re-roof.",
+            "Facilities in high-UV, high-heat climates where reflectivity delivers HVAC savings.",
+        ], s),
+    ]
+    right_col = [
+        Paragraph("<b>Typical Project Profile</b>", s["h3"]),
+        _bullet_block([
+            "Warehouse &amp; distribution centers: 40,000 – 400,000 SF.",
+            "K-12 school districts (occupied summer install).",
+            "Multi-tenant retail &amp; medical office parks.",
+            "Cold-storage &amp; food-processing plants (reflectivity = compressor savings).",
+            "Municipal buildings, libraries, community centers.",
+        ], s),
+    ]
+    body_table = Table([[left_col, right_col]], colWidths=[3.6 * inch, 3.9 * inch])
+    body_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(body_table)
+    story.append(Spacer(1, 0.12 * inch))
+
+    closer = Table(
+        [[Paragraph(
+            "<b>NDL Warranties Up to 25 Years · One-Coat Install · Impermeable to Water · "
+            "Reflects 89% Solar Radiation</b>",
+            s["white"],
+        )]],
+        colWidths=[7.5 * inch],
+    )
+    closer.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), BLUE),
+        ("TOPPADDING", (0, 0), (-1, -1), 12), ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+        ("LEFTPADDING", (0, 0), (-1, -1), 16), ("RIGHTPADDING", (0, 0), (-1, -1), 16),
+    ]))
+    story.append(closer)
+    story.append(PageBreak())
+
+    # ============ PAGE 6 — Reputation & Contact ============
+    story.append(Paragraph("A Reputation For Quality", s["h1"]))
+    story.append(Spacer(1, 0.04 * inch))
+    story.append(Paragraph(
+        "SealTech Building Solutions is a certified installer of Everest Silkoxy silicone "
+        "restoration systems. We bring the latest spray equipment, our own experienced crews, "
+        "and a single accountable point of contact for every project — from the first roof "
+        "walk to every warranty renewal.",
+        s["body"],
+    ))
+    story.append(Paragraph(
+        "SealTech has earned a <b>100% client approval rating</b>. Our goal is to maintain the "
+        "same 100% positive outcome for every silicone customer.",
+        s["body"],
+    ))
+    story.append(Spacer(1, 0.10 * inch))
+    story.append(_image(os.path.join(ASSETS, "back_cover_aerial.jpg"), 7.5 * inch, 2.6 * inch))
+    story.append(Spacer(1, 0.12 * inch))
+
+    contact = Table(
+        [[Paragraph(
+            f"<b>READY TO STOP THE LEAKS &amp; CUT YOUR COOLING BILL?</b><br/>"
+            f"Call <b>{PHONE}</b>&nbsp;&nbsp;·&nbsp;&nbsp;{EMAIL}&nbsp;&nbsp;·&nbsp;&nbsp;{SITE}",
+            s["tagline"],
+        )]],
+        colWidths=[7.5 * inch],
+    )
+    contact.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), BRONZE),
+        ("TOPPADDING", (0, 0), (-1, -1), 14), ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+        ("LEFTPADDING", (0, 0), (-1, -1), 16), ("RIGHTPADDING", (0, 0), (-1, -1), 16),
+    ]))
+    story.append(contact)
+
+    doc.build(story)
+    buf.seek(0)
+    return buf.read()
+
+
+# =====================================================================
+# Brochure #3 — FARM + Silicone Combined (side-by-side)
+# =====================================================================
+def build_combined_brochure() -> bytes:
+    """FARM-led combined brochure with a side-by-side FARM vs Silicone
+    comparison page and a "which is right for you" decision matrix.
+
+    Purpose: hand to a prospect who is still deciding between the two
+    restoration chemistries. The rep uses this to walk them through the
+    tradeoffs — FARM's lifetime NDL renewability vs silicone's speed,
+    ponding-water resilience, and lower cost/SF — and to help the prospect
+    make an informed call for their specific building.
+    """
+    s = _styles()
+    doc, buf = _new_doc("SealTech Building Solutions — FARM &amp; Silicone Restoration")
+    story = []
+
+    # ============ PAGE 1 — Cover ============
+    if os.path.exists(LOGO):
+        story.append(_image(LOGO, 3.0 * inch, 1.0 * inch))
+    story.append(Spacer(1, 0.05 * inch))
+    story.append(_image(os.path.join(ASSETS, "hero_aerial.jpg"), 7.5 * inch, 3.6 * inch))
+    story.append(Spacer(1, 0.10 * inch))
+    story.append(_section_band("Two Restoration Systems. One Trusted Installer.", s, color=BLUE))
+    story.append(Spacer(1, 0.10 * inch))
+    story.append(Paragraph(
+        "<b>Custom Fluid Applied Reinforced Membrane · Everest Silkoxy Silicone</b>",
+        s["h2"],
+    ))
+    story.append(Paragraph(
+        "Two purpose-built restoration chemistries, both installed by SealTech's own crews, "
+        "both backed by NDL manufacturer warranties. Choose the system that best fits your "
+        "building, budget, and timeline — and we'll deliver it with the same 100% approval "
+        "rating we've earned on every job.",
+        s["lead"],
+    ))
+    story.append(Spacer(1, 0.10 * inch))
+    cta = Table([[Paragraph(f"CALL US NOW — <b>{PHONE}</b>", s["tagline"])]], colWidths=[7.5 * inch])
+    cta.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), BRONZE),
+        ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+    ]))
+    story.append(cta)
+    story.append(PageBreak())
+
+    # ============ PAGE 2 — Side-by-side comparison matrix ============
+    story.append(Paragraph("FARM vs. Silicone — Side by Side", s["h1"]))
+    story.append(Paragraph(
+        "The two chemistries excel in different ways. Here's how they compare on the "
+        "criteria that matter most to a building owner.",
+        s["kicker"],
+    ))
+    story.append(Spacer(1, 0.10 * inch))
+
+    # Comparison table — first row is column headers on a BLUE band
+    hdr = [Paragraph("<b>Attribute</b>", s["white"]),
+           Paragraph("<b>FARM</b><br/><font size='8'>Fluid Applied Reinforced Membrane</font>", s["white"]),
+           Paragraph("<b>Silicone</b><br/><font size='8'>Everest Silkoxy</font>", s["white"])]
+    rows = [
+        ["Warranty terms",
+         "10 / 15 / 20 / 25-yr NDL — <b>Lifetime Renewable</b>",
+         "10 / 15 / 20 / 25-yr NDL — Renewable at term end"],
+        ["Membrane build",
+         "~<b>160 mil</b>, multi-layered with 2 stitchbonded polyester fabric layers",
+         "22–40 mil single-component silicone, one coat"],
+        ["Ponding-water performance",
+         "Excellent (acrylic top coat requires drainage)",
+         "<b>Best-in-class</b> — impermeable, does not re-emulsify"],
+        ["Install speed",
+         "Multi-day multi-coat system",
+         "<b>Fastest</b> — single-coat spray application"],
+        ["Reflectivity",
+         "Up to 87% (ElastaHyde acrylic top-coat)",
+         "Up to <b>89%</b> — Energy Star &amp; CRRC listed"],
+        ["Hail rating",
+         "FM 4470 severe-hail rated (with hail rider)",
+         "FM 4470 with ceramic granule finish"],
+        ["Repairability",
+         "<b>Easiest</b> — repair anywhere in the field with the same emulsion",
+         "Requires silicone-compatible patch material"],
+        ["Typical cost / SF*",
+         "Higher (multi-layer reinforced system)",
+         "<b>Lower</b> (single-coat)"],
+        ["Best fit",
+         "Owners who plan to <b>never re-roof again</b>",
+         "Owners who need <b>ponding-water fix, fast install, tighter budget</b>"],
+    ]
+    grid = [hdr] + [[Paragraph(c[0], s["body"]),
+                     Paragraph(c[1], s["body"]),
+                     Paragraph(c[2], s["body"])] for c in rows]
+    t = Table(grid, colWidths=[1.8 * inch, 2.85 * inch, 2.85 * inch])
+    t.setStyle(TableStyle([
+        # Header row
+        ("BACKGROUND", (0, 0), (-1, 0), BLUE),
+        ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+        # Body zebra
+        ("BACKGROUND", (0, 1), (-1, 1), LIGHT),
+        ("BACKGROUND", (0, 3), (-1, 3), LIGHT),
+        ("BACKGROUND", (0, 5), (-1, 5), LIGHT),
+        ("BACKGROUND", (0, 7), (-1, 7), LIGHT),
+        ("BACKGROUND", (0, 9), (-1, 9), LIGHT),
+        # Global cell styling
+        ("VALIGN", (0, 1), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("BOX", (0, 0), (-1, -1), 0.75, BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 0.10 * inch))
+    story.append(Paragraph(
+        "<i>*Cost varies by roof size, existing substrate, warranty tier, and finish options. "
+        "SealTech provides transparent side-by-side pricing on every proposal so you can make "
+        "a like-for-like comparison for your specific building.</i>",
+        s["small"],
+    ))
+    story.append(PageBreak())
+
+    # ============ PAGE 3 — FARM Deep-Dive ============
+    story.append(Paragraph("FARM — When Renewability Matters Most", s["h1"]))
+    story.append(Paragraph(
+        "Fluid Applied Reinforced Membrane — Western Colloid, 50+ years proven.",
+        s["kicker"],
+    ))
+    story.append(Spacer(1, 0.08 * inch))
+    left_col = [
+        Paragraph("<b>What FARM Is</b>", s["h3"]),
+        Paragraph(
+            "A ~160-mil, multi-layered, reinforced membrane <b>manufactured on your roof</b>. "
+            "Waterproof emulsion + stitchbonded polyester + premium acrylic + a second polyester "
+            "layer + reflective radiant top-coat. 100% seamless, monolithic, fully-adhered.",
+            s["body"],
+        ),
+        Spacer(1, 0.04 * inch),
+        Paragraph("<b>Why Choose FARM</b>", s["h3"]),
+        _bullet_block([
+            "<b>Lifetime Renewable NDL warranty</b> — the roof <i>never has to be replaced</i>.",
+            "3–4× stronger than a factory single-ply — no fasteners, no seams.",
+            "Highest reinforcement of any restoration chemistry — long-term hail and impact.",
+            "Repair anywhere with the same materials for the life of the roof.",
+            "Transferable warranty adds value if you sell the building.",
+        ], s),
+    ]
+    right_col = [_image(os.path.join(ASSETS, "sub_roof_detail.jpg"), 3.5 * inch, 2.4 * inch),
+                 Spacer(1, 0.08 * inch),
+                 Paragraph("<b>Ideal When</b>", s["h3"]),
+                 _bullet_block([
+                     "You own the building long-term (or plan to sell to another long-term owner).",
+                     "Hail exposure is high (FM 4470 severe-hail rated).",
+                     "You want to eliminate re-roof capex from your future budget.",
+                     "Your board / accounting treats a lifetime-renewable membrane as an asset.",
+                 ], s)]
+    body_table = Table([[left_col, right_col]], colWidths=[3.9 * inch, 3.6 * inch])
+    body_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    story.append(body_table)
+    story.append(PageBreak())
+
+    # ============ PAGE 4 — Silicone Deep-Dive ============
+    story.append(Paragraph("Silicone — When Speed &amp; Water Matter Most", s["h1"]))
+    story.append(Paragraph(
+        "Everest Silkoxy silicone restoration — impermeable, one-coat, budget-smart.",
+        s["kicker"],
+    ))
+    story.append(Spacer(1, 0.08 * inch))
+    left_col = [
+        Paragraph("<b>What Silicone Is</b>", s["h3"]),
+        Paragraph(
+            "A single-component, solvent-free liquid silicone applied in one coat directly "
+            "over the existing roof. Cures to a seamless, monolithic surface that is "
+            "impermeable to water and reflects up to 89% of solar radiation.",
+            s["body"],
+        ),
+        Spacer(1, 0.04 * inch),
+        Paragraph("<b>Why Choose Silicone</b>", s["h3"]),
+        _bullet_block([
+            "<b>Best for ponding water</b> — silicone does not re-emulsify or chalk.",
+            "<b>Fastest install</b> — one coat, minimum downtime.",
+            "<b>Lower cost/SF</b> than FARM at the same NDL warranty tier.",
+            "Optional ceramic-granule finish for hail and rooftop foot-traffic.",
+            "Renewable — recoat before warranty end to extend the term.",
+        ], s),
+    ]
+    right_col = [_image(os.path.join(ASSETS, "hvac_detail.jpg"), 3.5 * inch, 2.4 * inch),
+                 Spacer(1, 0.08 * inch),
+                 Paragraph("<b>Ideal When</b>", s["h3"]),
+                 _bullet_block([
+                     "The roof has ponding water that can't be economically re-pitched.",
+                     "Tenant disruption or install window is tight — you need it done fast.",
+                     "Budget is fixed and cost/SF is the deciding factor.",
+                     "Reflectivity for cooling savings is a stated goal (Energy Star projects).",
+                 ], s)]
+    body_table = Table([[left_col, right_col]], colWidths=[3.9 * inch, 3.6 * inch])
+    body_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    story.append(body_table)
+    story.append(PageBreak())
+
+    # ============ PAGE 5 — Reputation & Contact ============
+    story.append(Paragraph("A Reputation For Quality", s["h1"]))
+    story.append(Spacer(1, 0.04 * inch))
+    story.append(Paragraph(
+        "SealTech Building Solutions is a certified installer of both <b>Western Colloid FARM</b> "
+        "and <b>Everest Silkoxy silicone</b> systems. Our reps will walk your roof, run the "
+        "numbers on both, and give you a transparent side-by-side proposal so you can pick the "
+        "system that's genuinely right for your building — not the one that's easiest to sell.",
+        s["body"],
+    ))
+    story.append(Paragraph(
+        "SealTech has earned a <b>100% client approval rating</b>. Our goal is to maintain the "
+        "same 100% positive outcome for every customer — regardless of which chemistry they choose.",
+        s["body"],
+    ))
+    story.append(Spacer(1, 0.10 * inch))
+    story.append(_image(os.path.join(ASSETS, "back_cover_aerial.jpg"), 7.5 * inch, 2.6 * inch))
+    story.append(Spacer(1, 0.12 * inch))
+
+    contact = Table(
+        [[Paragraph(
+            f"<b>NOT SURE WHICH SYSTEM IS RIGHT FOR YOUR BUILDING?</b><br/>"
+            f"Call for a free roof walk &amp; side-by-side proposal — <b>{PHONE}</b>&nbsp;&nbsp;·&nbsp;&nbsp;{EMAIL}&nbsp;&nbsp;·&nbsp;&nbsp;{SITE}",
+            s["tagline"],
+        )]],
+        colWidths=[7.5 * inch],
+    )
+    contact.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), BRONZE),
+        ("TOPPADDING", (0, 0), (-1, -1), 14), ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+        ("LEFTPADDING", (0, 0), (-1, -1), 16), ("RIGHTPADDING", (0, 0), (-1, -1), 16),
+    ]))
+    story.append(contact)
+
+    doc.build(story)
+    buf.seek(0)
+    return buf.read()
+
+
+# =====================================================================
 # Router
 # =====================================================================
 def create_router(get_current_user):
@@ -451,9 +1004,33 @@ def create_router(get_current_user):
         return StreamingResponse(
             BytesIO(data),
             media_type="application/pdf",
-            headers={
-                "Content-Disposition": 'inline; filename="SealTech-FARM-Brochure.pdf"',
-            },
+            headers={"Content-Disposition": 'inline; filename="SealTech-FARM-Brochure.pdf"'},
+        )
+
+    @router.get("/silicone.pdf")
+    async def silicone_brochure(_=Depends(get_current_user)):
+        """Download the 6-page Silicone Restoration (Everest Silkoxy) brochure."""
+        try:
+            data = build_silicone_brochure()
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=500, detail=f"Brochure asset missing: {e}")
+        return StreamingResponse(
+            BytesIO(data),
+            media_type="application/pdf",
+            headers={"Content-Disposition": 'inline; filename="SealTech-Silicone-Brochure.pdf"'},
+        )
+
+    @router.get("/combined.pdf")
+    async def combined_brochure(_=Depends(get_current_user)):
+        """Download the 5-page FARM + Silicone side-by-side comparison brochure."""
+        try:
+            data = build_combined_brochure()
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=500, detail=f"Brochure asset missing: {e}")
+        return StreamingResponse(
+            BytesIO(data),
+            media_type="application/pdf",
+            headers={"Content-Disposition": 'inline; filename="SealTech-FARM-vs-Silicone-Brochure.pdf"'},
         )
 
     return router

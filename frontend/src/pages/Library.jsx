@@ -104,16 +104,16 @@ export default function Library() {
           />
           <BrochureCard
             title="Silicone Restoration"
-            blurb="Coming next — Everest Silkoxy systems, NDL upgrade options, granule finish."
-            href={null}
+            blurb="6-page Silkoxy pitch — NDL warranty tiers, ponding-water resilience, granule finish option, ideal candidates."
+            href="/brochures/silicone.pdf"
             filename="SealTech-Silicone-Brochure.pdf"
             testId="brochure-silicone"
           />
           <BrochureCard
             title="FARM + Silicone Combined"
-            blurb="Coming next — FARM-led overview with 1–2 pages on silicone for whichever the customer prefers."
-            href={null}
-            filename="SealTech-Combined-Brochure.pdf"
+            blurb="5-page side-by-side comparison — decision matrix, deep-dive on each, use this when the customer is still deciding."
+            href="/brochures/combined.pdf"
+            filename="SealTech-FARM-vs-Silicone-Brochure.pdf"
             testId="brochure-combined"
           />
         </div>
