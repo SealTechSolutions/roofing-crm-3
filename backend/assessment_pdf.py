@@ -721,10 +721,19 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         s["body"],
     ))
     story.append(Spacer(1, 4))
-    story.append(_text_box(a.get("restoration_analysis") or "", num_rows=6, row_height=0.23 * inch))
+    # Reserve 4 rows (down from 6) for the analysis text box — this frees
+    # up ~0.46 inch on page 9 so the 3-row Factors Supporting Restoration
+    # table below fits on the same page instead of spilling its last row
+    # onto an otherwise empty page 10.
+    story.append(_text_box(a.get("restoration_analysis") or "", num_rows=4, row_height=0.23 * inch))
 
-    story.append(Spacer(1, 8))
-    story.append(Paragraph("<b>Factors Supporting Restoration</b>", s["h3"]))
+    story.append(Spacer(1, 6))
+    # Wrap the "Factors Supporting Restoration" header + 2-column check-box
+    # table in KeepTogether so ReportLab never splits the last row onto a
+    # new page (previously the third row — Compatible Substrate / Recent
+    # Inspection — would spill onto page 10 leaving that page nearly
+    # empty). Slightly tighter row padding (2pt instead of 3pt) also frees
+    # up a few points, giving the block extra headroom to fit on page 9.
     factor_items = [
         ("Membrane Largely Intact", a.get("factor_membrane_intact")),
         ("Minimal Water Intrusion", a.get("factor_minimal_water_intrusion")),
@@ -743,8 +752,12 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         ])
     f_t = Table(factor_rows, colWidths=[3.65 * inch, 3.65 * inch])
     f_t.hAlign = "LEFT"
-    f_t.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
-    story.append(f_t)
+    f_t.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
+    story.append(KeepTogether([
+        Paragraph("<b>Factors Supporting Restoration</b>", s["h3"]),
+        Spacer(1, 2),
+        f_t,
+    ]))
     story.append(PageBreak())
 
     # ============================================================
