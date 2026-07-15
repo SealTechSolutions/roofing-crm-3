@@ -685,14 +685,16 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
 
     # Restoration-first note — supports the SealTech business model where the
     # vast majority of low-scoring roofs remain candidates for restoration.
+    # Wrapped in a 7.3" Table so it aligns edge-to-edge with the SCORE /
+    # INTERPRETATION table directly above (previously the paragraph's own
+    # borderPadding extended slightly past the table's right edge). Padding
+    # tightened from 6pt to 4pt to shave ~1/8" (9pt) of height off page 9.
     story.append(Spacer(1, 6))
     note_style = ParagraphStyle(
         "restore_note", parent=s["body_sm"], fontName="Helvetica",
         fontSize=8, leading=11, textColor=colors.HexColor("#404040"),
-        backColor=colors.HexColor("#EFF6FF"), borderColor=BLUE,
-        borderWidth=0.5, borderPadding=6,
     )
-    story.append(Paragraph(
+    note_para = Paragraph(
         "<b>Restoration-First Note:</b> Virtually every low-slope roof system can be restored, "
         "including those scoring below 60. Roof replacement is only required when (a) the roof "
         "<b>insulation is saturated</b> beyond cost-effective drying / replacement, or (b) the "
@@ -700,7 +702,19 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         "\u2014 extending service life, preserving capital, and avoiding the disruption and landfill "
         "impact of a tear-off.",
         note_style,
-    ))
+    )
+    note_box = Table([[note_para]], colWidths=[7.3 * inch])
+    note_box.hAlign = "LEFT"
+    note_box.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#EFF6FF")),
+        ("BOX", (0, 0), (-1, -1), 0.5, BLUE),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    story.append(note_box)
 
     story.append(Spacer(1, 6))
     story.append(Paragraph("<b>Score Drivers</b>", s["h3"]))
