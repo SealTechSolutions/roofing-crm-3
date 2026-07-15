@@ -702,38 +702,24 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
         note_style,
     ))
 
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 6))
     story.append(Paragraph("<b>Score Drivers</b>", s["h3"]))
     story.append(Paragraph('<font color="#16A34A"><b>POSITIVE FACTORS</b></font>', s["label"]))
     story.append(Spacer(1, 2))
-    story.append(_finding_box(a.get("positive_factors", []), num_slots=3, row_height=0.28 * inch))
-    story.append(Spacer(1, 8))
+    story.append(_finding_box(a.get("positive_factors", []), num_slots=3, row_height=0.26 * inch))
+    story.append(Spacer(1, 5))
     story.append(Paragraph('<font color="#B91C1C"><b>NEGATIVE FACTORS</b></font>', s["label"]))
     story.append(Spacer(1, 2))
-    story.append(_finding_box(a.get("negative_factors", []), num_slots=3, row_height=0.28 * inch))
+    story.append(_finding_box(a.get("negative_factors", []), num_slots=3, row_height=0.26 * inch))
 
-    story.append(Spacer(1, 10))
-    story.append(Paragraph("<b>Restoration Suitability™ Analysis</b>", s["h3"]))
+    # Page-9 tail: Restoration Suitability Analysis + Factors table.
+    # Wrapping the ENTIRE tail in KeepTogether guarantees it lands on the
+    # same page (previously with real Positive/Negative content this whole
+    # block would spill to page 10). Row heights and spacers are also
+    # tightened just enough that even a fully populated report keeps this
+    # block on page 9.
     rating = a.get("restoration_suitability_rating") or "Moderate"
     rating_color = {"High": GREEN, "Moderate": AMBER, "Low": RED}.get(rating, GRAY)
-    story.append(Paragraph(
-        f'Rating: <font color="{rating_color.hexval()}"><b>{rating.upper()}</b></font>',
-        s["body"],
-    ))
-    story.append(Spacer(1, 4))
-    # Reserve 4 rows (down from 6) for the analysis text box — this frees
-    # up ~0.46 inch on page 9 so the 3-row Factors Supporting Restoration
-    # table below fits on the same page instead of spilling its last row
-    # onto an otherwise empty page 10.
-    story.append(_text_box(a.get("restoration_analysis") or "", num_rows=4, row_height=0.23 * inch))
-
-    story.append(Spacer(1, 6))
-    # Wrap the "Factors Supporting Restoration" header + 2-column check-box
-    # table in KeepTogether so ReportLab never splits the last row onto a
-    # new page (previously the third row — Compatible Substrate / Recent
-    # Inspection — would spill onto page 10 leaving that page nearly
-    # empty). Slightly tighter row padding (2pt instead of 3pt) also frees
-    # up a few points, giving the block extra headroom to fit on page 9.
     factor_items = [
         ("Membrane Largely Intact", a.get("factor_membrane_intact")),
         ("Minimal Water Intrusion", a.get("factor_minimal_water_intrusion")),
@@ -753,7 +739,16 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
     f_t = Table(factor_rows, colWidths=[3.65 * inch, 3.65 * inch])
     f_t.hAlign = "LEFT"
     f_t.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
+    story.append(Spacer(1, 6))
     story.append(KeepTogether([
+        Paragraph("<b>Restoration Suitability™ Analysis</b>", s["h3"]),
+        Paragraph(
+            f'Rating: <font color="{rating_color.hexval()}"><b>{rating.upper()}</b></font>',
+            s["body"],
+        ),
+        Spacer(1, 3),
+        _text_box(a.get("restoration_analysis") or "", num_rows=3, row_height=0.23 * inch),
+        Spacer(1, 5),
         Paragraph("<b>Factors Supporting Restoration</b>", s["h3"]),
         Spacer(1, 2),
         f_t,
