@@ -802,39 +802,56 @@ async def build_assessment_pdf(db, a: dict) -> bytes:
 
     # Restoration eligibility note — clarifies the only conditions where
     # replacement is genuinely required vs. just a more expensive option.
-    story.append(Spacer(1, 8))
+    # Wrapped in a 7.3" Table so it aligns edge-to-edge with the
+    # OPTION/COST/LIFE/DISRUPTION comparison table directly above
+    # (previously the paragraph's own borderPadding rendered slightly wider).
+    # Padding tightened from 6pt to 4pt to shave ~1/8" of vertical space so
+    # Option 3 fits back on page 10 with Options 1 & 2.
+    story.append(Spacer(1, 6))
     elig_style = ParagraphStyle(
         "elig", parent=s["body_sm"], fontName="Helvetica",
         fontSize=8, leading=11, textColor=colors.HexColor("#404040"),
-        backColor=colors.HexColor("#F0FDF4"), borderColor=colors.HexColor("#16A34A"),
-        borderWidth=0.5, borderPadding=6,
     )
-    story.append(Paragraph(
+    elig_para = Paragraph(
         "<b>Restoration Eligibility:</b> Virtually every flat / low-slope roof system can be "
         "restored. Replacement is only required when (1) the <b>insulation is saturated</b> beyond "
         "cost-effective drying / replacement, or (2) the <b>structural deck is damaged</b>. Where "
         "neither condition is present, restoration delivers comparable life extension at a fraction "
         "of the cost and disruption of a full tear-off.",
         elig_style,
-    ))
+    )
+    elig_box = Table([[elig_para]], colWidths=[7.3 * inch])
+    elig_box.hAlign = "LEFT"
+    elig_box.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F0FDF4")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#16A34A")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    story.append(elig_box)
 
+    # Tightened option boxes: smaller row height (0.22" vs 0.26") and half
+    # the inter-element spacers so all three options fit on page 10.
     for label, opt in [("Option 1 — Continue Repairs and Maintenance", repair),
                        ("Option 2 — Restoration", restore),
                        ("Option 3 — Replacement", replace)]:
         block = [
-            Spacer(1, 4),
+            Spacer(1, 3),
             Paragraph(f"<b>{label}</b>", s["h3"]),
             Paragraph('<font color="#16A34A"><b>ADVANTAGES</b></font>', s["label"]),
-            Spacer(1, 2),
-            _text_box(" • ".join(opt.get("advantages") or []), num_rows=2, row_height=0.26 * inch),
-            Spacer(1, 2),
+            Spacer(1, 1),
+            _text_box(" • ".join(opt.get("advantages") or []), num_rows=2, row_height=0.22 * inch),
+            Spacer(1, 1),
             Paragraph('<font color="#B91C1C"><b>DISADVANTAGES</b></font>', s["label"]),
-            Spacer(1, 2),
-            _text_box(" • ".join(opt.get("disadvantages") or []), num_rows=2, row_height=0.26 * inch),
-            Spacer(1, 2),
+            Spacer(1, 1),
+            _text_box(" • ".join(opt.get("disadvantages") or []), num_rows=2, row_height=0.22 * inch),
+            Spacer(1, 1),
             Paragraph('<font color="#D97706"><b>LIMITATIONS</b></font>', s["label"]),
-            Spacer(1, 2),
-            _text_box(" • ".join(opt.get("limitations") or []), num_rows=2, row_height=0.26 * inch),
+            Spacer(1, 1),
+            _text_box(" • ".join(opt.get("limitations") or []), num_rows=2, row_height=0.22 * inch),
         ]
         story.append(KeepTogether(block))
     story.append(PageBreak())
