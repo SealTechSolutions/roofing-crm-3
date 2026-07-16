@@ -318,9 +318,10 @@ export default function FieldCapture() {
   // ---------- Camera-health monitor (iOS black-screen detector) ----------
   // Once startCamera resolves cameraReady=true, poll the <video> element
   // every 1.2s. If after ~2.5s it still has no frame dimensions / readyState
-  // is below HAVE_CURRENT_DATA, mark the stream as dead. We auto-retry ONCE
-  // (3s after the first detection) before giving up and forcing the user to
-  // tap RESTART CAMERA manually.
+  // is below HAVE_CURRENT_DATA, mark the stream as dead. We auto-retry up to
+  // 3 times with escalating delays (1s, 2s, 4s) before giving up and asking
+  // the user to tap RESTART CAMERA. Previously the budget was 1 retry which
+  // is why users were reloading their phone twice to get a working camera.
   useEffect(() => {
     if (!dealId || !cameraReady) return undefined;
     let alive = true;
@@ -334,13 +335,14 @@ export default function FieldCapture() {
         // After ~2.5s of dead frames, declare the stream unhealthy.
         if (consecutiveDead >= 2 && streamHealthy) {
           setStreamHealthy(false);
-          // Auto-retry once. If it still doesn't paint, the user has to tap.
-          if (autoRetryRef.current.tries < 1 && !autoRetryRef.current.timer) {
+          // Auto-retry with escalating backoff. Budget: 3 attempts.
+          if (autoRetryRef.current.tries < 3 && !autoRetryRef.current.timer) {
+            const delayMs = [1000, 2000, 4000][autoRetryRef.current.tries] || 4000;
             autoRetryRef.current.timer = setTimeout(() => {
               autoRetryRef.current.tries += 1;
               autoRetryRef.current.timer = null;
               restartCamera();
-            }, 3000);
+            }, delayMs);
           }
         }
       } else {
@@ -357,6 +359,30 @@ export default function FieldCapture() {
       clearInterval(id);
     };
   }, [dealId, cameraReady, streamHealthy, restartCamera]);
+
+  // ---------- Visibility / focus recovery ----------
+  // iOS Safari (and any mobile browser) silently kills the camera stream
+  // when the app is backgrounded — the user switches to a text message,
+  // returns to the CRM, and the preview is a black rectangle that never
+  // recovers. Fix: listen for `visibilitychange` and `pageshow` and refresh
+  // the camera stream when the app returns to the foreground. Also resets
+  // the auto-retry budget so any subsequent freeze can still auto-recover.
+  useEffect(() => {
+    if (!dealId) return undefined;
+    const wakeCamera = () => {
+      if (document.visibilityState !== "visible") return;
+      autoRetryRef.current.tries = 0;
+      restartCamera();
+    };
+    document.addEventListener("visibilitychange", wakeCamera);
+    // pageshow fires on iOS Safari when the page is restored from the back-
+    // forward cache — critical for the "swipe back to CRM" path.
+    window.addEventListener("pageshow", wakeCamera);
+    return () => {
+      document.removeEventListener("visibilitychange", wakeCamera);
+      window.removeEventListener("pageshow", wakeCamera);
+    };
+  }, [dealId, restartCamera]);
 
   // ---------- Online/offline listeners ----------
   useEffect(() => {
@@ -650,7 +676,12 @@ export default function FieldCapture() {
 
   // ---------- Camera capture view (project picked) ----------
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col" data-testid="field-capture">
+    // h-[100dvh] instead of min-h-screen so the container matches the phone's
+    // dynamic viewport (subtracts iOS Safari URL bar and home indicator).
+    // With `overflow-hidden`, the shutter button is ALWAYS visible without
+    // scrolling — the camera area shrinks to fill whatever's between the top
+    // bar and the shutter.
+    <div className="h-[100dvh] bg-zinc-950 text-white flex flex-col overflow-hidden" data-testid="field-capture">
       {/* Top bar — back arrow + project name */}
       <div className="px-2 py-3 bg-zinc-900 border-b border-zinc-800 flex items-center gap-2">
         <button
