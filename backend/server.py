@@ -4696,6 +4696,108 @@ async def list_scopes(
     return out[:limit]
 
 
+@api_router.get("/photos/all")
+async def list_all_photos(
+    tag: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    days: int = Query(90, ge=1, le=3650),
+    limit: int = Query(500, ge=1, le=2000),
+    _user=Depends(get_current_user),
+):
+    """CompanyCam-style global photo feed — every photo across every deal,
+    sorted newest-first, enriched with the deal title and property address
+    so the UI can group by date + project without needing extra fetches.
+
+    Filters:
+      - tag: only photos with that Before/During/After/etc tag
+      - q: substring match against deal title, property address, or photo
+        display name / description
+      - days: only photos captured within the last N days (default 90) so
+        the query is bounded and fast even on huge project inventories
+      - limit: cap result count (default 500, max 2000)
+
+    Ordering: descending by captured_at with created_at fallback (so photos
+    with EXIF timestamps sort by when the shutter actually clicked, and
+    legacy photos without EXIF still show in the right place via upload
+    time).
+    """
+    since_iso = (
+        datetime.now(timezone.utc) - timedelta(days=days)
+    ).isoformat()
+    # Broaden the where-clause: match captured_at >= since OR created_at >=
+    # since. Falls back gracefully for legacy photos that never got
+    # captured_at populated. $or on indexed fields is still fast at this
+    # scale (< 100K photos per tenant).
+    query: dict = {
+        "is_deleted": {"$ne": True},
+        "$or": [
+            {"captured_at": {"$gte": since_iso}},
+            {"created_at": {"$gte": since_iso}},
+        ],
+    }
+    if tag:
+        query["tag"] = tag
+    projection = {
+        "_id": 0, "id": 1, "deal_id": 1, "display_name": 1, "description": 1,
+        "album_name": 1, "tag": 1, "storage_path": 1, "content_type": 1,
+        "gps_lat": 1, "gps_lng": 1, "captured_at": 1, "created_at": 1,
+        "uploader_name": 1,
+    }
+    photos = await db.project_photos.find(query, projection).to_list(length=2500)
+
+    # Join deal titles + property addresses in a single round-trip.
+    deal_ids = list({p["deal_id"] for p in photos if p.get("deal_id")})
+    deals_by_id: dict = {}
+    prop_ids: set = set()
+    if deal_ids:
+        async for d in db.deals.find({"id": {"$in": deal_ids}}, {"_id": 0, "id": 1, "title": 1, "property_id": 1, "property_name": 1, "property_address": 1, "roof_type_label": 1, "proposed_roof_type": 1}):
+            deals_by_id[d["id"]] = d
+            if d.get("property_id") and not d.get("property_name"):
+                prop_ids.add(d["property_id"])
+    props_by_id: dict = {}
+    if prop_ids:
+        async for p in db.properties.find({"id": {"$in": list(prop_ids)}}, {"_id": 0, "id": 1, "property_name": 1, "address": 1}):
+            props_by_id[p["id"]] = p
+
+    def _q_match(row: dict, deal: dict) -> bool:
+        if not q:
+            return True
+        needle = q.lower().strip()
+        hay = " ".join([
+            row.get("display_name") or "",
+            row.get("description") or "",
+            row.get("uploader_name") or "",
+            row.get("tag") or "",
+            row.get("album_name") or "",
+            (deal or {}).get("title") or "",
+            (deal or {}).get("property_name") or "",
+            (deal or {}).get("property_address") or "",
+        ]).lower()
+        return needle in hay
+
+    out = []
+    for p in photos:
+        deal = deals_by_id.get(p.get("deal_id") or "") or {}
+        # Fill in property_name / address from the properties collection when
+        # the deal itself didn't carry them (older imports).
+        prop_id = deal.get("property_id")
+        if prop_id and not deal.get("property_name"):
+            prop = props_by_id.get(prop_id) or {}
+            deal = {**deal, "property_name": prop.get("property_name"), "property_address": prop.get("address")}
+        if not _q_match(p, deal):
+            continue
+        out.append({
+            **p,
+            "deal_title": deal.get("title"),
+            "property_name": deal.get("property_name") or "",
+            "property_address": deal.get("property_address") or "",
+            "roof_type": deal.get("roof_type_label") or deal.get("proposed_roof_type"),
+        })
+
+    out.sort(key=lambda x: (x.get("captured_at") or x.get("created_at") or ""), reverse=True)
+    return out[:limit]
+
+
 @api_router.get("/deals/{deal_id}/spec-sheet.pdf")
 async def deal_spec_sheet(
     deal_id: str,

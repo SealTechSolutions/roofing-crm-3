@@ -2,6 +2,10 @@
 
 **Goal:** Turn the SealTech CRM into a real iOS app installable on team iPhones via TestFlight.
 
+**Repo:** `https://github.com/SealTechSolutions/roofing-crm-3`
+**Apple Team ID:** `2J8T63SX9L` (SealTech Building Solutions — Individual enrollment)
+**Bundle ID:** `com.sealtechbuilding.crm`
+
 ## Where we are
 
 - [x] Capacitor 7 installed in `/app/frontend`
