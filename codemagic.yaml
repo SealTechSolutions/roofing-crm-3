@@ -1,0 +1,103 @@
+# Codemagic CI/CD config for SealTech CRM iOS builds.
+#
+# Free tier: 500 minutes/month on Apple M1 Macs. Enough for weekly TestFlight
+# releases plus ad-hoc bug-fix builds.
+#
+# Prerequisites (done once via Codemagic UI, NOT this file):
+#   1. Connect the GitHub repo to Codemagic
+#   2. Team Settings → Integrations → Apple Developer Portal → sign in
+#   3. Team Settings → Integrations → App Store Connect → paste API key
+#      (Key ID, Issuer ID, .p8 file)
+#   4. Team Settings → Code signing identities → auto-manage (Codemagic
+#      generates signing certs and provisioning profiles for us)
+#
+# When the Apple Developer account is ready and you send me the Team ID,
+# I'll register the App ID `com.sealtechbuilding.crm` in App Store Connect
+# and then a single push to `main` (or a manual trigger in Codemagic) will
+# produce a signed .ipa uploaded straight to TestFlight.
+
+workflows:
+  ios-testflight:
+    name: SealTech CRM — iOS TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      ios_signing:
+        # `distribution_type: app_store` means Codemagic auto-provisions
+        # an App Store distribution certificate + provisioning profile for
+        # the bundle_identifier below. Zero manual signing setup.
+        distribution_type: app_store
+        bundle_identifier: com.sealtechbuilding.crm
+
+      vars:
+        # These groups need to be defined in Codemagic Team Settings →
+        # Environment variables. `app_store_credentials` should include:
+        #   APP_STORE_CONNECT_ISSUER_ID
+        #   APP_STORE_CONNECT_KEY_IDENTIFIER
+        #   APP_STORE_CONNECT_PRIVATE_KEY
+        groups:
+          - app_store_credentials
+
+      node: 20.11.0
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      - name: Install web dependencies
+        script: |
+          cd frontend
+          yarn install --frozen-lockfile
+
+      - name: Build React web bundle
+        script: |
+          cd frontend
+          # The React build gets baked into the iOS app. When the app
+          # launches on-device, this bundle is what runs. Note: because
+          # the app also runs against the live backend URL, most updates
+          # can ship as pure-web changes without rebuilding the .ipa.
+          yarn build
+
+      - name: Add + sync iOS platform
+        script: |
+          cd frontend
+          # First-time build: create the ios/ directory Capacitor uses.
+          # Idempotent — re-running does nothing if ios/ already exists.
+          npx cap add ios || true
+          # Sync copies /build → ios/App/App/public and updates plugin
+          # native code. Runs every build.
+          npx cap sync ios
+
+      - name: Set app version + build number
+        script: |
+          cd frontend/ios/App
+          # Version tracks the marketing version (semver, user-facing).
+          # Build number MUST increment each upload to TestFlight — using
+          # CI_BUILD_NUMBER guarantees monotonically-increasing values.
+          agvtool new-marketing-version 1.0.0
+          agvtool new-version -all $CI_BUILD_NUMBER
+
+      - name: Build signed IPA
+        script: |
+          cd frontend/ios/App
+          xcode-project use-profiles
+          xcode-project build-ipa \
+            --workspace "App.xcworkspace" \
+            --scheme "App"
+
+    artifacts:
+      - frontend/ios/App/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      # Auto-upload the signed .ipa to App Store Connect → TestFlight.
+      # First upload requires ~10 min processing on Apple's side before
+      # it appears in TestFlight; subsequent uploads are usually faster.
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # Beta testers get an email the moment TestFlight processing
+        # completes. Groups are configured in App Store Connect →
+        # TestFlight → External Testing.
+        beta_groups:
+          - SealTech Team
