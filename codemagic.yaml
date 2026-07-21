@@ -23,6 +23,12 @@ workflows:
     instance_type: mac_mini_m2
 
     environment:
+      # Apple Team ID for SealTech Building Solutions (Individual enrollment).
+      # Codemagic uses this in combination with the App Store Connect API key
+      # (added via Codemagic UI) to auto-provision signing certs and
+      # distribution profiles for the com.sealtechbuilding.crm bundle.
+      vars:
+        APPLE_TEAM_ID: "2J8T63SX9L"
       ios_signing:
         # `distribution_type: app_store` means Codemagic auto-provisions
         # an App Store distribution certificate + provisioning profile for
@@ -30,14 +36,13 @@ workflows:
         distribution_type: app_store
         bundle_identifier: com.sealtechbuilding.crm
 
-      vars:
-        # These groups need to be defined in Codemagic Team Settings →
-        # Environment variables. `app_store_credentials` should include:
+      groups:
+        # `app_store_credentials` group must be created in Codemagic Team
+        # Settings → Environment variables → Add Group. Contents:
         #   APP_STORE_CONNECT_ISSUER_ID
         #   APP_STORE_CONNECT_KEY_IDENTIFIER
-        #   APP_STORE_CONNECT_PRIVATE_KEY
-        groups:
-          - app_store_credentials
+        #   APP_STORE_CONNECT_PRIVATE_KEY (paste the .p8 file contents)
+        - app_store_credentials
 
       node: 20.11.0
       xcode: latest

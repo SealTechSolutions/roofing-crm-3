@@ -41,6 +41,11 @@ const config: CapacitorConfig = {
     ],
   },
   ios: {
+    // Apple Team ID — assigned to the SealTech Building Solutions Apple
+    // Developer account (Individual enrollment, approved 2026-02).
+    // Codemagic uses this to select the correct signing identity when
+    // generating the App Store distribution certificate.
+    scheme: 'App',
     // "Contentinset" tells iOS to leave the safe-area alone. `always`
     // means content stops above the home indicator and below the notch,
     // matching iOS system apps.
