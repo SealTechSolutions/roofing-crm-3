@@ -5,6 +5,7 @@
 **Repo:** `https://github.com/SealTechSolutions/roofing-crm-3`
 **Apple Team ID:** `2J8T63SX9L` (SealTech Building Solutions — Individual enrollment)
 **Bundle ID:** `com.sealtechbuilding.crm`
+**Codemagic Team ID:** `6a5fc8d6c7a9522664488997`
 
 ## Where we are
 
