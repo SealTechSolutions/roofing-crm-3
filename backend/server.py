@@ -4879,6 +4879,143 @@ async def list_scopes(
     return out[:limit]
 
 
+@api_router.get("/site-visits/today")
+async def site_visits_today(
+    days: int = Query(1, ge=1, le=14),
+    current=Depends(get_current_user),
+):
+    """Wrap-up view for the field team: return a summary of every deal
+    the current user has captured photos on in the last N days (default: 1).
+
+    Response per deal:
+      { deal_id, deal_title, property_address,
+        photo_count, annotated_count, paired_count,
+        untagged_count, no_description_count,
+        last_photo_at, has_pending_actions,
+        last_condition_report_sent_at }
+
+    Sort: most-recently-shot first. `has_pending_actions` = there are
+    photos without tags OR without descriptions AND we haven't sent a
+    condition report since the latest shot — the wrap-up screen uses this
+    to badge deals that still need attention.
+    """
+    from collections import defaultdict
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    # Find all photos taken by the current user in the window. `uploaded_by`
+    # is set on upload; older records may not have it, so also match on
+    # `created_at`-only when uploader is missing (falls back to team view).
+    cursor = db.project_photos.find(
+        {
+            "uploaded_by": current["id"],
+            "is_deleted": {"$ne": True},
+            "$or": [
+                {"captured_at": {"$gte": cutoff}},
+                {"created_at": {"$gte": cutoff}},
+            ],
+        },
+        {"_id": 0},
+    )
+    photos = await cursor.to_list(5000)
+
+    # Group by deal so each site visit surfaces as one card.
+    by_deal = defaultdict(list)
+    for p in photos:
+        by_deal[p["deal_id"]].append(p)
+
+    if not by_deal:
+        return []
+
+    # Batch-fetch deal titles + property addresses so we don't N+1 the DB.
+    deal_ids = list(by_deal.keys())
+    deals = await db.deals.find(
+        {"id": {"$in": deal_ids}, "is_deleted": {"$ne": True}},
+        {"_id": 0, "id": 1, "title": 1, "property_id": 1, "last_condition_report_sent_at": 1},
+    ).to_list(len(deal_ids))
+    deals_by_id = {d["id"]: d for d in deals}
+    prop_ids = [d["property_id"] for d in deals if d.get("property_id")]
+    props = await db.properties.find(
+        {"id": {"$in": prop_ids}},
+        {"_id": 0, "id": 1, "street1": 1, "city": 1, "state": 1},
+    ).to_list(len(prop_ids)) if prop_ids else []
+    props_by_id = {p["id"]: p for p in props}
+
+    out = []
+    for did, plist in by_deal.items():
+        deal = deals_by_id.get(did)
+        if not deal:
+            continue  # deal was deleted while photos remain
+        addr = ""
+        prop = props_by_id.get(deal.get("property_id")) if deal.get("property_id") else None
+        if prop:
+            parts = [prop.get(k) for k in ("street1", "city", "state") if prop.get(k)]
+            addr = ", ".join(parts)
+        last_shot = max((p.get("captured_at") or p.get("created_at") or "") for p in plist)
+        last_sent = deal.get("last_condition_report_sent_at") or ""
+        untagged = sum(1 for p in plist if not (p.get("tag") or "").strip())
+        no_desc = sum(1 for p in plist if not (p.get("description") or "").strip())
+        annotated = sum(1 for p in plist if p.get("annotated_storage_path"))
+        paired = sum(1 for p in plist if p.get("paired_photo_id"))
+        # "Pending action" = missing metadata OR report not sent since latest photo.
+        # This is what drives the yellow "needs attention" pip in the UI.
+        pending = (untagged > 0) or (no_desc > 0) or (not last_sent) or (last_sent < last_shot)
+        out.append({
+            "deal_id": did,
+            "deal_title": deal.get("title") or "Untitled project",
+            "property_address": addr,
+            "photo_count": len(plist),
+            "untagged_count": untagged,
+            "no_description_count": no_desc,
+            "annotated_count": annotated,
+            "paired_count": paired,
+            "last_photo_at": last_shot,
+            "last_condition_report_sent_at": last_sent or None,
+            "has_pending_actions": pending,
+        })
+    out.sort(key=lambda x: x.get("last_photo_at") or "", reverse=True)
+    return out
+
+
+@api_router.put("/deals/{deal_id}/photos/bulk-tag")
+async def bulk_tag_untagged_photos(deal_id: str, body: dict = Body(...), current=Depends(get_current_user)):
+    """Apply a single tag to every un-tagged photo on this deal (or only
+    those taken in the last `days` window, if provided). Used by the site
+    visit wrap-up screen: rep taps "Damage Documentation" and every
+    photo shot today with no tag gets stamped.
+
+    Body: {tag, days?}
+      - `tag`: one of PRESET_TAGS
+      - `days`: optional int, restrict to photos captured/created within
+        the last N days (defaults to no restriction — all untagged photos
+        on this deal get tagged).
+    """
+    from project_photos import PRESET_TAGS
+    tag = (body.get("tag") or "").strip()
+    if tag not in PRESET_TAGS:
+        raise HTTPException(status_code=400, detail=f"Invalid tag. Allowed: {', '.join(PRESET_TAGS)}")
+    days = body.get("days")
+    match = {
+        "deal_id": deal_id,
+        "is_deleted": {"$ne": True},
+        # Match photos that either have no `tag` key or have an empty string.
+        # Mongo `$exists: false` alone misses records where tag was set then cleared to "".
+        "$or": [{"tag": {"$exists": False}}, {"tag": ""}, {"tag": None}],
+    }
+    if days is not None:
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=int(days))).isoformat()
+            match["$and"] = [{"$or": [
+                {"captured_at": {"$gte": cutoff}},
+                {"created_at": {"$gte": cutoff}},
+            ]}]
+        except Exception:
+            pass
+    result = await db.project_photos.update_many(
+        match,
+        {"$set": {"tag": tag, "updated_at": now_iso()}},
+    )
+    return {"ok": True, "tagged": result.modified_count, "tag": tag}
+
+
 @api_router.get("/photos/all")
 async def list_all_photos(
     tag: Optional[str] = Query(None),
