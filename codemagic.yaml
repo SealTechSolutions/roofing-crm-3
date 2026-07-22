@@ -87,9 +87,12 @@ workflows:
           cd frontend/ios/App
           # Version tracks the marketing version (semver, user-facing).
           # Build number MUST increment each upload to TestFlight — using
-          # CI_BUILD_NUMBER guarantees monotonically-increasing values.
+          # $BUILD_NUMBER (Codemagic's monotonically-incrementing counter)
+          # guarantees every upload has a unique, higher build number than
+          # the previous one. Fallback to `1` for local/dry runs where the
+          # var is unset.
           agvtool new-marketing-version 1.0.0
-          agvtool new-version -all $CI_BUILD_NUMBER
+          agvtool new-version -all "${BUILD_NUMBER:-1}"
 
       - name: Fetch signing files (cert + provisioning profile)
         script: |
