@@ -4,6 +4,57 @@
 
 This is a full field-to-office manual for the SealTech CRM system. Sections are organized by role — start with the section that matches how you use the app.
 
+## Sidebar Navigation (Grouped)
+
+The sidebar is organized into 8 groups so related items live together:
+
+```
+📊 Dashboard  (standalone at top)
+
+📇 CONTACTS
+   • People & Companies
+   • Vendors
+   • Subcontractors
+
+📁 PROJECTS
+   • Properties
+   • Deals
+   • Calculator
+
+📸 FIELD
+   • Field Camera
+   • Photo Timeline
+   • Finish Site Visit
+
+📈 REPORTS
+   • Assessments
+   • Scopes
+   • Maintenance
+
+📅 SCHEDULING
+   • Calendar
+   • Tasks
+   • Scheduled Jobs  (admin)
+
+📚 LIBRARY
+   • Documents
+   • Product Materials
+   • Sales Materials
+
+💰 FINANCE
+   • Books
+   • Invoices
+   • Payables
+
+⚙️ COMPANY INFO  (admin only)
+   • Users
+   • Integrations
+   • Trash
+
+──────────
+📖 User Guide  (opens this document on GitHub)
+```
+
 ---
 
 ## Table of Contents
