@@ -215,9 +215,12 @@ workflows:
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
         key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        submit_to_testflight: true
-        # Beta testers get an email the moment TestFlight processing
-        # completes. Groups are configured in App Store Connect →
-        # TestFlight → External Testing.
-        beta_groups:
-          - SealTech Team
+        # `submit_to_testflight: false` keeps the build in "internal only"
+        # mode — Apple accepts the upload, processes it, and immediately
+        # makes it available to internal testers (App Store Connect users
+        # on this account). External beta groups and the "Beta App
+        # Information" form are NOT required for internal distribution.
+        # Flip this to `true` once you've filled in Test Information +
+        # created a "SealTech Team" external group at
+        # appstoreconnect.apple.com/apps/6793344304/testflight/test-info
+        submit_to_testflight: false
