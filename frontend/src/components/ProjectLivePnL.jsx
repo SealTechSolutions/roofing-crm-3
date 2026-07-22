@@ -22,8 +22,8 @@
  * Because the underlying data is already loaded by the parent, this component
  * is purely computational — no API calls.
  */
-import React from "react";
-import { formatCurrency } from "@/lib/api";
+import React, { useEffect, useState } from "react";
+import { api, formatCurrency } from "@/lib/api";
 
 const CATEGORIES = [
   { key: "Materials",     label: "Materials",     dealField: "materials_cost",       accent: "text-blue-700" },
@@ -33,9 +33,9 @@ const CATEGORIES = [
   { key: "Other",         label: "Other",         dealField: "other_expenses",       accent: "text-zinc-700" },
 ];
 
-// Standard equipment rate estimates (user-editable later; hard-coded rates for
-// MVP so the P&L has real numbers as soon as equipment is checked off).
-const EQUIPMENT_STD_COST = {
+// Baseline fallback rates used until the /settings/equipment-rates payload
+// arrives (or if it fails to load). The admin settings page overrides these.
+const FALLBACK_EQUIPMENT_RATES = {
   "Storage Container": 250,
   "Porta-Potty":       125,
   "Forklift":          1200,
@@ -71,6 +71,19 @@ const StatBox = ({ label, value, hint, accent, testId }) => (
 );
 
 export default function ProjectLivePnL({ deal, dealInvoices, vendorBills }) {
+  // --- Fetch admin-editable equipment rates once on mount ---
+  const [equipmentRates, setEquipmentRates] = useState(FALLBACK_EQUIPMENT_RATES);
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/settings/equipment-rates")
+      .then((r) => {
+        if (cancelled) return;
+        if (r.data?.rates) setEquipmentRates(r.data.rates);
+      })
+      .catch(() => { /* fallback stays */ });
+    return () => { cancelled = true; };
+  }, []);
+
   // --- REVENUE ---
   const contractTotal = Number(deal.chosen_amount || 0);
   const milestones = deal.payment_milestones || [];
@@ -101,7 +114,7 @@ export default function ProjectLivePnL({ deal, dealInvoices, vendorBills }) {
   // Equipment estimate: sum of standard rates for each ordered item
   const equipmentOrdered = deal.equipment_ordered || [];
   const equipmentEst = equipmentOrdered.reduce(
-    (s, e) => s + (EQUIPMENT_STD_COST[e.type] || 0), 0,
+    (s, e) => s + (Number(equipmentRates[e.type]) || 0), 0,
   );
   // Merge equipment into the estimate (cost_items may also carry equipment,
   // but we treat them as additive since equipment isn't in the CostItem enum)
@@ -199,7 +212,7 @@ export default function ProjectLivePnL({ deal, dealInvoices, vendorBills }) {
               <div key={e.type} className="flex items-center justify-between px-3 py-1.5 bg-orange-50 border border-orange-200 rounded-sm">
                 <span className="font-bold text-orange-900">{e.type}</span>
                 <span className="font-mono text-orange-700">
-                  {EQUIPMENT_STD_COST[e.type] ? formatCurrency(EQUIPMENT_STD_COST[e.type]) : "—"}
+                  {equipmentRates[e.type] != null ? formatCurrency(equipmentRates[e.type]) : "—"}
                 </span>
               </div>
             ))}

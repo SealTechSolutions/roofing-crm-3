@@ -49,6 +49,30 @@ Every deal's **Money** section now leads with a "Live Project P&L" card that sho
 - **Cost Breakdown bars** by category: Materials · Labor · Subcontractor · Equipment · Other (with % of total cost)
 - **Equipment Rentals** detail card (only when equipment is ordered) — standard-rate estimates per item, override-friendly
 
+## Editable Equipment Rates (new — Feb 2026)
+
+The **Live Project P&L** rental rates are no longer hard-coded. Go to sidebar → **Company Info → Equipment Rates** (admin-only).
+
+- View + edit the standard rental cost per project for each equipment type
+- Add new types via the form at the bottom (e.g. Boom Lift, Roller)
+- Delete types you never use with the × button
+- Any change instantly flows into every deal's Live P&L card
+
+## One-Click "Mark Paid" (new — Feb 2026)
+
+Two places where you can now record a payment in one click:
+
+1. **Amber deposit banner** at the top of the deal — shows a green **MARK PAID** button once the deposit invoice has been sent. Clicking it: sets status to Paid, amount_paid = total, payment_date = today, and fires the GL journal entry into Books.
+2. The same flow is available on any Sent invoice via the invoice editor.
+
+## Milestone → Invoice (new — Feb 2026)
+
+The **Payment Milestones** table on every deal now has an **Invoice** column:
+
+- If the milestone has no invoice yet → blue **DRAFT** button drafts one and opens the editor for Review & Send. The milestone auto-flips to `Invoiced` status.
+- If the milestone already has an invoice → the button becomes an **OPEN** shortcut showing the invoice number for quick access.
+- Idempotent: repeated clicks won't create duplicates.
+
 ## Sidebar Navigation (Grouped)
 
 The sidebar is organized into 8 groups so related items live together:

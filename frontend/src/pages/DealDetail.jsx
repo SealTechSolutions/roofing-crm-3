@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus, ClipboardCheck, Clock, Camera, CheckSquare, X as XIcon } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, FileText, Star, Download, Printer, Mail, Wrench, FilePlus, ClipboardCheck, Clock, Camera, CheckSquare, CheckCircle2, X as XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { StatusPill } from "@/pages/Dashboard";
 import Documents from "@/components/Documents";
@@ -155,6 +155,59 @@ export default function DealDetail() {
       toast.error(e?.response?.data?.detail || e.message || "Could not draft deposit invoice");
     } finally {
       setDraftingDeposit(false);
+    }
+  };
+
+  /**
+   * One-click "Mark Paid" — flips an invoice to Paid, sets amount_paid=total,
+   * paid_at=today, and fires the GL/journal side-effect. Used on the amber
+   * deposit banner (once the invoice is sent) and on each invoice row.
+   */
+  const markInvoicePaid = async (invoice) => {
+    if (!invoice) return;
+    const label = invoice.invoice_number || invoice.id;
+    if (!window.confirm(`Mark ${label} as PAID? This will post the payment to Books.`)) return;
+    try {
+      const r = await api.post(`/invoices/${invoice.id}/mark-paid`);
+      // Refresh invoices list so the banner disappears and the row status updates.
+      api.get(`/invoices?deal_id=${id}`)
+        .then((rr) => setDealInvoices(rr.data || []))
+        .catch(() => { /* non-fatal */ });
+      toast.success(`${r.data.invoice_number} marked Paid`);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || e.message || "Could not mark paid");
+    }
+  };
+
+  /**
+   * One-click "Draft Invoice" for a Pending payment milestone.
+   * Calls the existing /invoices/from-milestone endpoint, refreshes the
+   * invoices list, and opens the editor for review before send.
+   */
+  const draftMilestoneInvoice = async (milestone) => {
+    if (!milestone?.id) {
+      toast.error("Save the milestone first (needs an ID)");
+      return;
+    }
+    try {
+      const r = await api.post("/invoices/from-milestone", { deal_id: id, milestone_id: milestone.id });
+      // Refresh invoices; the milestone status also flips to "Invoiced" server-side.
+      api.get(`/invoices?deal_id=${id}`)
+        .then((rr) => setDealInvoices(rr.data || []))
+        .catch(() => { /* non-fatal */ });
+      // Refresh the deal so the milestone status shows the new "Invoiced" state.
+      api.get(`/deals/${id}`)
+        .then((rr) => setDeal(rr.data))
+        .catch(() => { /* non-fatal */ });
+      toast.success(`Invoice ${r.data.invoice_number} drafted from milestone`);
+      try {
+        const full = await api.get(`/invoices/${r.data.id}`);
+        setInvoiceEditor(full.data);
+      } catch {
+        setInvoiceEditor(r.data);
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || e.message || "Could not draft milestone invoice");
     }
   };
 
@@ -482,13 +535,14 @@ export default function DealDetail() {
         );
       })()}
 
-      {/* Draft-deposit "Review & Send" reminder: a Draft deposit exists but
-          hasn't been sent yet. Keeps the invoice one click away from the top. */}
+      {/* Draft-deposit "Review & Send" reminder, plus a "Mark Paid" reminder for
+          a Sent-but-unpaid deposit. Keeps the deposit one click away from the top. */}
       {(() => {
-        const draftDeposit = (dealInvoices || []).find(
-          (inv) => inv.invoice_type === "Deposit" && inv.status === "Draft"
+        const anyDeposit = (dealInvoices || []).find(
+          (inv) => inv.invoice_type === "Deposit" && inv.status !== "Void" && inv.status !== "Paid"
         );
-        if (!draftDeposit) return null;
+        if (!anyDeposit) return null;
+        const isDraft = anyDeposit.status === "Draft";
         return (
           <div
             className="mb-6 bg-amber-50 border border-amber-300 rounded-sm p-4 flex items-start gap-3"
@@ -497,25 +551,40 @@ export default function DealDetail() {
             <Mail className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-bold text-amber-900">
-                Deposit invoice <span className="font-mono">{draftDeposit.invoice_number}</span> is drafted — ready to send?
+                {isDraft
+                  ? <>Deposit invoice <span className="font-mono">{anyDeposit.invoice_number}</span> is drafted — ready to send?</>
+                  : <>Deposit invoice <span className="font-mono">{anyDeposit.invoice_number}</span> sent — awaiting payment</>}
               </div>
               <div className="text-xs text-amber-800 mt-1 leading-snug">
-                Amount <b>${Number(draftDeposit.total || 0).toLocaleString()}</b>. Review and email to the prospect when you&apos;re ready.
+                Amount <b>${Number(anyDeposit.total || 0).toLocaleString()}</b>.
+                {" "}
+                {isDraft
+                  ? "Review and email to the prospect when you're ready."
+                  : "When you receive the funds, mark it paid to post the deposit to Books."}
               </div>
               <div className="mt-3 flex items-center gap-2">
+                {isDraft && (
+                  <button
+                    data-testid="deposit-invoice-review-btn"
+                    onClick={async () => {
+                      try {
+                        const full = await api.get(`/invoices/${anyDeposit.id}`);
+                        setInvoiceEditor(full.data);
+                      } catch {
+                        setInvoiceEditor(anyDeposit);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 bg-amber-700 hover:bg-amber-800 text-white text-[10px] font-bold uppercase tracking-wider px-3 h-8 rounded-sm"
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Review & Send
+                  </button>
+                )}
                 <button
-                  data-testid="deposit-invoice-review-btn"
-                  onClick={async () => {
-                    try {
-                      const full = await api.get(`/invoices/${draftDeposit.id}`);
-                      setInvoiceEditor(full.data);
-                    } catch {
-                      setInvoiceEditor(draftDeposit);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 bg-amber-700 hover:bg-amber-800 text-white text-[10px] font-bold uppercase tracking-wider px-3 h-8 rounded-sm"
+                  data-testid="deposit-invoice-mark-paid-btn"
+                  onClick={() => markInvoicePaid(anyDeposit)}
+                  className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] font-bold uppercase tracking-wider px-3 h-8 rounded-sm"
                 >
-                  <Mail className="w-3.5 h-3.5" /> Review & Send
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Mark Paid
                 </button>
               </div>
             </div>
@@ -1062,11 +1131,18 @@ export default function DealDetail() {
                   <th className="py-2 pr-3 w-36">Due Date</th>
                   <th className="py-2 pr-3 w-36">Status</th>
                   <th className="py-2 pr-3 w-36">Paid Date</th>
+                  <th className="py-2 pr-3 w-36 text-center">Invoice</th>
                   <th className="py-2 w-10"></th>
                 </tr>
               </thead>
               <tbody>
-                {deal.payment_milestones.map((m, i) => (
+                {deal.payment_milestones.map((m, i) => {
+                  // Find any invoice linked to this milestone (source_type=milestone,
+                  // source_id=m.id) so we can show "Open" instead of "Draft".
+                  const linkedInv = (dealInvoices || []).find(
+                    (inv) => inv.source_type === "milestone" && inv.source_id === m.id
+                  );
+                  return (
                   <tr key={m.id || i} className="border-b border-zinc-100" data-testid={`milestone-row-${i}`}>
                     <td className="py-2 pr-3">
                       <CellInput value={m.label} onCommit={(v) => updateMilestone(i, { label: v })} placeholder="Deposit / Mid-Job / Completion" data-testid={`milestone-label-${i}`} />
@@ -1084,18 +1160,47 @@ export default function DealDetail() {
                     <td className="py-2 pr-3">
                       <CellInput type="date" value={m.paid_date} onCommit={(v) => updateMilestone(i, { paid_date: v })} disabled={m.status !== "Paid"} data-testid={`milestone-paid-${i}`} />
                     </td>
+                    <td className="py-2 pr-3 text-center">
+                      {linkedInv ? (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const full = await api.get(`/invoices/${linkedInv.id}`);
+                              setInvoiceEditor(full.data);
+                            } catch {
+                              setInvoiceEditor(linkedInv);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 px-2 h-7 text-[9px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 rounded-sm"
+                          data-testid={`milestone-open-invoice-${i}`}
+                          title={`${linkedInv.invoice_number} · ${linkedInv.status}`}
+                        >
+                          <FileText className="w-3 h-3" /> {linkedInv.invoice_number.split("-").pop()}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => draftMilestoneInvoice(m)}
+                          disabled={!m.id || Number(m.amount || 0) <= 0}
+                          className="inline-flex items-center gap-1 px-2 h-7 text-[9px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-40 rounded-sm"
+                          data-testid={`milestone-draft-invoice-${i}`}
+                        >
+                          <FilePlus className="w-3 h-3" /> Draft
+                        </button>
+                      )}
+                    </td>
                     <td className="py-2 text-right">
                       <button onClick={() => removeMilestone(i)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm" data-testid={`milestone-delete-${i}`}><Trash2 className="w-3.5 h-3.5" /></button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-zinc-950">
                   <td className="py-2 pr-3 font-bold uppercase text-[10px] tracking-wider">Total Scheduled</td>
                   <td className="py-2 pr-3 text-right font-mono text-zinc-500 text-xs">{deal.payment_milestones.reduce((s, m) => s + Number(m.percent || 0), 0)}%</td>
                   <td className="py-2 pr-3 text-right font-mono font-bold">{formatCurrency(totals.scheduled)}</td>
-                  <td colSpan={4}></td>
+                  <td colSpan={5}></td>
                 </tr>
               </tfoot>
             </table>

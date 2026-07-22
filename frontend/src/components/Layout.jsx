@@ -92,9 +92,10 @@ const NAV_GROUPS = [
     label: "Company Info",
     icon: Settings,
     items: [
-      { to: "/users",                label: "Users",        icon: UserCog, testId: "nav-users",        adminOnly: true },
-      { to: "/settings/integrations",label: "Integrations", icon: Plug,    testId: "nav-integrations", adminOnly: true },
-      { to: "/trash",                label: "Trash",        icon: Trash2,  testId: "nav-trash",        adminOnly: true },
+      { to: "/users",                label: "Users",           icon: UserCog, testId: "nav-users",             adminOnly: true },
+      { to: "/settings/integrations",label: "Integrations",    icon: Plug,    testId: "nav-integrations",      adminOnly: true },
+      { to: "/settings/equipment-rates", label: "Equipment Rates", icon: Truck, testId: "nav-equipment-rates", adminOnly: true },
+      { to: "/trash",                label: "Trash",           icon: Trash2,  testId: "nav-trash",             adminOnly: true },
     ],
   },
 ];

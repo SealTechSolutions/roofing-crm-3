@@ -2601,13 +2601,25 @@ async def delete_invoice(invoice_id: str, current=Depends(get_current_user)):
 
 @api_router.post("/invoices/from-milestone")
 async def invoice_from_milestone(deal_id: str = Body(...), milestone_id: str = Body(...), current=Depends(get_current_user)):
-    """Auto-generate a draft invoice for a single milestone of a deal."""
+    """Auto-generate a draft invoice for a single milestone of a deal.
+    Idempotent: if an invoice already exists for this milestone
+    (source_type='milestone' + source_id=milestone_id) it is returned as-is
+    instead of creating a duplicate. Also flips the milestone status to
+    'Invoiced' so the deal UI reflects the change immediately."""
     deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
-    ms = next((m for m in (deal.get("payment_milestones") or []) if m.get("id") == milestone_id), None)
+    milestones = deal.get("payment_milestones") or []
+    ms = next((m for m in milestones if m.get("id") == milestone_id), None)
     if not ms:
         raise HTTPException(status_code=404, detail="Milestone not found")
+    # Idempotency guard — a milestone should map to at most one live invoice.
+    existing = await db.invoices.find_one(
+        {"source_type": "milestone", "source_id": milestone_id, "is_deleted": {"$ne": True}},
+        {"_id": 0},
+    )
+    if existing:
+        return existing
     body = InvoiceIn(
         deal_id=deal_id,
         customer_contact_id=deal.get("customer_contact_id") or deal.get("contact_id"),
@@ -2616,7 +2628,23 @@ async def invoice_from_milestone(deal_id: str = Body(...), milestone_id: str = B
         project_title=deal.get("title", ""),
         line_items=[InvoiceLineItem(description=f"{ms.get('label') or 'Project Milestone'} — {ms.get('percent', 0)}% of contract", quantity=1, unit_price=float(ms.get("amount") or 0))],
     )
-    return await create_invoice(body, current)
+    inv = await create_invoice(body, current)
+    # Flip the milestone status → Invoiced (so the DealDetail UI shows "Open" instead of "Draft")
+    try:
+        updated_ms = []
+        for m in milestones:
+            if m.get("id") == milestone_id and m.get("status", "Pending") == "Pending":
+                m = {**m, "status": "Invoiced"}
+            updated_ms.append(m)
+        await db.deals.update_one(
+            {"id": deal_id},
+            {"$set": {"payment_milestones": updated_ms}},
+        )
+    except Exception:
+        # If the milestone status update fails, the invoice still exists —
+        # don't roll back the invoice for a cosmetic UI update.
+        pass
+    return inv
 
 
 @api_router.post("/invoices/from-maintenance-visit")
@@ -7779,6 +7807,120 @@ async def create_deposit_invoice(
             detail="No contract total on this deal yet — pick a proposal option or set chosen_amount first.",
         )
     return inv
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Equipment Rentals — editable standard-rate table used by the Live P&L card
+# ═════════════════════════════════════════════════════════════════════════
+
+# Baseline rates seeded into the settings collection on first read. Users can
+# edit these via /settings/equipment-rates; the value stored in Mongo wins.
+DEFAULT_EQUIPMENT_RATES: dict[str, float] = {
+    "Storage Container": 250.0,
+    "Porta-Potty":       125.0,
+    "Forklift":         1200.0,
+    "Manlift":          1400.0,
+    "Dumpster":          650.0,
+    "Scaffolding":       800.0,
+}
+
+EQUIPMENT_RATES_KEY = "equipment_rental_rates"
+
+
+@api_router.get("/settings/equipment-rates")
+async def get_equipment_rates(current=Depends(get_current_user)):
+    """Returns the current equipment-rental rate table. Missing keys are
+    filled in from the built-in defaults so the UI always has a full list."""
+    doc = await db.settings.find_one({"key": EQUIPMENT_RATES_KEY})
+    stored = (doc or {}).get("value") or {}
+    if not isinstance(stored, dict):
+        stored = {}
+    # Merge: user-stored keys override defaults; new default keys added over time
+    # will show up automatically so the UI can display them for editing.
+    merged = {**DEFAULT_EQUIPMENT_RATES, **{k: float(v) for k, v in stored.items() if _is_number(v)}}
+    return {"rates": merged, "updated_at": (doc or {}).get("updated_at")}
+
+
+@api_router.put("/settings/equipment-rates")
+async def put_equipment_rates(
+    body: dict = Body(...),
+    current=Depends(get_current_user),
+):
+    """Upserts the equipment-rental rate table. `body["rates"]` must be a
+    dict of {equipment_type: dollar_amount}. Admin-only. Amounts are stored
+    as floats, and non-positive values are rejected."""
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    raw = body.get("rates")
+    if not isinstance(raw, dict) or not raw:
+        raise HTTPException(status_code=400, detail="rates must be a non-empty object")
+    clean: dict[str, float] = {}
+    for k, v in raw.items():
+        label = str(k).strip()
+        if not label:
+            continue
+        try:
+            amount = float(v)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"Invalid amount for {label!r}")
+        if amount < 0:
+            raise HTTPException(status_code=400, detail=f"Amount for {label!r} must be ≥ 0")
+        clean[label] = round(amount, 2)
+    now = datetime.now(timezone.utc).isoformat()
+    await db.settings.update_one(
+        {"key": EQUIPMENT_RATES_KEY},
+        {"$set": {"key": EQUIPMENT_RATES_KEY, "value": clean, "updated_at": now, "updated_by": current["id"]}},
+        upsert=True,
+    )
+    merged = {**DEFAULT_EQUIPMENT_RATES, **clean}
+    return {"rates": merged, "updated_at": now}
+
+
+def _is_number(v) -> bool:
+    try:
+        float(v)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Invoices — one-click "Mark Paid" for a cleaner deposit → Books flow
+# ═════════════════════════════════════════════════════════════════════════
+
+@api_router.post("/invoices/{invoice_id}/mark-paid")
+async def mark_invoice_paid(
+    invoice_id: str,
+    body: dict = Body(default={}),
+    current=Depends(get_current_user),
+):
+    """One-click "Mark Paid" for the invoice — sets status=Paid,
+    amount_paid=total, paid_at=today (or a user-provided date), and fires the
+    same GL/journal side-effect as editing the invoice manually via PUT.
+
+    Idempotent: calling on an already-Paid invoice is a no-op (returns the
+    invoice unchanged)."""
+    inv = await db.invoices.find_one({"id": invoice_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv.get("status") == "Paid" and float(inv.get("amount_paid") or 0) >= float(inv.get("total") or 0):
+        return inv  # nothing to do
+
+    total = float(inv.get("total") or 0)
+    payment_date = (body or {}).get("payment_date") or (body or {}).get("paid_at") or datetime.now(timezone.utc).date().isoformat()
+
+    # Preserve all existing fields — only flip status + amount_paid + payment_date.
+    updated_body = dict(inv)
+    updated_body["status"] = "Paid"
+    updated_body["amount_paid"] = round(total, 2)
+    updated_body["payment_date"] = payment_date
+    # Delegate to the existing PUT handler for GL/journal side-effects.
+    # We build an InvoiceIn from the updated body and call the same code path.
+    try:
+        body_model = InvoiceIn(**{k: v for k, v in updated_body.items() if k in InvoiceIn.model_fields})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid invoice fields: {e}")
+    return await update_invoice(invoice_id, body_model, current)  # type: ignore[misc]
 
 
 app.include_router(api_router)
