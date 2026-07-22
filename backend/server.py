@@ -4130,6 +4130,189 @@ async def get_scope_suggestions(deal_id: str, current=Depends(get_current_user))
     return _scope_sugg.suggest_library_files(files, deal)
 
 
+@api_router.post("/deals/{deal_id}/condition-report/email")
+async def email_condition_report(deal_id: str, body: dict = Body(default={}), current=Depends(get_current_user)):
+    """Email the Roof Condition (Maintenance) Report PDF to the customer.
+
+    Body: {to_email?, cc_email?, from_email?, message?}
+    - to_email defaults to the deal's primary contact email
+    - from_email routes via `email_routing` category "maintenance" (falls back to GMAIL_FROM_EMAIL)
+    - Attaches the freshly-generated Condition Report PDF (which prefers
+      annotated photos where present) so the customer receives the exact
+      version the rep saw when they clicked send.
+
+    Also stamps the deal history so the Activity Timeline shows
+    "Condition Report emailed to <recipient>".
+    """
+    from maintenance_report_pdf import build_maintenance_report_pdf
+    from email_sender import send_email, EmailNotConfigured, get_from_aliases
+    from email_routing import get_from_for_category
+
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Project not found")
+    to_email = (body.get("to_email") or "").strip()
+    cc_email = (body.get("cc_email") or "").strip()
+    from_email = (body.get("from_email") or "").strip() or None
+    custom_message = (body.get("message") or "").strip()
+
+    # Resolve FROM via the "maintenance" email-routing category so it stays
+    # consistent with the admin's routing preferences (falls back to the
+    # main GMAIL_FROM_EMAIL when the alias isn't whitelisted).
+    if not from_email:
+        allowed = set(get_from_aliases())
+        resolved = await get_from_for_category(db, "maintenance")
+        from_email = resolved if (resolved and resolved in allowed) else (os.environ.get("GMAIL_FROM_EMAIL") or "").strip() or None
+
+    # Auto-populate `to_email` from the primary contact when the caller
+    # left it blank — this is the common "send while still on-site" flow
+    # where the rep hasn't stopped to look up the customer's address.
+    if not to_email:
+        cid = deal.get("primary_contact_id")
+        if cid:
+            c = await db.contacts.find_one({"id": cid}, {"_id": 0, "email": 1, "first_name": 1, "last_name": 1})
+            if c and c.get("email"):
+                to_email = c["email"]
+    if not to_email:
+        raise HTTPException(status_code=400, detail="No recipient email — please provide one.")
+
+    # Load photos + property. Same query the /photos/maintenance-report.pdf
+    # endpoint uses so the email always contains an identical PDF.
+    photos = await db.project_photos.find(
+        {"deal_id": deal_id, "is_deleted": {"$ne": True}},
+        {"_id": 0},
+    ).sort("captured_at", 1).to_list(2000)
+    if not photos:
+        raise HTTPException(status_code=400, detail="This project has no photos yet — take some site photos first.")
+
+    property_doc = None
+    if deal.get("property_id"):
+        property_doc = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
+
+    try:
+        pdf_bytes = build_maintenance_report_pdf(
+            deal, photos,
+            property_doc=property_doc,
+            inspector_name=current.get("name", "") or "",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {type(e).__name__}: {e}")
+
+    project_label = (deal.get("title") or "project").replace(" ", "_").replace("/", "-")
+    filename = f"{project_label} - Roof Condition Report.pdf"
+    attachments = [{"filename": filename, "data": pdf_bytes, "mime": "application/pdf"}]
+
+    # Look up the customer's name/company for a warm salutation.
+    cust_name = ""
+    cid = deal.get("primary_contact_id")
+    if cid:
+        c = await db.contacts.find_one({"id": cid}, {"_id": 0, "first_name": 1, "last_name": 1, "company": 1})
+        if c:
+            cust_name = (c.get("first_name") or "").strip()
+            if not cust_name and c.get("company"):
+                cust_name = c["company"]
+
+    annotated_ct = sum(1 for p in photos if p.get("annotated_storage_path"))
+    intro = custom_message or (
+        f"Please find attached the roof condition report for {deal.get('title') or 'your property'}. "
+        f"Our team documented {len(photos)} photo{'s' if len(photos) != 1 else ''}"
+        + (f" — {annotated_ct} with inspector annotations highlighting areas of concern" if annotated_ct else "")
+        + ". The report is organized by observation type so you can review findings efficiently."
+    )
+    subject = f"Roof Condition Report — {deal.get('title') or 'your property'}"
+
+    body_text = (
+        f"Hello {cust_name or 'there'},\n\n"
+        f"{intro}\n\n"
+        f"  Attached: {filename}\n\n"
+        f"If you'd like to discuss findings or schedule remediation, reply to this email "
+        f"or call us at 720-715-9955.\n\n"
+        f"Thank you,\n"
+        f"SealTech Building Solutions\n"
+        f"720-715-9955  ·  {from_email or 'info@sealtechsolutions.co'}"
+    )
+    body_html = f"""
+    <html><body style="font-family: Arial, Helvetica, sans-serif; color: #0A0A0A; max-width: 620px;">
+      <p style="margin: 0 0 16px;">Hello {cust_name or 'there'},</p>
+      <p style="margin: 0 0 16px;">{intro.replace(chr(10), '<br/>')}</p>
+      <p style="margin: 0 0 16px; color: #52525B; font-size: 13px;"><b>Attached:</b> {filename}</p>
+      <p style="margin: 16px 0;">If you'd like to discuss findings or schedule remediation, please reply to this email or call us at 720-715-9955.</p>
+      <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
+        <b style="color: #0A0A0A;">SealTech Building Solutions</b><br/>
+        720-715-9955  ·  {from_email or 'info@sealtechsolutions.co'}
+      </p>
+    </body></html>
+    """
+
+    try:
+        result = send_email(
+            to=to_email,
+            cc=cc_email,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+            reply_to=os.environ.get("GMAIL_FROM_EMAIL") or None,
+            attachments=attachments,
+            from_email=from_email,
+        )
+    except EmailNotConfigured as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except smtplib.SMTPAuthenticationError as e:
+        raise HTTPException(status_code=500, detail=f"Gmail authentication failed. ({e.smtp_code})")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email send failed: {type(e).__name__}: {e}")
+
+    # Persist the exact PDF that went out so the rep can re-open it later
+    # from the Activity Timeline ("Open the PDF that went out" link).
+    sent_pdf_file_id = ""
+    try:
+        sent_pdf_file_id = str(uuid.uuid4())
+        sp = f"{APP_NAME}/uploads/deal/{deal_id}/condition-report-{sent_pdf_file_id}.pdf"
+        put_object(sp, pdf_bytes, "application/pdf")
+        await db.files.insert_one({
+            "id": sent_pdf_file_id,
+            "parent_type": "deal",
+            "parent_id": deal_id,
+            "category": "Condition Report",
+            "storage_path": sp,
+            "original_filename": filename,
+            "content_type": "application/pdf",
+            "size": len(pdf_bytes),
+            "uploaded_by": current["id"],
+            "uploaded_by_name": current.get("name", ""),
+            "is_deleted": False,
+            "created_at": now_iso(),
+        })
+    except Exception as e:
+        logger.warning(f"could not persist sent condition-report PDF for deal={deal_id}: {e}")
+
+    # Append to deal history so Activity Timeline reflects the send.
+    history_entry = {
+        "id": str(uuid.uuid4()),
+        "kind": "condition_report_emailed",
+        "label": "Condition Report emailed",
+        "note": f"Sent to {to_email}" + (f" (cc {cc_email})" if cc_email else "") + f" · {len(photos)} photos" + (f" · {annotated_ct} annotated" if annotated_ct else ""),
+        "actor_id": current["id"],
+        "actor_name": current.get("name", ""),
+        "sent_pdf_file_id": sent_pdf_file_id or None,
+        "created_at": now_iso(),
+    }
+    await db.deals.update_one(
+        {"id": deal_id},
+        {"$push": {"history": history_entry}, "$set": {"last_condition_report_sent_at": now_iso(), "updated_at": now_iso()}},
+    )
+
+    return {
+        "ok": True,
+        "to": result.get("to"),
+        "cc": result.get("cc"),
+        "photos_included": len(photos),
+        "annotated_included": annotated_ct,
+        "sent_pdf_file_id": sent_pdf_file_id or None,
+        "filename": filename,
+    }
+
+
 @api_router.post("/deals/{deal_id}/spec-sheet/email")
 async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=Depends(get_current_user)):
     """Email the scope PDF to the customer with optional Library file attachments.

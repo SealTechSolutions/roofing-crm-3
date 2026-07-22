@@ -351,6 +351,16 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
     }
   };
 
+  /**
+   * Fire the Roof Condition Report PDF straight to the customer via Gmail.
+   * Opens a small confirmation dialog first so the rep can review the
+   * recipient (auto-filled from the deal's primary contact) and add a
+   * personal note before sending. This is the same PDF as
+   * `downloadMaintenanceReport` — we generate on the server so the email
+   * always includes the freshest annotations.
+   */
+  const [emailReportOpen, setEmailReportOpen] = useState(false);
+
   const totalSize = photos.reduce((s, p) => s + (p.size || 0), 0);
 
   return (
@@ -371,6 +381,15 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
             className="inline-flex items-center gap-1.5 px-3 h-9 text-[10px] font-bold uppercase tracking-wider bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-40 rounded-sm"
           >
             <FileText className="w-3.5 h-3.5" /> Condition Report
+          </button>
+          <button
+            data-testid="email-condition-report-btn"
+            onClick={() => setEmailReportOpen(true)}
+            disabled={photos.length === 0}
+            title="Email the Condition Report to the customer via Gmail"
+            className="inline-flex items-center gap-1.5 px-3 h-9 text-[10px] font-bold uppercase tracking-wider bg-white border border-emerald-700 text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 rounded-sm"
+          >
+            <Share2 className="w-3.5 h-3.5" /> Email Report
           </button>
           <button
             data-testid="timeline-pdf-btn"
@@ -699,6 +718,13 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
           photo={pairing}
           onClose={() => setPairing(null)}
           onPaired={() => { setPairing(null); load(); setPairRefresh((n) => n + 1); }}
+        />
+      )}
+      {emailReportOpen && (
+        <EmailConditionReportModal
+          dealId={dealId}
+          dealTitle={dealTitle}
+          onClose={() => setEmailReportOpen(false)}
         />
       )}
     </div>
@@ -1098,6 +1124,133 @@ function Field({ label, children }) {
     <div>
       <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500 mb-1">{label}</label>
       {children}
+    </div>
+  );
+}
+
+// ============ Email Condition Report Modal ============
+/**
+ * Small confirm-and-send dialog that fires `POST /api/deals/:id/condition-report/email`.
+ * The recipient defaults to the deal's primary contact (backend auto-fills
+ * when we send an empty to_email), so the rep can usually one-tap the
+ * "Send" button. Adding a personal note is optional — leaving it blank
+ * uses a smart default paragraph that references the photo count +
+ * annotated count.
+ */
+function EmailConditionReportModal({ dealId, dealTitle, onClose }) {
+  const [toEmail, setToEmail] = useState("");
+  const [ccEmail, setCcEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [contactHint, setContactHint] = useState("");
+
+  // Pre-fill `to_email` from the deal's primary contact so the rep sees
+  // exactly who the email is going to before hitting send. Falls back to
+  // an empty field which the backend will still auto-populate.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const d = await api.get(`/deals/${dealId}`);
+        const contactId = d.data?.primary_contact_id;
+        if (!contactId || !mounted) return;
+        const c = await api.get(`/contacts/${contactId}`);
+        if (!mounted) return;
+        const email = c.data?.email || "";
+        const name = [c.data?.first_name, c.data?.last_name].filter(Boolean).join(" ") || c.data?.company || "";
+        setToEmail(email);
+        setContactHint(name ? `${name} · primary contact on this deal` : "primary contact on this deal");
+      } catch { /* swallow — backend will still auto-fill from primary contact */ }
+    })();
+    return () => { mounted = false; };
+  }, [dealId]);
+
+  const send = async () => {
+    setSending(true);
+    try {
+      const r = await api.post(`/deals/${dealId}/condition-report/email`, {
+        to_email: toEmail.trim() || undefined,
+        cc_email: ccEmail.trim() || undefined,
+        message: message.trim() || undefined,
+      });
+      const d = r.data || {};
+      toast.success(
+        `Report sent to ${d.to}${d.cc ? ` (cc ${d.cc})` : ""} · ${d.photos_included} photos`
+          + (d.annotated_included ? ` (${d.annotated_included} annotated)` : ""),
+        { duration: 6000 },
+      );
+      onClose();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message || "Send failed");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[55] bg-black/60 flex items-center justify-center p-4" onClick={onClose} data-testid="email-condition-report-modal">
+      <div className="bg-white w-full max-w-lg rounded-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-3 border-b border-zinc-200 flex items-center justify-between">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-700 mb-0.5">
+              Email condition report
+            </div>
+            <div className="text-xs text-zinc-500 truncate">
+              {dealTitle || "Project"}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="p-1 text-zinc-500 hover:text-zinc-800" data-testid="email-report-close">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <Field label="Send to">
+            <input
+              type="email"
+              value={toEmail}
+              onChange={(e) => setToEmail(e.target.value)}
+              placeholder="customer@example.com"
+              className="w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm"
+              data-testid="email-report-to"
+            />
+            {contactHint && <div className="mt-1 text-[10px] text-zinc-500">{contactHint}</div>}
+          </Field>
+          <Field label="CC (optional)">
+            <input
+              type="email"
+              value={ccEmail}
+              onChange={(e) => setCcEmail(e.target.value)}
+              placeholder="manager@example.com"
+              className="w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm"
+              data-testid="email-report-cc"
+            />
+          </Field>
+          <Field label="Personal note (optional)">
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={4}
+              placeholder="Leave blank to use the default cover message referencing your photo + annotation counts."
+              className="w-full px-2 py-1.5 border border-zinc-300 rounded-sm text-sm"
+              data-testid="email-report-message"
+            />
+          </Field>
+        </div>
+        <div className="px-5 py-3 border-t border-zinc-200 bg-zinc-50 flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={sending} className="h-9 px-3 text-xs font-bold uppercase tracking-wider border border-zinc-300 hover:bg-white rounded-sm disabled:opacity-50">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={send}
+            disabled={sending}
+            className="h-9 px-4 text-xs font-bold uppercase tracking-wider bg-emerald-700 text-white hover:bg-emerald-800 rounded-sm disabled:opacity-50"
+            data-testid="email-report-send"
+          >
+            {sending ? "Sending…" : "Send report"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
