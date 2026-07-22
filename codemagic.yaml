@@ -22,6 +22,14 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
 
+    # `integrations` tells Codemagic which named integration (configured
+    # in Team Settings → Integrations → App Store Connect) to attach to
+    # this workflow. Required when publishing.app_store_connect.auth is
+    # set to `integration` (see below). If you named your integration
+    # something other than "App Store Connect", update the value here.
+    integrations:
+      app_store_connect: App Store Connect
+
     environment:
       # Apple Team ID for SealTech Building Solutions (Individual enrollment).
       # Codemagic uses this in combination with the App Store Connect API key
