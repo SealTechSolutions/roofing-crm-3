@@ -66,34 +66,44 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+      {/* --- Quick-jump chips (auto-added by workflow reorder) --- */}
+      <div className="sticky top-0 z-20 -mx-6 sm:-mx-8 px-6 sm:px-8 py-2 mb-6 bg-white/85 backdrop-blur border-b border-zinc-200 flex flex-wrap items-center gap-1.5" data-testid="dashboard-jump-chips">
+        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mr-2">Jump to</span>
+        <a href="#dash-group-alerts" data-testid="jump-chip-alerts" className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white rounded-sm transition-colors">Alerts</a>
+        <a href="#dash-group-kpi" data-testid="jump-chip-kpi" className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white rounded-sm transition-colors">KPIs</a>
+        <a href="#dash-group-activity" data-testid="jump-chip-activity" className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white rounded-sm transition-colors">Activity</a>
+        <a href="#dash-group-secondary" data-testid="jump-chip-secondary" className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white rounded-sm transition-colors">Metrics</a>
+      </div>
 
+      {/* ═══ GROUP: ALERTS — WHAT NEEDS ATTENTION ═══ */}
+      <div id="dash-group-alerts" data-testid="dash-group-alerts" className="scroll-mt-16">
+      {/* Today + Next 48h — ad-hoc deal events */}
+      <TodayEvents />
+
+      {/* Stale Deals — deals stuck at the same stage for >14 days */}
+      <StaleDeals />
+
+      {/* Compliance Wall — team certifications expiring within 60 days */}
+      <ComplianceWall />
+
+      {/* COI Roster — Subcontractors with expired/expiring/missing insurance */}
+      <CoiRoster />
+
+      {/* Materials In Motion */}
+      <MaterialsInMotion motion={motion} />
+
+      {/* Recently-deleted audit — surfaces anything removed in the last 48h */}
+      <RecentlyDeleted />
+
+      </div>
+
+      {/* ═══ GROUP: KPIS — TOP-LINE NUMBERS ═══ */}
+      <div id="dash-group-kpi" data-testid="dash-group-kpi" className="scroll-mt-16">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KPI label="Open Leads" value={data.open_leads} hint={`${data.deals_count} total deals`} icon={TrendingUp} testId="kpi-open-leads" />
         <KPI label="Won Deals" value={data.won_deals} hint={`${data.lost_deals} lost`} icon={Trophy} testId="kpi-won-deals" />
         <KPI label="Pipeline Revenue" value={formatCurrency(data.pipeline_revenue)} hint="Open deals — chosen amount or mid proposal option" icon={DollarSign} testId="kpi-pipeline" />
         <KPI label="Profit YTD" value={formatCurrency(data.profit_ytd)} hint={`Won revenue ${formatCurrency(data.won_revenue)}`} icon={FileSpreadsheet} testId="kpi-profit-ytd" />
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
-        <KPI label="Contacts" value={data.contacts_count} icon={Users} testId="kpi-contacts" />
-        <KPI label="Properties" value={data.properties_count} icon={Building2} testId="kpi-properties" />
-        <KPI label="Won Revenue" value={formatCurrency(data.won_revenue)} icon={DollarSign} testId="kpi-won-revenue" />
-        <KPI label="Total Costs" value={formatCurrency(data.total_costs)} icon={FileSpreadsheet} testId="kpi-total-costs" />
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
-        <Link to="/maintenance" className="block">
-          <KPI label="Maintenance Plans" value={data.maintenance_count || 0} hint="Active recurring customers" icon={Wrench} testId="kpi-maintenance-count" />
-        </Link>
-        <Link to="/maintenance" className="block">
-          <KPI label="Recurring Annual Revenue" value={formatCurrency(data.maintenance_annual_revenue || 0)} hint="Total annual rate across plans" icon={DollarSign} testId="kpi-maintenance-arr" />
-        </Link>
-        <Link to="/maintenance" className="block">
-          <KPI label="Maintenance Due (30 days)" value={data.maintenance_due_30d || 0} hint="Includes overdue" icon={TrendingUp} testId="kpi-maintenance-due30" />
-        </Link>
-        <Link to="/maintenance" className="block">
-          <KPI label="Maintenance Overdue" value={data.maintenance_overdue || 0} hint="Past next due date" icon={Trophy} testId="kpi-maintenance-overdue" />
-        </Link>
       </div>
 
       {/* Payables KPIs */}
@@ -112,94 +122,10 @@ export default function Dashboard() {
       {/* Books — Per-Entity KPI Strip */}
       <BooksKpiStrip />
 
-      {/* Today + Next 48h — ad-hoc deal events */}
-      <TodayEvents />
-
-      {/* Compliance Wall — team certifications expiring within 60 days */}
-      <ComplianceWall />
-
-      {/* Recently-deleted audit — surfaces anything removed in the last 48h */}
-      <RecentlyDeleted />
-
-      {/* Materials In Motion */}
-      <MaterialsInMotion motion={motion} />
-
-      {/* Stale Deals — deals stuck at the same stage for >14 days */}
-      <StaleDeals />
-
-      {/* COI Roster — Subcontractors with expired/expiring/missing insurance */}
-      <CoiRoster />
-
-      {/* Revenue by Project Type */}
-      <div className="bg-white border border-zinc-200 rounded-sm mb-12" data-testid="revenue-by-type-card">
-        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h2 className="font-heading text-lg font-bold tracking-tight">Revenue by Type</h2>
-            <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-1">Booked vs Received — broken out by project category</div>
-          </div>
-          <div className="inline-flex border border-zinc-300 rounded-sm overflow-hidden" data-testid="revenue-window-toggle">
-            <button
-              data-testid="revenue-window-ytd"
-              onClick={() => setRevWindow("ytd")}
-              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${revWindow === "ytd" ? "bg-blue-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
-            >
-              YTD
-            </button>
-            <button
-              data-testid="revenue-window-all"
-              onClick={() => setRevWindow("all")}
-              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${revWindow === "all" ? "bg-blue-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
-            >
-              All-Time
-            </button>
-          </div>
-        </div>
-        {!revData ? (
-          <div className="p-8 text-xs uppercase tracking-wider text-zinc-500 text-center">Loading…</div>
-        ) : (
-          <table className="w-full text-sm" data-testid="revenue-by-type-table">
-            <thead>
-              <tr className="border-b-2 border-zinc-950 text-left">
-                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider">Project Type</th>
-                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Count</th>
-                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Booked</th>
-                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Received</th>
-                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Outstanding</th>
-              </tr>
-            </thead>
-            <tbody>
-              {revData.rows.map((row) => {
-                const outstanding = (row.booked || 0) - (row.received || 0);
-                const isMaint = row.project_type === "Maintenance";
-                return (
-                  <tr key={row.project_type} className={`border-b border-zinc-100 ${isMaint ? "bg-blue-50/40" : ""}`} data-testid={`revenue-row-${row.project_type.replace(/\s+/g, "-").toLowerCase()}`}>
-                    <td className="px-6 py-3 font-bold text-zinc-950">
-                      {row.project_type}
-                      {isMaint && <span className="ml-2 text-[9px] font-bold uppercase tracking-wider text-blue-700">(Recurring Visits)</span>}
-                    </td>
-                    <td className="px-6 py-3 text-right text-zinc-600 font-mono">{row.count}</td>
-                    <td className="px-6 py-3 text-right font-mono">{formatCurrency(row.booked)}</td>
-                    <td className="px-6 py-3 text-right font-mono text-emerald-700">{formatCurrency(row.received)}</td>
-                    <td className={`px-6 py-3 text-right font-mono ${outstanding > 0 ? "text-orange-700" : "text-zinc-400"}`}>{formatCurrency(outstanding)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-zinc-950 bg-zinc-50">
-                <td className="px-6 py-3 font-bold uppercase text-[10px] tracking-wider" colSpan={2}>Total</td>
-                <td className="px-6 py-3 text-right font-mono font-bold">{formatCurrency(revData.totals.booked)}</td>
-                <td className="px-6 py-3 text-right font-mono font-bold text-emerald-700">{formatCurrency(revData.totals.received)}</td>
-                <td className="px-6 py-3 text-right font-mono font-bold text-orange-700">{formatCurrency((revData.totals.booked || 0) - (revData.totals.received || 0))}</td>
-              </tr>
-            </tfoot>
-          </table>
-        )}
-        <div className="px-6 py-3 border-t border-zinc-100 text-[10px] uppercase tracking-wider text-zinc-500">
-          <span className="text-blue-700 font-bold">Note:</span> &quot;Received&quot; currently uses Paid milestone amounts as a proxy. Once invoicing is added, this will track actual invoiced + collected amounts.
-        </div>
       </div>
 
+      {/* ═══ GROUP: RECENT ACTIVITY ═══ */}
+      <div id="dash-group-activity" data-testid="dash-group-activity" className="scroll-mt-16">
       <div className="bg-white border border-zinc-200 rounded-sm">
         <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -299,6 +225,105 @@ export default function Dashboard() {
           </table>
         )}
       </div>
+
+      {/* Revenue by Project Type */}
+      <div className="bg-white border border-zinc-200 rounded-sm mb-12" data-testid="revenue-by-type-card">
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h2 className="font-heading text-lg font-bold tracking-tight">Revenue by Type</h2>
+            <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-1">Booked vs Received — broken out by project category</div>
+          </div>
+          <div className="inline-flex border border-zinc-300 rounded-sm overflow-hidden" data-testid="revenue-window-toggle">
+            <button
+              data-testid="revenue-window-ytd"
+              onClick={() => setRevWindow("ytd")}
+              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${revWindow === "ytd" ? "bg-blue-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
+            >
+              YTD
+            </button>
+            <button
+              data-testid="revenue-window-all"
+              onClick={() => setRevWindow("all")}
+              className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${revWindow === "all" ? "bg-blue-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
+            >
+              All-Time
+            </button>
+          </div>
+        </div>
+        {!revData ? (
+          <div className="p-8 text-xs uppercase tracking-wider text-zinc-500 text-center">Loading…</div>
+        ) : (
+          <table className="w-full text-sm" data-testid="revenue-by-type-table">
+            <thead>
+              <tr className="border-b-2 border-zinc-950 text-left">
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider">Project Type</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Count</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Booked</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Received</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-right">Outstanding</th>
+              </tr>
+            </thead>
+            <tbody>
+              {revData.rows.map((row) => {
+                const outstanding = (row.booked || 0) - (row.received || 0);
+                const isMaint = row.project_type === "Maintenance";
+                return (
+                  <tr key={row.project_type} className={`border-b border-zinc-100 ${isMaint ? "bg-blue-50/40" : ""}`} data-testid={`revenue-row-${row.project_type.replace(/\s+/g, "-").toLowerCase()}`}>
+                    <td className="px-6 py-3 font-bold text-zinc-950">
+                      {row.project_type}
+                      {isMaint && <span className="ml-2 text-[9px] font-bold uppercase tracking-wider text-blue-700">(Recurring Visits)</span>}
+                    </td>
+                    <td className="px-6 py-3 text-right text-zinc-600 font-mono">{row.count}</td>
+                    <td className="px-6 py-3 text-right font-mono">{formatCurrency(row.booked)}</td>
+                    <td className="px-6 py-3 text-right font-mono text-emerald-700">{formatCurrency(row.received)}</td>
+                    <td className={`px-6 py-3 text-right font-mono ${outstanding > 0 ? "text-orange-700" : "text-zinc-400"}`}>{formatCurrency(outstanding)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-zinc-950 bg-zinc-50">
+                <td className="px-6 py-3 font-bold uppercase text-[10px] tracking-wider" colSpan={2}>Total</td>
+                <td className="px-6 py-3 text-right font-mono font-bold">{formatCurrency(revData.totals.booked)}</td>
+                <td className="px-6 py-3 text-right font-mono font-bold text-emerald-700">{formatCurrency(revData.totals.received)}</td>
+                <td className="px-6 py-3 text-right font-mono font-bold text-orange-700">{formatCurrency((revData.totals.booked || 0) - (revData.totals.received || 0))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+        <div className="px-6 py-3 border-t border-zinc-100 text-[10px] uppercase tracking-wider text-zinc-500">
+          <span className="text-blue-700 font-bold">Note:</span> &quot;Received&quot; currently uses Paid milestone amounts as a proxy. Once invoicing is added, this will track actual invoiced + collected amounts.
+        </div>
+      </div>
+
+      </div>
+
+      {/* ═══ GROUP: SECONDARY METRICS ═══ */}
+      <div id="dash-group-secondary" data-testid="dash-group-secondary" className="scroll-mt-16">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+        <KPI label="Contacts" value={data.contacts_count} icon={Users} testId="kpi-contacts" />
+        <KPI label="Properties" value={data.properties_count} icon={Building2} testId="kpi-properties" />
+        <KPI label="Won Revenue" value={formatCurrency(data.won_revenue)} icon={DollarSign} testId="kpi-won-revenue" />
+        <KPI label="Total Costs" value={formatCurrency(data.total_costs)} icon={FileSpreadsheet} testId="kpi-total-costs" />
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+        <Link to="/maintenance" className="block">
+          <KPI label="Maintenance Plans" value={data.maintenance_count || 0} hint="Active recurring customers" icon={Wrench} testId="kpi-maintenance-count" />
+        </Link>
+        <Link to="/maintenance" className="block">
+          <KPI label="Recurring Annual Revenue" value={formatCurrency(data.maintenance_annual_revenue || 0)} hint="Total annual rate across plans" icon={DollarSign} testId="kpi-maintenance-arr" />
+        </Link>
+        <Link to="/maintenance" className="block">
+          <KPI label="Maintenance Due (30 days)" value={data.maintenance_due_30d || 0} hint="Includes overdue" icon={TrendingUp} testId="kpi-maintenance-due30" />
+        </Link>
+        <Link to="/maintenance" className="block">
+          <KPI label="Maintenance Overdue" value={data.maintenance_overdue || 0} hint="Past next due date" icon={Trophy} testId="kpi-maintenance-overdue" />
+        </Link>
+      </div>
+
+      </div>
+
     </div>
   );
 }

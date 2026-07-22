@@ -668,6 +668,159 @@ export default function DealDetail() {
         }}
       />
 
+      {/* --- Quick-jump chips (auto-added by workflow reorder) --- */}
+      <div className="sticky top-0 z-20 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 mb-4 bg-white/85 backdrop-blur border-b border-zinc-200 flex flex-wrap items-center gap-1.5" data-testid="deal-jump-chips">
+        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mr-2">Jump to</span>
+        <a href="#deal-group-who" data-testid="jump-chip-who" className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white rounded-sm transition-colors">Who</a>
+        <a href="#deal-group-scope" data-testid="jump-chip-scope" className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white rounded-sm transition-colors">Scope</a>
+        <a href="#deal-group-money" data-testid="jump-chip-money" className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white rounded-sm transition-colors">Money</a>
+        <a href="#deal-group-execution" data-testid="jump-chip-execution" className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white rounded-sm transition-colors">Execution</a>
+        <a href="#deal-group-history" data-testid="jump-chip-history" className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 hover:bg-zinc-950 hover:text-white rounded-sm transition-colors">History</a>
+      </div>
+
+      {/* ═══ GROUP: WHO ═══ */}
+      <div id="deal-group-who" data-testid="deal-group-who" className="scroll-mt-16">
+      {/* Contact + Property */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <Card title="Contact">
+          {contact ? (
+            <>
+              <Row label="Name" value={contact.contact_name} bold />
+              <Row label="Company" value={contact.company_name} />
+              <Row label="Phone" value={formatPhoneDisplay(contact.phone)} />
+              <Row label="Email" value={contact.email} />
+              <Row label="Address" value={contact.address} />
+            </>
+          ) : (
+            <div className="text-sm text-zinc-500">No contact linked.</div>
+          )}
+        </Card>
+        <Card title="Property">
+          {property ? (
+            <>
+              <Row label="Name" value={property.property_name} bold />
+              <Row label="Address" value={property.property_address} />
+              <Row label="On-Site Contact" value={property.property_contact_name} />
+              <Row label="Phone" value={formatPhoneDisplay(property.property_contact_phone)} />
+            </>
+          ) : (
+            <div className="text-sm text-zinc-500">No property linked.</div>
+          )}
+        </Card>
+      </div>
+
+      {deal.notes && (
+        <div className="mt-6 bg-white border border-zinc-200 rounded-sm p-6">
+          <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-2">Notes</div>
+          <div className="text-sm text-zinc-800 whitespace-pre-wrap" data-testid="deal-notes-view">{deal.notes}</div>
+        </div>
+      )}
+
+      </div>
+
+      {/* ═══ GROUP: SCOPE ═══ */}
+      <div id="deal-group-scope" data-testid="deal-group-scope" className="scroll-mt-16">
+      {/* Pricing options + spec */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <Card title={(() => {
+          const isConstruction = /^(construction project|other)$/i.test(deal.proposed_roof_type || "") || /other construction work/i.test(deal.current_roof_type || "");
+          if (isConstruction) return "Project Price";
+          return deal.deal_type === "Assessment" ? "Assessment Options" : "Pricing Options";
+        })()}>
+          {(() => {
+            const isConstruction = /^(construction project|other)$/i.test(deal.proposed_roof_type || "") || /other construction work/i.test(deal.current_roof_type || "");
+            if (isConstruction) {
+              return (
+                <Row label="Project Price" value={formatCurrency(deal.proposal_option_1)} bold highlight={Math.abs(totals.revenue - deal.proposal_option_1) < 0.01 && totals.revenue > 0} />
+              );
+            }
+            return (
+              <>
+                {Number(deal.proposal_option_25yr || 0) > 0 && (
+                  <Row label="Option A — 25-yr" value={formatCurrency(deal.proposal_option_25yr)} highlight={Math.abs(totals.revenue - deal.proposal_option_25yr) < 0.01 && totals.revenue > 0} />
+                )}
+                <Row label="Option B — 20-yr" value={formatCurrency(deal.proposal_option_1)} highlight={Math.abs(totals.revenue - deal.proposal_option_1) < 0.01 && totals.revenue > 0} />
+                <Row label="Option C — 15-yr" value={formatCurrency(deal.proposal_option_2)} highlight={Math.abs(totals.revenue - deal.proposal_option_2) < 0.01 && totals.revenue > 0} />
+                <Row label="Option D — 10-yr" value={formatCurrency(deal.proposal_option_3)} highlight={Math.abs(totals.revenue - deal.proposal_option_3) < 0.01 && totals.revenue > 0} />
+              </>
+            );
+          })()}
+          <div className="border-t-2 border-zinc-950 my-2" />
+          <Row label="Chosen" value={formatCurrency(totals.revenue)} bold />
+        </Card>
+
+        <Card title="Roof Spec & Measurements">
+          <Row label="Current Roof / Project" value={deal.current_roof_type} />
+          <Row label="Proposed Roof / Project" value={deal.proposed_roof_type} bold />
+          <div className="pl-1 pb-2">
+            <ScopePreview currentRoof={deal.current_roof_type} proposedRoof={deal.proposed_roof_type} />
+          </div>
+          {(deal.construction_project_requirements || deal.construction_other_requirements || deal.construction_exclusions) && (
+            <div id="construction-scope" className="border-t border-zinc-100 mt-2 pt-2 space-y-2" data-testid="deal-detail-construction-scope">
+              {deal.project_type_override && (
+                <Row label="Project Type (PDF)" value={deal.project_type_override} bold />
+              )}
+              {deal.construction_project_requirements && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 mb-1">Project Requirements</div>
+                  <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm">{deal.construction_project_requirements}</pre>
+                </div>
+              )}
+              {deal.construction_other_requirements && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 mb-1">Other Requirements</div>
+                  <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm">{deal.construction_other_requirements}</pre>
+                </div>
+              )}
+              {deal.construction_exclusions && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 mb-1">Exclusions</div>
+                  <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm">{deal.construction_exclusions}</pre>
+                </div>
+              )}
+            </div>
+          )}
+          {deal.custom_scope && !(deal.construction_project_requirements || deal.construction_other_requirements || deal.construction_exclusions) && (
+            <div className="border-t border-zinc-100 mt-2 pt-2">
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-1">Custom Scope (legacy free-form)</div>
+              <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm" data-testid="deal-detail-custom-scope">{deal.custom_scope}</pre>
+            </div>
+          )}
+          <Row label="Project Type" value={deal.project_type} />
+          <Row label="Lead Source" value={deal.lead_source} />
+          {deal.lead_source === "Referral" && deal.referral_source && (
+            <Row label="Referred By" value={deal.referral_source} />
+          )}
+          {deal.date_sent && <Row label="Date Sent" value={deal.date_sent} />}
+          {deal.chosen_date && <Row label="Chosen Date" value={deal.chosen_date} />}
+          {(deal.property_sqft || deal.perimeter_lnft || deal.avg_parapet_height) ? (
+            <>
+              <div className="border-t border-zinc-100 my-2" />
+              <Row label="Property SqFt" value={deal.property_sqft ? Number(deal.property_sqft).toLocaleString() : "—"} />
+              <Row label="Perimeter LnFt" value={deal.perimeter_lnft ? Number(deal.perimeter_lnft).toLocaleString() : "—"} />
+              <Row label="Avg Parapet Ht (ft)" value={deal.avg_parapet_height || "—"} />
+              <Row label="Total SqFt" value={deal.total_sqft ? Number(deal.total_sqft).toLocaleString() : "—"} bold />
+            </>
+          ) : null}
+        </Card>
+      </div>
+
+      {/* Documents */}
+      <Documents
+        parentType="project"
+        parentId={id}
+        title="Documents — Measurement Reports, Assessments, Scopes, Invoices, Photos"
+        coverPhotoId={deal.cover_photo_file_id}
+        onSetCover={(fileId) => persist({ cover_photo_file_id: deal.cover_photo_file_id === fileId ? null : fileId })}
+      />
+
+      {/* Material Take-Off */}
+      <MaterialTakeoff deal={deal} reload={reload} />
+
+      </div>
+
+      {/* ═══ GROUP: MONEY ═══ */}
+      <div id="deal-group-money" data-testid="deal-group-money" className="scroll-mt-16">
       {/* Financials KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KpiCard label="Revenue" value={formatCurrency(totals.revenue)} testId="kpi-revenue" />
@@ -745,69 +898,6 @@ export default function DealDetail() {
           </table>
         </div>
       )}
-
-      {/* Schedule / Events panel — ad-hoc appointments tied to this deal */}
-      <DealSchedulePanel dealId={id} googleConnected={googleConnected} />
-
-      {/* Estimated vs Actual P&L */}
-      <div className="bg-white border border-zinc-200 rounded-sm p-5 mb-8" data-testid="pnl-comparison">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700">P&amp;L Comparison</div>
-            <h3 className="font-heading text-lg font-bold tracking-tight">Estimated vs Actual</h3>
-          </div>
-          <Link to={`/payables?project=${id}`} className="text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:underline">
-            View Vendor Bills ({vendorBills.length}) →
-          </Link>
-        </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider">
-              <th className="py-2"></th>
-              <th className="py-2 text-right">Estimated (Cost Items)</th>
-              <th className="py-2 text-right">Actual (Vendor Bills)</th>
-              <th className="py-2 text-right">Variance</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="border-b border-zinc-100">
-              <td className="py-3 font-bold">Revenue</td>
-              <td className="py-3 text-right font-mono">{formatCurrency(totals.revenue)}</td>
-              <td className="py-3 text-right font-mono">{formatCurrency(totals.revenue)}</td>
-              <td className="py-3 text-right font-mono text-zinc-400">—</td>
-            </tr>
-            <tr className="border-b border-zinc-100">
-              <td className="py-3 font-bold">Costs</td>
-              <td className="py-3 text-right font-mono">{formatCurrency(totals.costs)}</td>
-              <td className="py-3 text-right font-mono">{formatCurrency(totals.actualCosts)}</td>
-              <td className={`py-3 text-right font-mono font-bold ${totals.actualCosts > totals.costs ? "text-red-700" : "text-emerald-700"}`}>
-                {totals.actualCosts > totals.costs ? "+" : ""}{formatCurrency(totals.actualCosts - totals.costs)}
-              </td>
-            </tr>
-            <tr className="border-b-2 border-zinc-950 bg-zinc-50">
-              <td className="py-3 font-bold">Net Profit</td>
-              <td className={`py-3 text-right font-mono font-bold ${totals.profit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCurrency(totals.profit)}</td>
-              <td className={`py-3 text-right font-mono font-bold ${totals.actualProfit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCurrency(totals.actualProfit)}</td>
-              <td className={`py-3 text-right font-mono font-bold ${totals.actualProfit >= totals.profit ? "text-emerald-700" : "text-red-700"}`}>
-                {totals.actualProfit >= totals.profit ? "+" : ""}{formatCurrency(totals.actualProfit - totals.profit)}
-              </td>
-            </tr>
-            <tr>
-              <td className="py-2 text-[11px] uppercase tracking-wider text-zinc-500">Margin</td>
-              <td className="py-2 text-right font-mono text-[11px] text-zinc-600">{totals.margin.toFixed(1)}%</td>
-              <td className="py-2 text-right font-mono text-[11px] text-zinc-600">{totals.actualMargin.toFixed(1)}%</td>
-              <td className="py-2"></td>
-            </tr>
-          </tbody>
-        </table>
-        {vendorBills.length === 0 ? (
-          <div className="mt-3 text-[11px] text-zinc-500 italic">No vendor bills attached to this project yet. Upload one on the Payables page and link a line item to this project to see actuals here.</div>
-        ) : (
-          <div className="mt-3 text-[11px] text-zinc-500">
-            {vendorBills.length} bill{vendorBills.length > 1 ? "s" : ""} attached · {formatCurrency(totals.actualPaid)} paid · {formatCurrency(totals.actualUnpaid)} unpaid
-          </div>
-        )}
-      </div>
 
       {/* Milestones */}
       <Card title="Payment Milestones" data-section="milestones" right={
@@ -960,115 +1050,194 @@ export default function DealDetail() {
         </div>
       </Card>
 
-      {/* Pricing options + spec */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-        <Card title={(() => {
-          const isConstruction = /^(construction project|other)$/i.test(deal.proposed_roof_type || "") || /other construction work/i.test(deal.current_roof_type || "");
-          if (isConstruction) return "Project Price";
-          return deal.deal_type === "Assessment" ? "Assessment Options" : "Pricing Options";
-        })()}>
-          {(() => {
-            const isConstruction = /^(construction project|other)$/i.test(deal.proposed_roof_type || "") || /other construction work/i.test(deal.current_roof_type || "");
-            if (isConstruction) {
-              return (
-                <Row label="Project Price" value={formatCurrency(deal.proposal_option_1)} bold highlight={Math.abs(totals.revenue - deal.proposal_option_1) < 0.01 && totals.revenue > 0} />
-              );
-            }
-            return (
-              <>
-                {Number(deal.proposal_option_25yr || 0) > 0 && (
-                  <Row label="Option A — 25-yr" value={formatCurrency(deal.proposal_option_25yr)} highlight={Math.abs(totals.revenue - deal.proposal_option_25yr) < 0.01 && totals.revenue > 0} />
-                )}
-                <Row label="Option B — 20-yr" value={formatCurrency(deal.proposal_option_1)} highlight={Math.abs(totals.revenue - deal.proposal_option_1) < 0.01 && totals.revenue > 0} />
-                <Row label="Option C — 15-yr" value={formatCurrency(deal.proposal_option_2)} highlight={Math.abs(totals.revenue - deal.proposal_option_2) < 0.01 && totals.revenue > 0} />
-                <Row label="Option D — 10-yr" value={formatCurrency(deal.proposal_option_3)} highlight={Math.abs(totals.revenue - deal.proposal_option_3) < 0.01 && totals.revenue > 0} />
-              </>
-            );
-          })()}
-          <div className="border-t-2 border-zinc-950 my-2" />
-          <Row label="Chosen" value={formatCurrency(totals.revenue)} bold />
-        </Card>
-
-        <Card title="Roof Spec & Measurements">
-          <Row label="Current Roof / Project" value={deal.current_roof_type} />
-          <Row label="Proposed Roof / Project" value={deal.proposed_roof_type} bold />
-          <div className="pl-1 pb-2">
-            <ScopePreview currentRoof={deal.current_roof_type} proposedRoof={deal.proposed_roof_type} />
+      {/* Estimated vs Actual P&L */}
+      <div className="bg-white border border-zinc-200 rounded-sm p-5 mb-8" data-testid="pnl-comparison">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700">P&amp;L Comparison</div>
+            <h3 className="font-heading text-lg font-bold tracking-tight">Estimated vs Actual</h3>
           </div>
-          {(deal.construction_project_requirements || deal.construction_other_requirements || deal.construction_exclusions) && (
-            <div id="construction-scope" className="border-t border-zinc-100 mt-2 pt-2 space-y-2" data-testid="deal-detail-construction-scope">
-              {deal.project_type_override && (
-                <Row label="Project Type (PDF)" value={deal.project_type_override} bold />
-              )}
-              {deal.construction_project_requirements && (
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 mb-1">Project Requirements</div>
-                  <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm">{deal.construction_project_requirements}</pre>
-                </div>
-              )}
-              {deal.construction_other_requirements && (
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 mb-1">Other Requirements</div>
-                  <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm">{deal.construction_other_requirements}</pre>
-                </div>
-              )}
-              {deal.construction_exclusions && (
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 mb-1">Exclusions</div>
-                  <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm">{deal.construction_exclusions}</pre>
-                </div>
-              )}
-            </div>
-          )}
-          {deal.custom_scope && !(deal.construction_project_requirements || deal.construction_other_requirements || deal.construction_exclusions) && (
-            <div className="border-t border-zinc-100 mt-2 pt-2">
-              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-1">Custom Scope (legacy free-form)</div>
-              <pre className="whitespace-pre-wrap text-xs text-zinc-700 font-sans bg-zinc-50 p-2 border border-zinc-200 rounded-sm" data-testid="deal-detail-custom-scope">{deal.custom_scope}</pre>
-            </div>
-          )}
-          <Row label="Project Type" value={deal.project_type} />
-          <Row label="Lead Source" value={deal.lead_source} />
-          {deal.lead_source === "Referral" && deal.referral_source && (
-            <Row label="Referred By" value={deal.referral_source} />
-          )}
-          {deal.date_sent && <Row label="Date Sent" value={deal.date_sent} />}
-          {deal.chosen_date && <Row label="Chosen Date" value={deal.chosen_date} />}
-          {(deal.property_sqft || deal.perimeter_lnft || deal.avg_parapet_height) ? (
-            <>
-              <div className="border-t border-zinc-100 my-2" />
-              <Row label="Property SqFt" value={deal.property_sqft ? Number(deal.property_sqft).toLocaleString() : "—"} />
-              <Row label="Perimeter LnFt" value={deal.perimeter_lnft ? Number(deal.perimeter_lnft).toLocaleString() : "—"} />
-              <Row label="Avg Parapet Ht (ft)" value={deal.avg_parapet_height || "—"} />
-              <Row label="Total SqFt" value={deal.total_sqft ? Number(deal.total_sqft).toLocaleString() : "—"} bold />
-            </>
-          ) : null}
-        </Card>
+          <Link to={`/payables?project=${id}`} className="text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:underline">
+            View Vendor Bills ({vendorBills.length}) →
+          </Link>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider">
+              <th className="py-2"></th>
+              <th className="py-2 text-right">Estimated (Cost Items)</th>
+              <th className="py-2 text-right">Actual (Vendor Bills)</th>
+              <th className="py-2 text-right">Variance</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-zinc-100">
+              <td className="py-3 font-bold">Revenue</td>
+              <td className="py-3 text-right font-mono">{formatCurrency(totals.revenue)}</td>
+              <td className="py-3 text-right font-mono">{formatCurrency(totals.revenue)}</td>
+              <td className="py-3 text-right font-mono text-zinc-400">—</td>
+            </tr>
+            <tr className="border-b border-zinc-100">
+              <td className="py-3 font-bold">Costs</td>
+              <td className="py-3 text-right font-mono">{formatCurrency(totals.costs)}</td>
+              <td className="py-3 text-right font-mono">{formatCurrency(totals.actualCosts)}</td>
+              <td className={`py-3 text-right font-mono font-bold ${totals.actualCosts > totals.costs ? "text-red-700" : "text-emerald-700"}`}>
+                {totals.actualCosts > totals.costs ? "+" : ""}{formatCurrency(totals.actualCosts - totals.costs)}
+              </td>
+            </tr>
+            <tr className="border-b-2 border-zinc-950 bg-zinc-50">
+              <td className="py-3 font-bold">Net Profit</td>
+              <td className={`py-3 text-right font-mono font-bold ${totals.profit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCurrency(totals.profit)}</td>
+              <td className={`py-3 text-right font-mono font-bold ${totals.actualProfit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatCurrency(totals.actualProfit)}</td>
+              <td className={`py-3 text-right font-mono font-bold ${totals.actualProfit >= totals.profit ? "text-emerald-700" : "text-red-700"}`}>
+                {totals.actualProfit >= totals.profit ? "+" : ""}{formatCurrency(totals.actualProfit - totals.profit)}
+              </td>
+            </tr>
+            <tr>
+              <td className="py-2 text-[11px] uppercase tracking-wider text-zinc-500">Margin</td>
+              <td className="py-2 text-right font-mono text-[11px] text-zinc-600">{totals.margin.toFixed(1)}%</td>
+              <td className="py-2 text-right font-mono text-[11px] text-zinc-600">{totals.actualMargin.toFixed(1)}%</td>
+              <td className="py-2"></td>
+            </tr>
+          </tbody>
+        </table>
+        {vendorBills.length === 0 ? (
+          <div className="mt-3 text-[11px] text-zinc-500 italic">No vendor bills attached to this project yet. Upload one on the Payables page and link a line item to this project to see actuals here.</div>
+        ) : (
+          <div className="mt-3 text-[11px] text-zinc-500">
+            {vendorBills.length} bill{vendorBills.length > 1 ? "s" : ""} attached · {formatCurrency(totals.actualPaid)} paid · {formatCurrency(totals.actualUnpaid)} unpaid
+          </div>
+        )}
       </div>
 
-      {/* Documents */}
-      <Documents
-        parentType="project"
-        parentId={id}
-        title="Documents — Measurement Reports, Assessments, Scopes, Invoices, Photos"
-        coverPhotoId={deal.cover_photo_file_id}
-        onSetCover={(fileId) => persist({ cover_photo_file_id: deal.cover_photo_file_id === fileId ? null : fileId })}
-      />
+      </div>
 
-      {/* Material Take-Off */}
-      <MaterialTakeoff deal={deal} reload={reload} />
+      {/* ═══ GROUP: EXECUTION ═══ */}
+      <div id="deal-group-execution" data-testid="deal-group-execution" className="scroll-mt-16">
+      {/* Schedule / Events panel — ad-hoc appointments tied to this deal */}
+      <DealSchedulePanel dealId={id} googleConnected={googleConnected} />
 
-      {/* Activity Timeline */}
+      {/* Change Orders */}
       <Card
         title={
           <span className="inline-flex items-center gap-2">
-            <Clock className="w-3.5 h-3.5 text-blue-700" /> Recent Activity
+            <FilePlus className="w-3.5 h-3.5 text-blue-700" /> Change Orders
+            {changeOrderTotal !== 0 && (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-sm">
+                +{formatCurrency(changeOrderTotal)} approved
+              </span>
+            )}
           </span>
         }
       >
-        <div className="px-4 py-3 max-h-96 overflow-y-auto">
-          <DealActivityTimeline dealId={id} />
+        {/* Add new change order */}
+        <div className="bg-zinc-50 border border-zinc-200 rounded-sm p-3 mb-4">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">Add Change Order</div>
+          <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
+            <input
+              type="date"
+              value={newCO.date}
+              onChange={(e) => setNewCO({ ...newCO, date: e.target.value })}
+              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm"
+              data-testid="new-co-date"
+            />
+            <input
+              type="text"
+              placeholder="Description"
+              value={newCO.description}
+              onChange={(e) => setNewCO({ ...newCO, description: e.target.value })}
+              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm sm:col-span-2"
+              data-testid="new-co-desc"
+            />
+            <input
+              type="number"
+              placeholder="Amount"
+              value={newCO.amount}
+              onChange={(e) => setNewCO({ ...newCO, amount: e.target.value })}
+              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm font-mono"
+              data-testid="new-co-amount"
+            />
+            <select
+              value={newCO.status}
+              onChange={(e) => setNewCO({ ...newCO, status: e.target.value })}
+              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
+              data-testid="new-co-status"
+            >
+              <option value="Draft">Draft</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+            <button
+              onClick={addChangeOrder}
+              className="h-9 inline-flex items-center justify-center gap-1 px-3 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm"
+              data-testid="add-co-button"
+            >
+              <Plus className="w-3 h-3" /> Add
+            </button>
+          </div>
+          <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-2">
+            Approved change orders are added to Project Total on new invoices for this project.
+          </div>
         </div>
+
+        {/* Change order history */}
+        {(deal.change_orders || []).length === 0 ? (
+          <div className="text-sm text-zinc-500 py-3 text-center">No change orders on this project.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="change-orders-table">
+              <thead>
+                <tr className="border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider">
+                  <th className="py-2 pr-3 w-32">Date</th>
+                  <th className="py-2 pr-3">Description</th>
+                  <th className="py-2 pr-3 w-32 text-right">Amount</th>
+                  <th className="py-2 pr-3 w-28">Status</th>
+                  <th className="py-2 w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(deal.change_orders || []).map((co) => (
+                  <tr key={co.id} className="border-b border-zinc-100" data-testid={`co-row-${co.id}`}>
+                    <td className="py-2 pr-3 font-mono">{co.date || "—"}</td>
+                    <td className="py-2 pr-3 text-zinc-700">{co.description}</td>
+                    <td className="py-2 pr-3 text-right font-mono font-bold">{formatCurrency(co.amount)}</td>
+                    <td className="py-2 pr-3">
+                      <select
+                        value={co.status || "Approved"}
+                        onChange={(e) => updateChangeOrder(co.id, { status: e.target.value })}
+                        className={`h-7 px-2 text-[10px] font-bold uppercase tracking-wider border rounded-sm bg-white ${
+                          (co.status || "Approved") === "Approved" ? "border-emerald-300 text-emerald-700" :
+                          co.status === "Rejected" ? "border-red-300 text-red-700" :
+                          "border-zinc-300 text-zinc-600"
+                        }`}
+                      >
+                        <option value="Draft">Draft</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Rejected">Rejected</option>
+                      </select>
+                    </td>
+                    <td className="py-2 text-right">
+                      <button onClick={() => removeChangeOrder(co.id)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm" data-testid={`del-co-${co.id}`}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-zinc-950 bg-zinc-50">
+                  <td className="py-2 pr-3 font-bold uppercase text-[10px] tracking-wider" colSpan={2}>Approved Change Orders Total</td>
+                  <td className="py-2 pr-3 text-right font-mono font-bold text-blue-700">{formatCurrency(changeOrderTotal)}</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
+
+      {/* Project Photos — upload, organize by album + tag, share with customer */}
+      <div className="mt-6">
+        <ProjectPhotos dealId={id} dealTitle={deal.title} />
+      </div>
 
       {/* Maintenance Plan */}
       <Card
@@ -1211,162 +1380,23 @@ export default function DealDetail() {
         )}
       </Card>
 
-      {/* Change Orders */}
+      </div>
+
+      {/* ═══ GROUP: HISTORY ═══ */}
+      <div id="deal-group-history" data-testid="deal-group-history" className="scroll-mt-16">
+      {/* Activity Timeline */}
       <Card
         title={
           <span className="inline-flex items-center gap-2">
-            <FilePlus className="w-3.5 h-3.5 text-blue-700" /> Change Orders
-            {changeOrderTotal !== 0 && (
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-sm">
-                +{formatCurrency(changeOrderTotal)} approved
-              </span>
-            )}
+            <Clock className="w-3.5 h-3.5 text-blue-700" /> Recent Activity
           </span>
         }
       >
-        {/* Add new change order */}
-        <div className="bg-zinc-50 border border-zinc-200 rounded-sm p-3 mb-4">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">Add Change Order</div>
-          <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
-            <input
-              type="date"
-              value={newCO.date}
-              onChange={(e) => setNewCO({ ...newCO, date: e.target.value })}
-              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm"
-              data-testid="new-co-date"
-            />
-            <input
-              type="text"
-              placeholder="Description"
-              value={newCO.description}
-              onChange={(e) => setNewCO({ ...newCO, description: e.target.value })}
-              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm sm:col-span-2"
-              data-testid="new-co-desc"
-            />
-            <input
-              type="number"
-              placeholder="Amount"
-              value={newCO.amount}
-              onChange={(e) => setNewCO({ ...newCO, amount: e.target.value })}
-              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm font-mono"
-              data-testid="new-co-amount"
-            />
-            <select
-              value={newCO.status}
-              onChange={(e) => setNewCO({ ...newCO, status: e.target.value })}
-              className="h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white"
-              data-testid="new-co-status"
-            >
-              <option value="Draft">Draft</option>
-              <option value="Approved">Approved</option>
-              <option value="Rejected">Rejected</option>
-            </select>
-            <button
-              onClick={addChangeOrder}
-              className="h-9 inline-flex items-center justify-center gap-1 px-3 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm"
-              data-testid="add-co-button"
-            >
-              <Plus className="w-3 h-3" /> Add
-            </button>
-          </div>
-          <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-2">
-            Approved change orders are added to Project Total on new invoices for this project.
-          </div>
+        <div className="px-4 py-3 max-h-96 overflow-y-auto">
+          <DealActivityTimeline dealId={id} />
         </div>
-
-        {/* Change order history */}
-        {(deal.change_orders || []).length === 0 ? (
-          <div className="text-sm text-zinc-500 py-3 text-center">No change orders on this project.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="change-orders-table">
-              <thead>
-                <tr className="border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider">
-                  <th className="py-2 pr-3 w-32">Date</th>
-                  <th className="py-2 pr-3">Description</th>
-                  <th className="py-2 pr-3 w-32 text-right">Amount</th>
-                  <th className="py-2 pr-3 w-28">Status</th>
-                  <th className="py-2 w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(deal.change_orders || []).map((co) => (
-                  <tr key={co.id} className="border-b border-zinc-100" data-testid={`co-row-${co.id}`}>
-                    <td className="py-2 pr-3 font-mono">{co.date || "—"}</td>
-                    <td className="py-2 pr-3 text-zinc-700">{co.description}</td>
-                    <td className="py-2 pr-3 text-right font-mono font-bold">{formatCurrency(co.amount)}</td>
-                    <td className="py-2 pr-3">
-                      <select
-                        value={co.status || "Approved"}
-                        onChange={(e) => updateChangeOrder(co.id, { status: e.target.value })}
-                        className={`h-7 px-2 text-[10px] font-bold uppercase tracking-wider border rounded-sm bg-white ${
-                          (co.status || "Approved") === "Approved" ? "border-emerald-300 text-emerald-700" :
-                          co.status === "Rejected" ? "border-red-300 text-red-700" :
-                          "border-zinc-300 text-zinc-600"
-                        }`}
-                      >
-                        <option value="Draft">Draft</option>
-                        <option value="Approved">Approved</option>
-                        <option value="Rejected">Rejected</option>
-                      </select>
-                    </td>
-                    <td className="py-2 text-right">
-                      <button onClick={() => removeChangeOrder(co.id)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm" data-testid={`del-co-${co.id}`}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                <tr className="border-t-2 border-zinc-950 bg-zinc-50">
-                  <td className="py-2 pr-3 font-bold uppercase text-[10px] tracking-wider" colSpan={2}>Approved Change Orders Total</td>
-                  <td className="py-2 pr-3 text-right font-mono font-bold text-blue-700">{formatCurrency(changeOrderTotal)}</td>
-                  <td colSpan={2}></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
       </Card>
 
-      {/* Contact + Property */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-        <Card title="Contact">
-          {contact ? (
-            <>
-              <Row label="Name" value={contact.contact_name} bold />
-              <Row label="Company" value={contact.company_name} />
-              <Row label="Phone" value={formatPhoneDisplay(contact.phone)} />
-              <Row label="Email" value={contact.email} />
-              <Row label="Address" value={contact.address} />
-            </>
-          ) : (
-            <div className="text-sm text-zinc-500">No contact linked.</div>
-          )}
-        </Card>
-        <Card title="Property">
-          {property ? (
-            <>
-              <Row label="Name" value={property.property_name} bold />
-              <Row label="Address" value={property.property_address} />
-              <Row label="On-Site Contact" value={property.property_contact_name} />
-              <Row label="Phone" value={formatPhoneDisplay(property.property_contact_phone)} />
-            </>
-          ) : (
-            <div className="text-sm text-zinc-500">No property linked.</div>
-          )}
-        </Card>
-      </div>
-
-      {deal.notes && (
-        <div className="mt-6 bg-white border border-zinc-200 rounded-sm p-6">
-          <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-2">Notes</div>
-          <div className="text-sm text-zinc-800 whitespace-pre-wrap" data-testid="deal-notes-view">{deal.notes}</div>
-        </div>
-      )}
-
-      {/* Project Photos — upload, organize by album + tag, share with customer */}
-      <div className="mt-6">
-        <ProjectPhotos dealId={id} dealTitle={deal.title} />
       </div>
 
       {emailScopeOpen && (

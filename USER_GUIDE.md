@@ -4,6 +4,19 @@
 
 This is a full field-to-office manual for the SealTech CRM system. Sections are organized by role — start with the section that matches how you use the app.
 
+## Quick-Jump Chips (new — Feb 2026)
+
+The **Dashboard** and every **Deal detail page** now include a sticky "Jump to" chip bar at the top. Click a chip to skip straight to that section:
+
+- **Dashboard chips**: `Alerts` · `KPIs` · `Activity` · `Metrics`
+- **Deal page chips**: `Who` · `Scope` · `Money` · `Execution` · `History`
+
+Sections on each page are grouped in workflow order (top → bottom):
+
+**Deal detail** — Who (contact + property) → Scope (pricing + spec + docs + take-off) → Money (KPIs, invoices, milestones, costs, P&L) → Execution (schedule, change orders, photos, maintenance) → History (activity timeline)
+
+**Dashboard** — Alerts (Today, Stale Deals, Compliance, COI, Materials, Recently Deleted) → KPIs (top-line + payables + books) → Activity (recent scopes, projects, revenue chart) → Metrics (secondary + maintenance KPIs)
+
 ## Sidebar Navigation (Grouped)
 
 The sidebar is organized into 8 groups so related items live together:

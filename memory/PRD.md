@@ -29,6 +29,9 @@ Production-ready PWA CRM. JWT auth, Visual Deals Kanban, offline-capable field c
 - 2026-02 — Work Order: Library attachment + email dispatch + cursive signature font + tall description box.
 - 2026-02 — Email routing/footers cleaned globally.
 - 2026-02 — Admin-only Assigned Rep dropdown + badges on deals/contacts.
+- 2026-02 — Sidebar grouping: 8 semantic groups (Contacts / Projects / Field / Reports / Scheduling / Library / Finance / Company Info) + User Guide link.
+- 2026-02 — Removed web "Field Camera" nav item (field capture lives in native iOS app).
+- 2026-02 — **UX scroll-order fix**: DealDetail reorganized into 5 workflow groups (Who → Scope → Money → Execution → History); Dashboard reorganized into 4 groups (Alerts → KPIs → Activity → Metrics). Sticky "Jump to" chip bars added to both pages for one-click navigation to any section.
 
 ## Active backlog
 - **P1 — Commission Module** (spec at `/app/memory/COMMISSION_PRD.md`): blocked on user confirmation of flat % vs tiered, refund reversals, signature flow.
