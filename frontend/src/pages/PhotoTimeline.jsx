@@ -243,7 +243,9 @@ function TimelineCard({ photo, onView }) {
     if (!visible) return undefined;
     let mounted = true;
     let url = null;
-    api.get(`/projects/${photo.deal_id}/photos/${photo.id}/download`, { responseType: "blob" })
+    // Timeline card grid uses ?thumb=1 (600px JPEG) for fast list rendering;
+    // full-resolution image loads only when the user opens the lightbox.
+    api.get(`/projects/${photo.deal_id}/photos/${photo.id}/download?thumb=1`, { responseType: "blob" })
       .then((r) => {
         if (!mounted) return;
         url = URL.createObjectURL(r.data);

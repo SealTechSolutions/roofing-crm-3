@@ -529,13 +529,25 @@ def create_router(db, get_current_user) -> APIRouter:
         deal_id: str,
         photo_id: str,
         original: bool = False,
+        thumb: bool = False,
+        max_size: int = 0,
         _=Depends(get_current_user),
     ):
-        """Download a photo. If the photo has an annotated version and
-        `original=false` (the default), serve the flattened annotated PNG
-        instead of the raw camera roll. Pass `?original=true` to force the
-        untouched source (used by the annotator when it re-opens the photo
-        so the user always draws over the pristine base image)."""
+        """Download a photo.
+
+        Query params:
+        - `original=true`  Force the raw source (used by the annotator so the
+                           user always draws over the pristine base image).
+        - `thumb=true`     Return a 600px JPEG thumbnail (~50 KB) instead of
+                           the full-resolution original. Used by the photo
+                           grid to keep list views snappy on mobile networks.
+                           Preserves aspect ratio. Cached in-browser via
+                           long-lived Cache-Control headers.
+        - `max_size=N`     Custom max dimension in pixels (only when thumb=true).
+
+        If a photo has an annotated version and `original=false` (the default),
+        we serve the flattened annotated PNG instead of the raw camera roll.
+        """
         rec = await db.project_photos.find_one(
             {"id": photo_id, "deal_id": deal_id, "is_deleted": {"$ne": True}},
             {"_id": 0},
@@ -549,16 +561,56 @@ def create_router(db, get_current_user) -> APIRouter:
             content, _ct = get_object(path)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Storage fetch failed: {e}")
+
         filename = rec.get("original_filename") or f'{rec["id"]}.jpg'
-        if use_annotated:
-            # Annotated versions are PNG (browser canvas.toBlob default).
+        media_type = "image/png" if use_annotated else rec.get("content_type", "image/jpeg")
+
+        # Thumbnail path: downscale on-the-fly with Pillow. We use JPEG output
+        # regardless of source format (annotated PNGs get flattened to JPEG
+        # here — good enough for a 600px preview and 5-10x smaller). Result is
+        # cached by the browser for 7 days via Cache-Control so scrolling back
+        # over the same photos is instant.
+        if thumb:
+            try:
+                from PIL import Image as PILImage
+                target = max_size if max_size and max_size > 0 else 600
+                # Cap thumbnails at 1600px to prevent abuse — anything larger
+                # is really a "full-size" load and should use the raw endpoint.
+                target = max(120, min(target, 1600))
+                with PILImage.open(io.BytesIO(content)) as img:
+                    img = img.convert("RGB")
+                    img.thumbnail((target, target), PILImage.LANCZOS)
+                    out = io.BytesIO()
+                    img.save(out, format="JPEG", quality=78, optimize=True, progressive=True)
+                    content = out.getvalue()
+                media_type = "image/jpeg"
+                filename = filename.rsplit(".", 1)[0] + "-thumb.jpg"
+            except Exception as e:
+                # If thumbnailing fails (e.g. weird HEIC in the wild), fall
+                # back to serving the original rather than 500ing.
+                logger = __import__("logging").getLogger(__name__)
+                logger.warning(f"thumbnail failed for photo={photo_id}: {e}")
+
+        elif use_annotated:
             base = filename.rsplit(".", 1)[0]
             filename = f"{base}-annotated.png"
-        media_type = "image/png" if use_annotated else rec.get("content_type", "image/jpeg")
+
+        # Cache-Control: photos are immutable (rebuilt path changes if the
+        # user rotates/replaces), so browsers can cache aggressively.
+        # `private` because these are user-scoped protected assets.
+        # Include annotated_at + thumb params in ETag so annotator edits
+        # trigger a fresh fetch.
+        annotated_at = str(rec.get("annotated_at", ""))
+        etag = f'W/"{photo_id}-{annotated_at}-{"t" if thumb else "f"}-{max_size or 0}"'
+        headers = {
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=604800, immutable",  # 7 days
+            "ETag": etag,
+        }
         return StreamingResponse(
             io.BytesIO(content),
             media_type=media_type,
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+            headers=headers,
         )
 
     # ---------- Annotations (CompanyCam parity: draw on photos) ----------

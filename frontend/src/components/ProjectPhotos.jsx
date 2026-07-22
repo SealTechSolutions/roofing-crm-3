@@ -763,10 +763,14 @@ function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, s
 
   useEffect(() => {
     if (!visible) return undefined;
-    // Load via auth'd download endpoint; produces a blob URL we can put in <img>
+    // Grid view uses ?thumb=1 to fetch a ~600px JPEG (~50 KB) instead of
+    // the multi-MB original. Backend also sends Cache-Control: 7-day
+    // immutable so scrolling back over the same photos hits the browser
+    // cache instead of round-tripping. Full-size only loads in the
+    // lightbox / annotator.
     let mounted = true;
     let url = null;
-    api.get(`/projects/${photo.deal_id}/photos/${photo.id}/download`, { responseType: "blob" })
+    api.get(`/projects/${photo.deal_id}/photos/${photo.id}/download?thumb=1`, { responseType: "blob" })
       .then((r) => {
         if (!mounted) return;
         url = URL.createObjectURL(r.data);
@@ -774,7 +778,7 @@ function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, s
       })
       .catch(() => { /* show broken-image placeholder */ });
     return () => { mounted = false; if (url) URL.revokeObjectURL(url); };
-  }, [visible, photo.id, photo.deal_id]);
+  }, [visible, photo.id, photo.deal_id, photo.annotated_at]);
 
   const handleClick = () => {
     if (selectMode) { onToggleSelect && onToggleSelect(); }

@@ -100,7 +100,7 @@ function PairThumbSide({ dealId, photo, label }) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let url = null;
-    api.get(`/projects/${dealId}/photos/${photo.id}/download`, { responseType: "blob" })
+    api.get(`/projects/${dealId}/photos/${photo.id}/download?thumb=1`, { responseType: "blob" })
       .then((r) => { url = URL.createObjectURL(r.data); setSrc(url); })
       .catch(() => {});
     return () => { if (url) URL.revokeObjectURL(url); };
@@ -247,7 +247,9 @@ export function PhotoPairPicker({ dealId, photo, onClose, onPaired }) {
         // Lazily load thumbnails for the first ~24 candidates.
         for (const p of list.slice(0, 24)) {
           try {
-            const rr = await api.get(`/projects/${dealId}/photos/${p.id}/download`, { responseType: "blob" });
+            // Pair picker candidates use thumb (600px JPEG) — the picker
+            // shows up to 24 small tiles, doesn't need full-res.
+            const rr = await api.get(`/projects/${dealId}/photos/${p.id}/download?thumb=1`, { responseType: "blob" });
             const u = URL.createObjectURL(rr.data);
             urls.push(u);
             if (mounted) setThumbs((prev) => ({ ...prev, [p.id]: u }));
