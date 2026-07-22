@@ -22,9 +22,9 @@ The sidebar is organized into 8 groups so related items live together:
    • Calculator
 
 📸 FIELD
-   • Field Camera
    • Photo Timeline
    • Finish Site Visit
+   (Field capture happens on the native iOS app — install via "Get App on My Phone")
 
 📈 REPORTS
    • Assessments
@@ -131,8 +131,8 @@ Contact ──► Property ──► Deal ──► [Photos, Documents, Assessme
 
 This is the flow reps use on-site.
 
-### Step 1: Field Capture (the shutter)
-1. **Sidebar → Field Camera** (or tap the camera icon in the deal detail)
+### Step 1: Field Capture (the shutter — native iOS app)
+1. **Open the SealTech iOS app** on your iPhone (install via "Get App on My Phone" in the web sidebar)
 2. **Pick a deal** from the dropdown at the top (it remembers your last selection)
 3. **Tap the big shutter button** → phone camera opens
 4. Take photo → adds to the deal instantly
@@ -550,7 +550,7 @@ If you don't want TestFlight:
 
 ### Photo won't upload
 - Check phone is online
-- Photo may still be queued — check the Field Camera page for pending items
+- Photo may still be queued — check the iOS app for pending items
 - Force-quit + reopen the app if queue is stuck
 
 ### Codemagic build fails

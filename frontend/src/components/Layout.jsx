@@ -48,7 +48,6 @@ const NAV_GROUPS = [
     label: "Field",
     icon: Camera,
     items: [
-      { to: "/field",   label: "Field Camera",       icon: Camera,          testId: "nav-field" },
       { to: "/photos",  label: "Photo Timeline",     icon: Camera,          testId: "nav-photos" },
       { to: "/wrap-up", label: "Finish Site Visit",  icon: ClipboardCheck,  testId: "nav-wrap-up" },
     ],
@@ -273,8 +272,8 @@ export default function Layout() {
       {showGetApp && (
         <GetAppOnPhoneModal
           onClose={() => setShowGetApp(false)}
-          redirectPath="/field"
-          subtitle="Scan to open Field Capture"
+          redirectPath="/"
+          subtitle="Scan to open the CRM on your phone"
         />
       )}
     </div>
