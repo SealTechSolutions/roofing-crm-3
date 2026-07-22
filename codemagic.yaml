@@ -61,6 +61,21 @@ workflows:
       - name: Build React web bundle
         script: |
           cd frontend
+          # frontend/.env is gitignored (it contains local dev config),
+          # so Codemagic never sees it. Without REACT_APP_BACKEND_URL at
+          # build time, every API call inside the iOS app resolves to
+          # `undefined/api/...` and silently fails (login shows no error,
+          # just doesn't proceed). We write the .env inline right before
+          # `yarn build` so the value gets baked into the bundle.
+          #
+          # This URL is where the FastAPI backend lives — same host the
+          # web PWA hits. If we ever move to sealtechbuilding.com, update
+          # here (or promote it to a Codemagic env var).
+          cat > .env <<'EOF'
+          REACT_APP_BACKEND_URL=https://roofing-crm-3.preview.emergentagent.com
+          WDS_SOCKET_PORT=443
+          ENABLE_HEALTH_CHECK=false
+          EOF
           # The React build gets baked into the iOS app. When the app
           # launches on-device, this bundle is what runs. Note: because
           # the app also runs against the live backend URL, most updates
