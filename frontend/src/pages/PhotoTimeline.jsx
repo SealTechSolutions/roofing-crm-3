@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
-import { Search, MapPin, Camera, ExternalLink, ChevronRight, Filter, X } from "lucide-react";
+import { Search, MapPin, Camera, ExternalLink, Filter, X, Pen } from "lucide-react";
 import { api } from "@/lib/api";
+import PhotoAnnotator from "@/components/PhotoAnnotator";
 
 const PRESET_TAGS = ["Before", "During", "After", "Drone", "Detail Shots", "Damage Documentation"];
 const TAG_TONES = {
@@ -33,6 +34,8 @@ export default function PhotoTimeline() {
   const [tagFilter, setTagFilter] = useState("");
   const [dayRange, setDayRange] = useState(30);
   const [lightbox, setLightbox] = useState(null);
+  // Photo currently being annotated. `null` when annotator modal closed.
+  const [annotating, setAnnotating] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -162,7 +165,23 @@ export default function PhotoTimeline() {
 
       {/* Lightbox */}
       {lightbox && (
-        <PhotoLightbox photo={lightbox} onClose={() => setLightbox(null)} />
+        <PhotoLightbox
+          photo={lightbox}
+          onClose={() => setLightbox(null)}
+          onAnnotate={() => { setAnnotating(lightbox); setLightbox(null); }}
+        />
+      )}
+      {annotating && (
+        <PhotoAnnotator
+          dealId={annotating.deal_id}
+          photo={annotating}
+          onClose={() => setAnnotating(null)}
+          onSaved={() => {
+            setAnnotating(null);
+            // Refetch so the "Marked" badge appears on the timeline card.
+            setPhotos((prev) => prev.map((p) => p.id === annotating.id ? { ...p, annotated_storage_path: "pending" } : p));
+          }}
+        />
       )}
     </div>
   );
@@ -259,6 +278,16 @@ function TimelineCard({ photo, onView }) {
             {photo.tag}
           </span>
         )}
+        {/* Annotated badge — shows if the photo has arrow/circle/text markup */}
+        {photo.annotated_storage_path && (
+          <span
+            className="absolute bottom-1 left-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm bg-emerald-500 text-white inline-flex items-center gap-0.5"
+            title="Has annotations"
+            data-testid={`timeline-annotated-${photo.id}`}
+          >
+            <Pen className="w-2.5 h-2.5" /> Marked
+          </span>
+        )}
         {/* Time-of-day overlay */}
         {timeStr && (
           <span className="absolute top-1 right-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm bg-black/60 text-white">
@@ -287,7 +316,7 @@ function TimelineCard({ photo, onView }) {
 }
 
 // ---------- Lightbox (full-size photo view) ----------
-function PhotoLightbox({ photo, onClose }) {
+function PhotoLightbox({ photo, onClose, onAnnotate }) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let mounted = true;
@@ -301,7 +330,19 @@ function PhotoLightbox({ photo, onClose }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={onClose} data-testid="timeline-lightbox">
       <div className="max-w-6xl w-full max-h-[92vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="self-end p-2 text-white/70 hover:text-white" data-testid="lightbox-close"><X className="w-5 h-5" /></button>
+        <div className="self-stretch flex items-center justify-between mb-2">
+          {onAnnotate && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onAnnotate(); }}
+              className="inline-flex items-center gap-1.5 px-3 h-9 text-[11px] font-bold uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-500 rounded-sm"
+              data-testid="timeline-lightbox-annotate"
+            >
+              <Pen className="w-3.5 h-3.5" /> Annotate
+            </button>
+          )}
+          <button onClick={onClose} className="ml-auto p-2 text-white/70 hover:text-white" data-testid="lightbox-close"><X className="w-5 h-5" /></button>
+        </div>
         {src ? (
           <img src={src} alt={photo.display_name} className="max-h-[75vh] max-w-full object-contain" />
         ) : (

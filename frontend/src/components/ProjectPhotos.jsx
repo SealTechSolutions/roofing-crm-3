@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { Camera, Upload, Trash2, Share2, X, Download, Image as ImageIcon, Star, Link2, Copy, Eye, EyeOff, FileText } from "lucide-react";
+import { Camera, Upload, Trash2, Share2, X, Download, Image as ImageIcon, Star, Link2, Copy, Eye, EyeOff, FileText, Pen } from "lucide-react";
 import CameraCaptureButton from "@/components/CameraCaptureButton";
+import PhotoAnnotator from "@/components/PhotoAnnotator";
 
 const PRESET_TAGS = [
   "Before",
@@ -29,6 +30,9 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
   const [editing, setEditing] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  // Photo currently being annotated (arrows/circles/text markup). Null =
+  // annotator modal closed.
+  const [annotating, setAnnotating] = useState(null);
   // Chronological grouping: "asc" = oldest-first (matches before → during →
   // after narrative); "desc" = newest-first.
   const [sortOrder, setSortOrder] = useState("asc");
@@ -604,6 +608,7 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
                     onToggleCover={() => setCover(p)}
                     onToggleSelect={() => toggleSelect(p.id)}
                     onDownload={() => downloadPhoto(p)}
+                    onAnnotate={() => setAnnotating(p)}
                   />
                 ))}
               </div>
@@ -629,7 +634,20 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
         />
       )}
       {lightbox && (
-        <Lightbox dealId={dealId} photo={lightbox} onClose={() => setLightbox(null)} />
+        <Lightbox
+          dealId={dealId}
+          photo={lightbox}
+          onClose={() => setLightbox(null)}
+          onAnnotate={() => { setAnnotating(lightbox); setLightbox(null); }}
+        />
+      )}
+      {annotating && (
+        <PhotoAnnotator
+          dealId={dealId}
+          photo={annotating}
+          onClose={() => setAnnotating(null)}
+          onSaved={() => { setAnnotating(null); load(); }}
+        />
       )}
     </div>
   );
@@ -713,6 +731,15 @@ function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, s
             {photo.is_cover && (
               <span className="px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded-sm bg-amber-200 text-amber-900 inline-flex items-center gap-0.5">
                 <Star className="w-2 h-2 fill-current" /> Cover
+              </span>
+            )}
+            {photo.annotated_storage_path && (
+              <span
+                className="px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded-sm bg-emerald-100 text-emerald-800 inline-flex items-center gap-0.5"
+                title={photo.annotated_at ? `Annotated ${new Date(photo.annotated_at).toLocaleString()}` : "Has annotations"}
+                data-testid={`photo-annotated-badge-${photo.id}`}
+              >
+                <Pen className="w-2 h-2" /> Marked
               </span>
             )}
           </div>
@@ -926,7 +953,7 @@ function ShareModal({ dealId, dealTitle, albums, onClose }) {
 }
 
 // ============ Lightbox ============
-function Lightbox({ dealId, photo, onClose }) {
+function Lightbox({ dealId, photo, onClose, onAnnotate }) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let url = null;
@@ -938,22 +965,40 @@ function Lightbox({ dealId, photo, onClose }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={onClose} data-testid="photo-lightbox">
       <button onClick={onClose} className="absolute top-4 right-4 text-white hover:text-zinc-200"><X className="w-6 h-6" /></button>
-      {src && (
-        <a
-          href={src}
-          download={photo.display_name || photo.original_filename || "photo.jpg"}
-          onClick={(e) => e.stopPropagation()}
-          className="absolute top-4 left-4 inline-flex items-center gap-1.5 px-3 h-9 text-[11px] font-bold uppercase tracking-wider bg-white text-zinc-900 hover:bg-zinc-100 rounded-sm"
-          data-testid="lightbox-download"
-          title="Save full-resolution photo to disk (Paint / Macromedia / etc.)"
-        >
-          <Download className="w-3.5 h-3.5" /> Download
-        </a>
-      )}
+      <div className="absolute top-4 left-4 flex items-center gap-2">
+        {src && (
+          <a
+            href={src}
+            download={photo.display_name || photo.original_filename || "photo.jpg"}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1.5 px-3 h-9 text-[11px] font-bold uppercase tracking-wider bg-white text-zinc-900 hover:bg-zinc-100 rounded-sm"
+            data-testid="lightbox-download"
+            title="Save full-resolution photo to disk"
+          >
+            <Download className="w-3.5 h-3.5" /> Download
+          </a>
+        )}
+        {onAnnotate && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onAnnotate(); }}
+            className="inline-flex items-center gap-1.5 px-3 h-9 text-[11px] font-bold uppercase tracking-wider bg-emerald-600 text-white hover:bg-emerald-500 rounded-sm"
+            data-testid="lightbox-annotate"
+            title="Draw arrows, circles, and text on this photo"
+          >
+            <Pen className="w-3.5 h-3.5" /> Annotate
+          </button>
+        )}
+      </div>
       <div className="max-w-6xl max-h-full" onClick={(e) => e.stopPropagation()}>
         {src ? <img src={src} alt={photo.display_name} className="max-h-[85vh] max-w-full" /> : <div className="text-white">Loading...</div>}
         <div className="mt-3 text-center text-white text-sm">
           <strong>{photo.display_name}</strong>
+          {photo.annotated_storage_path && (
+            <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              <Pen className="w-2.5 h-2.5" /> Annotated
+            </span>
+          )}
           {photo.description && <div className="text-zinc-300 text-xs mt-1">{photo.description}</div>}
         </div>
       </div>

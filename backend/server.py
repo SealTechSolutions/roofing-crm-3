@@ -4742,6 +4742,10 @@ async def list_all_photos(
         "album_name": 1, "tag": 1, "storage_path": 1, "content_type": 1,
         "gps_lat": 1, "gps_lng": 1, "captured_at": 1, "created_at": 1,
         "uploader_name": 1,
+        # Include annotation metadata so the timeline can show a "Marked"
+        # badge and pass hydrated layers into the annotator on edit.
+        "annotated_storage_path": 1, "annotated_at": 1, "annotator_name": 1,
+        "annotations": 1,
     }
     photos = await db.project_photos.find(query, projection).to_list(length=2500)
 
