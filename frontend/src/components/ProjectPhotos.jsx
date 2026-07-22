@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { Camera, Upload, Trash2, Share2, X, Download, Image as ImageIcon, Star, Link2, Copy, Eye, EyeOff, FileText, Pen } from "lucide-react";
+import { Camera, Upload, Trash2, Share2, X, Download, Image as ImageIcon, Star, Link2, Copy, Eye, EyeOff, FileText, Pen, GitCompareArrows } from "lucide-react";
 import CameraCaptureButton from "@/components/CameraCaptureButton";
 import PhotoAnnotator from "@/components/PhotoAnnotator";
+import VoiceCaptionButton from "@/components/VoiceCaptionButton";
+import BeforeAfterPairPanel, { PhotoPairPicker } from "@/components/BeforeAfterPair";
 
 const PRESET_TAGS = [
   "Before",
@@ -33,6 +35,10 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
   // Photo currently being annotated (arrows/circles/text markup). Null =
   // annotator modal closed.
   const [annotating, setAnnotating] = useState(null);
+  // Photo currently being paired (open PhotoPairPicker). Null = closed.
+  const [pairing, setPairing] = useState(null);
+  // Bumped whenever a pair is created/deleted so BeforeAfterPairPanel refetches.
+  const [pairRefresh, setPairRefresh] = useState(0);
   // Chronological grouping: "asc" = oldest-first (matches before → during →
   // after narrative); "desc" = newest-first.
   const [sortOrder, setSortOrder] = useState("asc");
@@ -622,6 +628,7 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
         </div>
       ) : (
         <div className="space-y-6" data-testid="photo-grid">
+          <BeforeAfterPairPanel dealId={dealId} refreshKey={pairRefresh} />
           {dateGroups.map((group) => (
             <section key={group.key} data-testid={`photos-date-group-${group.key}`}>
               <h3 className="flex items-center gap-3 mb-2.5">
@@ -645,6 +652,7 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
                     onToggleSelect={() => toggleSelect(p.id)}
                     onDownload={() => downloadPhoto(p)}
                     onAnnotate={() => setAnnotating(p)}
+                    onPair={() => setPairing(p)}
                   />
                 ))}
               </div>
@@ -685,12 +693,20 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
           onSaved={() => { setAnnotating(null); load(); }}
         />
       )}
+      {pairing && (
+        <PhotoPairPicker
+          dealId={dealId}
+          photo={pairing}
+          onClose={() => setPairing(null)}
+          onPaired={() => { setPairing(null); load(); setPairRefresh((n) => n + 1); }}
+        />
+      )}
     </div>
   );
 }
 
 // ============ Photo Card ============
-function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, selectMode, onToggleSelect, onDownload }) {
+function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, selectMode, onToggleSelect, onDownload, onAnnotate, onPair }) {
   const [src, setSrc] = useState(null);
   // Only fetch the JPEG once the card is actually visible (or about to be).
   // Without this every card in the gallery fires a 0.5-1.2 MB blob download
@@ -778,6 +794,15 @@ function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, s
                 <Pen className="w-2 h-2" /> Marked
               </span>
             )}
+            {photo.paired_photo_id && (
+              <span
+                className={`px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded-sm inline-flex items-center gap-0.5 ${photo.pair_role === "before" ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"}`}
+                title={`Paired as ${photo.pair_role || "partner"}`}
+                data-testid={`photo-paired-badge-${photo.id}`}
+              >
+                <GitCompareArrows className="w-2 h-2" /> {photo.pair_role || "Paired"}
+              </span>
+            )}
           </div>
           <div className="text-[8px] text-zinc-400 font-mono">{((photo.size || 0) / 1024).toFixed(0)}KB</div>
         </div>
@@ -785,7 +810,13 @@ function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, s
       {/* Hover toolbar */}
       {!selectMode && (
         <div className="absolute inset-0 bg-zinc-900/0 group-hover:bg-zinc-900/30 transition-colors flex items-end justify-end p-1 opacity-0 group-hover:opacity-100">
-          <div className="flex gap-1">
+          <div className="flex gap-1 flex-wrap justify-end">
+            <button onClick={(e) => { e.stopPropagation(); onAnnotate && onAnnotate(); }} className="w-6 h-6 bg-white rounded-sm flex items-center justify-center hover:bg-emerald-100" title="Annotate (draw arrows/circles/text)" data-testid={`photo-annotate-${photo.id}`}>
+              <Pen className="w-3 h-3 text-emerald-700" />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onPair && onPair(); }} className={`w-6 h-6 rounded-sm flex items-center justify-center ${photo.paired_photo_id ? "bg-emerald-600 hover:bg-emerald-700" : "bg-white hover:bg-blue-100"}`} title={photo.paired_photo_id ? "Already paired — click to re-pair" : "Pair with a before/after photo"} data-testid={`photo-pair-${photo.id}`}>
+              <GitCompareArrows className={`w-3 h-3 ${photo.paired_photo_id ? "text-white" : "text-blue-700"}`} />
+            </button>
             <button onClick={(e) => { e.stopPropagation(); onDownload && onDownload(); }} className="w-6 h-6 bg-white rounded-sm flex items-center justify-center hover:bg-blue-100" title="Save to disk (Paint / Macromedia / etc.)" data-testid={`photo-download-${photo.id}`}>
               <Download className="w-3 h-3 text-blue-700" />
             </button>
@@ -845,7 +876,26 @@ function EditPhotoModal({ dealId, photo, onClose, onSaved }) {
             </select>
           </Field>
           <Field label="Description / Caption">
-            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="w-full px-2 py-1.5 border border-zinc-300 rounded-sm text-sm" data-testid="edit-photo-desc" />
+            <div className="flex items-start gap-2">
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                rows={3}
+                placeholder="Describe damage or note conditions… or tap the mic to dictate."
+                className="flex-1 px-2 py-1.5 border border-zinc-300 rounded-sm text-sm"
+                data-testid="edit-photo-desc"
+              />
+              <VoiceCaptionButton
+                dealId={dealId}
+                size="md"
+                onText={(t) => setForm((f) => ({
+                  ...f,
+                  // Append transcript so the user can dictate multiple thoughts
+                  // in a row without overwriting existing typed text.
+                  description: f.description ? `${f.description.trim()} ${t}` : t,
+                }))}
+              />
+            </div>
           </Field>
         </div>
         <div className="px-5 py-3 border-t border-zinc-200 flex justify-end gap-2">

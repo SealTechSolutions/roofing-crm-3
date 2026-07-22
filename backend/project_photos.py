@@ -116,6 +116,28 @@ def _ext_for(filename: str) -> str:
     return (filename.rsplit(".", 1)[-1] if "." in filename else "jpg").lower()
 
 
+def _ext_from_ct(content_type: str) -> str:
+    """Best-effort file extension from a browser-supplied Content-Type.
+    Whisper's SDK sniffs format from the filename extension, so when we
+    only have a raw BytesIO in-memory blob we set `.name` to something
+    ending in a supported extension (webm/m4a/mp3/wav/ogg)."""
+    ct = (content_type or "").split(";", 1)[0].strip().lower()
+    return {
+        "audio/webm": "webm",
+        "audio/ogg": "ogg",
+        "audio/mp4": "m4a",
+        "audio/x-m4a": "m4a",
+        "audio/m4a": "m4a",
+        "audio/mpeg": "mp3",
+        "audio/mp3": "mp3",
+        "audio/wav": "wav",
+        "audio/x-wav": "wav",
+        "audio/wave": "wav",
+        "video/mp4": "m4a",   # iOS occasionally mislabels AAC-in-MP4 audio as video
+        "video/webm": "webm",
+    }.get(ct, "webm")
+
+
 def _make_share_url(req_base: str, token: str) -> str:
     base = (req_base or "").rstrip("/")
     return f"{base}/share/photos/{token}" if base else f"/share/photos/{token}"
@@ -242,11 +264,191 @@ def create_router(db, get_current_user) -> APIRouter:
         await db.project_photos.update_one({"id": photo_id, "deal_id": deal_id}, {"$set": patch})
         return await db.project_photos.find_one({"id": photo_id, "deal_id": deal_id}, {"_id": 0})
 
-    @router.delete("/photos/{photo_id}")
-    async def delete_photo(deal_id: str, photo_id: str, current=Depends(get_current_user)):
+    # ---------- Voice → text caption (Whisper) ----------
+    @router.post("/photos/transcribe")
+    async def transcribe_voice_caption(
+        deal_id: str,
+        file: UploadFile = File(...),
+        _=Depends(get_current_user),
+    ):
+        """Transcribe a short audio clip into text for use as a photo caption.
+
+        Field workers hit the mic button on a photo, dictate a note like
+        "membrane blistering by the roof drain, needs immediate patch",
+        we send the ~5–30 second recording (browser MediaRecorder → webm/opus,
+        or iOS Capacitor → m4a) to OpenAI Whisper via the Emergent
+        Universal Key. Both formats are natively supported by whisper-1.
+
+        Frontend then places the returned text in the description input so
+        the rep can edit/save. Non-destructive: we never auto-save.
+        """
+        # Import lazily so the module loads even in environments where the
+        # emergentintegrations package isn't installed yet.
+        from emergentintegrations.llm.openai import OpenAISpeechToText
+        key = os.environ.get("EMERGENT_LLM_KEY")
+        if not key:
+            raise HTTPException(status_code=500, detail="Voice captions not configured (missing EMERGENT_LLM_KEY)")
+
+        ct = (file.content_type or "").lower()
+        if not (ct.startswith("audio/") or ct in {"video/mp4", "video/webm"}):
+            # iOS voice memos sometimes report "audio/mp4" or "audio/x-m4a";
+            # browsers report "audio/webm;codecs=opus". Anything else likely
+            # means the mic wasn't captured properly.
+            raise HTTPException(status_code=400, detail=f"Only audio files allowed. Got: {ct}")
+
+        data = await file.read()
+        # Whisper API caps at 25MB; a 30-sec voice memo is ~500KB so we
+        # only reject truly aberrant uploads (accidental video, etc.).
+        if len(data) > 25 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Audio too large (max 25 MB)")
+        if len(data) < 500:
+            # Under half a KB is almost certainly an empty recording from
+            # a "tap-then-release-too-fast" mic press.
+            raise HTTPException(status_code=400, detail="Recording too short — please record at least 1 second.")
+
+        try:
+            stt = OpenAISpeechToText(api_key=key)
+            # Whisper accepts a file-like object with a `.name` attribute
+            # (used to sniff the format). BytesIO alone would fail if the
+            # SDK can't infer format, so we wrap and set `.name` explicitly.
+            bio = io.BytesIO(data)
+            bio.name = file.filename or f"voice-caption.{_ext_from_ct(ct)}"
+            response = await stt.transcribe(
+                file=bio,
+                model="whisper-1",
+                response_format="json",
+                language="en",  # Field team is English-only; pinning gives ~15% accuracy boost.
+                prompt=(
+                    "Roofing inspection notes. Common terms: membrane, "
+                    "blistering, ponding, flashing, seam, coating, silicone, "
+                    "acrylic, primer, granule loss, alligatoring, EPDM, TPO, "
+                    "PVC, mod-bit, BUR, drain, scupper, parapet, penetration."
+                ),
+                temperature=0.0,
+            )
+            text = getattr(response, "text", None) or ""
+            return {"text": text.strip()}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Whisper transcription failed: {e}")
+
+    # ---------- Before / After photo pairing ----------
+    @router.put("/photos/{photo_id}/pair")
+    async def pair_photos(
+        deal_id: str,
+        photo_id: str,
+        body: dict = Body(...),
+        _=Depends(get_current_user),
+    ):
+        """Link two photos as a before/after pair.
+
+        Body: {"paired_photo_id": "<other-photo-id>", "role": "before" | "after"}
+
+        Roles are complementary — the caller declares this photo's role,
+        and we write the opposite role on the partner. Enforcing this
+        server-side means the UI can never end up with two "before"s or
+        an "after" pointing at a "before" that doesn't point back.
+
+        Un-pair by sending {"paired_photo_id": null}.
+        """
+        partner_id = body.get("paired_photo_id")
+        role = (body.get("role") or "").lower()
+
+        me = await db.project_photos.find_one({"id": photo_id, "deal_id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+        if not me:
+            raise HTTPException(status_code=404, detail="Photo not found")
+
+        # Un-pair path
+        if not partner_id:
+            # If we're already in a pair, clear the reverse link too so the
+            # partner doesn't dangle pointing at us.
+            existing_partner_id = me.get("paired_photo_id")
+            if existing_partner_id:
+                await db.project_photos.update_one(
+                    {"id": existing_partner_id, "deal_id": deal_id},
+                    {"$unset": {"paired_photo_id": "", "pair_role": ""}, "$set": {"updated_at": _now_iso()}},
+                )
+            await db.project_photos.update_one(
+                {"id": photo_id, "deal_id": deal_id},
+                {"$unset": {"paired_photo_id": "", "pair_role": ""}, "$set": {"updated_at": _now_iso()}},
+            )
+            return {"ok": True, "unpaired": True}
+
+        if partner_id == photo_id:
+            raise HTTPException(status_code=400, detail="Cannot pair a photo with itself.")
+        if role not in {"before", "after"}:
+            raise HTTPException(status_code=400, detail="role must be 'before' or 'after'")
+
+        partner = await db.project_photos.find_one(
+            {"id": partner_id, "deal_id": deal_id, "is_deleted": {"$ne": True}},
+            {"_id": 0},
+        )
+        if not partner:
+            raise HTTPException(status_code=404, detail="Partner photo not found on this deal")
+
+        partner_role = "after" if role == "before" else "before"
+        # Clean up any *previous* partners on either side so we don't leave
+        # orphan back-references pointing at now-repaired photos.
+        for old_id in {me.get("paired_photo_id"), partner.get("paired_photo_id")} - {None, photo_id, partner_id}:
+            await db.project_photos.update_one(
+                {"id": old_id, "deal_id": deal_id},
+                {"$unset": {"paired_photo_id": "", "pair_role": ""}, "$set": {"updated_at": _now_iso()}},
+            )
+
         await db.project_photos.update_one(
             {"id": photo_id, "deal_id": deal_id},
-            {"$set": {"is_deleted": True, "deleted_at": _now_iso(), "deleted_by": current["id"]}},
+            {"$set": {"paired_photo_id": partner_id, "pair_role": role, "updated_at": _now_iso()}},
+        )
+        await db.project_photos.update_one(
+            {"id": partner_id, "deal_id": deal_id},
+            {"$set": {"paired_photo_id": photo_id, "pair_role": partner_role, "updated_at": _now_iso()}},
+        )
+        return {"ok": True, "photo_id": photo_id, "paired_photo_id": partner_id, "role": role, "partner_role": partner_role}
+
+    @router.get("/photos/pairs")
+    async def list_pairs(deal_id: str, _=Depends(get_current_user)):
+        """Return all paired photos on this deal, grouped as `{before, after}`
+        objects. Each pair is only surfaced once (we sort by role so the
+        `before` half is always the anchor)."""
+        rows = await db.project_photos.find(
+            {"deal_id": deal_id, "is_deleted": {"$ne": True}, "paired_photo_id": {"$exists": True, "$ne": None}},
+            {"_id": 0},
+        ).to_list(2000)
+        # Index by id and only emit each pair once (from the "before" side).
+        by_id = {r["id"]: r for r in rows}
+        pairs = []
+        seen = set()
+        for r in rows:
+            if r["id"] in seen:
+                continue
+            if r.get("pair_role") != "before":
+                continue
+            partner = by_id.get(r.get("paired_photo_id"))
+            if not partner:
+                # Partner is deleted or unpaired asymmetrically — skip and
+                # the client will treat this as a broken pair.
+                continue
+            pairs.append({"before": r, "after": partner})
+            seen.add(r["id"])
+            seen.add(partner["id"])
+        return pairs
+
+    @router.delete("/photos/{photo_id}")
+    async def delete_photo(deal_id: str, photo_id: str, current=Depends(get_current_user)):
+        # If the deleted photo was half of a before/after pair, break the
+        # partner's back-reference so it doesn't dangle on an is_deleted photo.
+        me = await db.project_photos.find_one({"id": photo_id, "deal_id": deal_id}, {"_id": 0, "paired_photo_id": 1})
+        partner_id = me.get("paired_photo_id") if me else None
+        if partner_id:
+            await db.project_photos.update_one(
+                {"id": partner_id, "deal_id": deal_id},
+                {"$unset": {"paired_photo_id": "", "pair_role": ""}, "$set": {"updated_at": _now_iso()}},
+            )
+        await db.project_photos.update_one(
+            {"id": photo_id, "deal_id": deal_id},
+            {"$set": {"is_deleted": True, "deleted_at": _now_iso(), "deleted_by": current["id"]},
+             "$unset": {"paired_photo_id": "", "pair_role": ""}},
         )
         return {"ok": True}
 
