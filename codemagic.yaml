@@ -22,27 +22,23 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
 
-    # `integrations` tells Codemagic which named integration (configured
-    # in Team Settings → Integrations → App Store Connect) to attach to
-    # this workflow. Required when publishing.app_store_connect.auth is
-    # set to `integration` (see below). If you named your integration
-    # something other than "App Store Connect", update the value here.
-    integrations:
-      app_store_connect: App Store Connect
+    # `integrations` block is intentionally omitted. We authenticate to
+    # App Store Connect using the API key env vars declared in the
+    # `app_store_credentials` group below (APP_STORE_CONNECT_ISSUER_ID,
+    # APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_PRIVATE_KEY).
+    # This avoids the need to also configure an ASC integration in
+    # Team Settings → Integrations.
 
     environment:
       # Apple Team ID for SealTech Building Solutions (Individual enrollment).
       # Codemagic uses this in combination with the App Store Connect API key
-      # (added via Codemagic UI) to auto-provision signing certs and
-      # distribution profiles for the com.sealtechbuilding.crm bundle.
+      # (from the `app_store_credentials` group below) to auto-provision
+      # signing certs and distribution profiles for com.sealtechbuilding.crm.
       vars:
         APPLE_TEAM_ID: "2J8T63SX9L"
-      ios_signing:
-        # `distribution_type: app_store` means Codemagic auto-provisions
-        # an App Store distribution certificate + provisioning profile for
-        # the bundle_identifier below. Zero manual signing setup.
-        distribution_type: app_store
-        bundle_identifier: com.sealtechbuilding.crm
+        BUNDLE_ID: "com.sealtechbuilding.crm"
+        XCODE_WORKSPACE: "App.xcworkspace"
+        XCODE_SCHEME: "App"
 
       groups:
         # `app_store_credentials` group must be created in Codemagic Team
@@ -90,13 +86,30 @@ workflows:
           agvtool new-marketing-version 1.0.0
           agvtool new-version -all $CI_BUILD_NUMBER
 
+      - name: Fetch signing files (cert + provisioning profile)
+        script: |
+          # Auth to App Store Connect via env-var API key, register the
+          # bundle identifier if missing, and fetch/create an App Store
+          # distribution profile + certificate. Idempotent on re-runs.
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+
+      - name: Add certificates to Xcode keychain
+        script: |
+          keychain initialize
+          keychain add-certificates
+
+      - name: Configure Xcode project to use fetched profiles
+        script: |
+          xcode-project use-profiles
+
       - name: Build signed IPA
         script: |
           cd frontend/ios/App
-          xcode-project use-profiles
           xcode-project build-ipa \
-            --workspace "App.xcworkspace" \
-            --scheme "App"
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
 
     artifacts:
       - frontend/ios/App/build/ios/ipa/*.ipa
@@ -107,7 +120,11 @@ workflows:
       # First upload requires ~10 min processing on Apple's side before
       # it appears in TestFlight; subsequent uploads are usually faster.
       app_store_connect:
-        auth: integration
+        # Env-var auth: Codemagic reads the 3 vars below from the
+        # `app_store_credentials` group and builds the JWT itself.
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
         # Beta testers get an email the moment TestFlight processing
         # completes. Groups are configured in App Store Connect →
