@@ -94,18 +94,33 @@ workflows:
           agvtool new-marketing-version 1.0.0
           agvtool new-version -all "${BUILD_NUMBER:-1}"
 
+      - name: Initialize keychain
+        script: |
+          # Codemagic's keychain wraps macOS's Keychain Access. We must
+          # initialize it before fetching signing files so the CLI has
+          # somewhere to store the generated certificate + private key.
+          keychain initialize
+
       - name: Fetch signing files (cert + provisioning profile)
         script: |
           # Auth to App Store Connect via env-var API key, register the
           # bundle identifier if missing, and fetch/create an App Store
-          # distribution profile + certificate. Idempotent on re-runs.
+          # distribution profile + certificate.
+          #
+          # `--certificate-key` supplies an RSA private key we generate
+          # on-the-fly. Without it the CLI errors "Cannot save Signing
+          # Certificates without certificate private key" because Apple
+          # requires the CSR to be signed by a key we control locally.
+          # OpenSSL is preinstalled on Codemagic's macOS images.
+          openssl genrsa -out /tmp/dist_cert_key.pem 2048
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --platform IOS \
             --type IOS_APP_STORE \
+            --certificate-key=@file:/tmp/dist_cert_key.pem \
             --create
 
       - name: Add certificates to Xcode keychain
         script: |
-          keychain initialize
           keychain add-certificates
 
       - name: Configure Xcode project to use fetched profiles
