@@ -149,6 +149,35 @@ workflows:
           # bundle identifier if missing, and fetch/create an App Store
           # distribution profile + certificate.
           #
+          # ---- Certificate rotation ----
+          # Apple caps each team at 2 iOS Distribution certificates.
+          # Because we generate a fresh RSA private key on every build
+          # (see openssl genrsa below), previously-issued certs become
+          # orphaned — no local key matches them, so no one can sign
+          # with them anyway. On the 3rd build Apple returns HTTP 409
+          # "You already have a current Distribution certificate or a
+          # pending certificate request." To avoid this, list the
+          # existing distribution certs at the top of every build and
+          # revoke them. This is safe because:
+          #   - We are the sole publisher for com.sealtechbuilding.crm
+          #   - The revoked certs' private keys are already lost (each
+          #     lived only inside the ephemeral Codemagic macOS runner
+          #     that produced them)
+          # If a cert IS in active use elsewhere, Apple will surface a
+          # warning in App Store Connect → Certificates and any TestFlight
+          # build already published will keep working (installed apps
+          # only re-verify signatures at install time, not at every launch).
+          echo "Revoking stale iOS Distribution certificates..."
+          app-store-connect certificates list \
+            --type IOS_DISTRIBUTION \
+            --json 2>/dev/null \
+            | python3 -c "import sys,json;[print(c['id']) for c in json.load(sys.stdin)]" \
+            | while read CERT_ID; do
+                echo "  Revoking $CERT_ID"
+                app-store-connect certificates delete "$CERT_ID" --ignore-not-found || true
+              done
+
+          # ---- Fresh cert + profile ----
           # `--certificate-key` supplies an RSA private key we generate
           # on-the-fly. Without it the CLI errors "Cannot save Signing
           # Certificates without certificate private key" because Apple
