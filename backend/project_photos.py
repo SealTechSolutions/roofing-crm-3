@@ -322,23 +322,137 @@ def create_router(db, get_current_user) -> APIRouter:
         return {"matched": result.matched_count, "deleted": result.modified_count}
 
     @router.get("/photos/{photo_id}/download")
-    async def download_photo(deal_id: str, photo_id: str, _=Depends(get_current_user)):
+    async def download_photo(
+        deal_id: str,
+        photo_id: str,
+        original: bool = False,
+        _=Depends(get_current_user),
+    ):
+        """Download a photo. If the photo has an annotated version and
+        `original=false` (the default), serve the flattened annotated PNG
+        instead of the raw camera roll. Pass `?original=true` to force the
+        untouched source (used by the annotator when it re-opens the photo
+        so the user always draws over the pristine base image)."""
         rec = await db.project_photos.find_one(
             {"id": photo_id, "deal_id": deal_id, "is_deleted": {"$ne": True}},
             {"_id": 0},
         )
         if not rec:
             raise HTTPException(status_code=404, detail="Photo not found")
+        annotated_path = rec.get("annotated_storage_path")
+        use_annotated = bool(annotated_path) and not original
+        path = annotated_path if use_annotated else rec["storage_path"]
         try:
-            content, _ct = get_object(rec["storage_path"])
+            content, _ct = get_object(path)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Storage fetch failed: {e}")
         filename = rec.get("original_filename") or f'{rec["id"]}.jpg'
+        if use_annotated:
+            # Annotated versions are PNG (browser canvas.toBlob default).
+            base = filename.rsplit(".", 1)[0]
+            filename = f"{base}-annotated.png"
+        media_type = "image/png" if use_annotated else rec.get("content_type", "image/jpeg")
         return StreamingResponse(
             io.BytesIO(content),
-            media_type=rec.get("content_type", "image/jpeg"),
+            media_type=media_type,
             headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
+
+    # ---------- Annotations (CompanyCam parity: draw on photos) ----------
+    @router.put("/photos/{photo_id}/annotations")
+    async def save_annotations(
+        deal_id: str,
+        photo_id: str,
+        file: UploadFile = File(...),              # flattened PNG from <canvas>.toBlob
+        layers: str = Form("[]"),                   # JSON array of shape objects (arrows, circles, freehand paths, text)
+        current=Depends(get_current_user),
+    ):
+        """Persist an annotated (marked-up) version of a photo.
+
+        Frontend flattens the source image + drawn overlay into a single PNG
+        on <canvas> and uploads that blob here alongside the raw `layers`
+        JSON. We keep both so a user can:
+          1) Re-open the annotator later and edit individual shapes (uses
+             `layers` to re-hydrate the drawing state), and
+          2) Immediately see/share/download the flattened result via the
+             regular /download endpoint (which auto-prefers the annotated
+             copy over the original).
+        """
+        rec = await db.project_photos.find_one(
+            {"id": photo_id, "deal_id": deal_id, "is_deleted": {"$ne": True}},
+            {"_id": 0},
+        )
+        if not rec:
+            raise HTTPException(status_code=404, detail="Photo not found")
+
+        data = await file.read()
+        if len(data) > MAX_BYTES:
+            raise HTTPException(status_code=413, detail=f"Annotated image too large (max {MAX_BYTES // (1024 * 1024)} MB)")
+        if not data:
+            raise HTTPException(status_code=400, detail="Empty annotated image")
+
+        # Parse layers JSON — permissive: bad JSON just stores empty array.
+        # We never trust the client's shape schema server-side; the JSON is
+        # opaque to the API and only re-hydrated by the annotator UI.
+        import json as _json
+        try:
+            layers_data = _json.loads(layers) if layers else []
+            if not isinstance(layers_data, list):
+                layers_data = []
+        except Exception:
+            layers_data = []
+
+        annotated_path = f"{APP_NAME}/project_photos/{deal_id}/{photo_id}-annotated.png"
+        try:
+            put_object(annotated_path, data, "image/png")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Storage save failed: {e}")
+
+        patch = {
+            "annotated_storage_path": annotated_path,
+            "annotations": layers_data,
+            "annotated_at": _now_iso(),
+            "annotated_by": current["id"],
+            "annotator_name": current.get("name", ""),
+            "annotated_size": len(data),
+            "updated_at": _now_iso(),
+        }
+        await db.project_photos.update_one(
+            {"id": photo_id, "deal_id": deal_id},
+            {"$set": patch},
+        )
+        return {"ok": True, **patch}
+
+    @router.delete("/photos/{photo_id}/annotations")
+    async def clear_annotations(deal_id: str, photo_id: str, _=Depends(get_current_user)):
+        """Remove the annotated overlay and revert to the raw source photo."""
+        rec = await db.project_photos.find_one(
+            {"id": photo_id, "deal_id": deal_id, "is_deleted": {"$ne": True}},
+            {"_id": 0},
+        )
+        if not rec:
+            raise HTTPException(status_code=404, detail="Photo not found")
+        annotated_path = rec.get("annotated_storage_path")
+        await db.project_photos.update_one(
+            {"id": photo_id, "deal_id": deal_id},
+            {"$unset": {
+                "annotated_storage_path": "",
+                "annotations": "",
+                "annotated_at": "",
+                "annotated_by": "",
+                "annotator_name": "",
+                "annotated_size": "",
+            }, "$set": {"updated_at": _now_iso()}},
+        )
+        # Best-effort cleanup of the stored PNG — swallow storage errors so
+        # the DB unset always succeeds (worst case: an orphan blob).
+        if annotated_path:
+            try:
+                from storage import delete_object
+                delete_object(annotated_path)
+            except Exception:
+                pass
+        return {"ok": True}
 
     # ---------- Progress Timeline PDF ----------
     @router.get("/photos/timeline.pdf")
