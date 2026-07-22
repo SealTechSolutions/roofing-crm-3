@@ -1,0 +1,48 @@
+{
+  "appId": "com.sealtechbuilding.crm",
+  "appName": "SealTech CRM",
+  "webDir": "build",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "capacitor",
+    "allowNavigation": [
+      "roofing-crm-3.preview.emergentagent.com",
+      "*.sealtechsolutions.co",
+      "*.sealtechbuilding.com"
+    ]
+  },
+  "ios": {
+    "scheme": "App",
+    "contentInset": "always",
+    "backgroundColor": "#062B67"
+  },
+  "android": {
+    "backgroundColor": "#062B67",
+    "allowMixedContent": false,
+    "captureInput": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "launchAutoHide": true,
+      "backgroundColor": "#062B67",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "splashImmersive": true
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#062B67"
+    },
+    "Camera": {
+      "iosCameraUsageDescription": "SealTech CRM uses the camera to capture roof condition photos during site walks.",
+      "iosPhotoLibraryUsageDescription": "SealTech CRM saves and imports project photos from your library."
+    },
+    "Geolocation": {
+      "iosLocationUsageDescription": "SealTech CRM tags site photos with GPS coordinates so you can find the property later."
+    }
+  }
+}
