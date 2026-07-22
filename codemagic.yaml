@@ -173,15 +173,15 @@ workflows:
             printf '%s\n' "$IOS_DIST_PRIVATE_KEY" > /tmp/dist_cert_key.pem
           else
             echo "==> No persistent key — auto-revoke + generate fresh key."
-            # Route CLI logs to stderr so stdout is a clean JSON array we
-            # can pipe into python. `--type` and `--certificate-type` flag
-            # names have changed across CLI versions, so try both.
-            app-store-connect --log-stream stderr certificates list --certificate-type IOS_DISTRIBUTION --json 2>/dev/null > /tmp/certs.json \
-              || app-store-connect --log-stream stderr certificates list --type IOS_DISTRIBUTION --json 2>/dev/null > /tmp/certs.json \
-              || echo '[]' > /tmp/certs.json
-            # Parse cert IDs via a one-liner python invocation so we don't
-            # collide with the outer YAML literal block's indentation.
-            CERT_IDS=$(python3 -c "import json,sys;d=json.load(open('/tmp/certs.json'));d=d.get('data',d) if isinstance(d,dict) else d;print('\n'.join((c.get('id') or (c.get('attributes') or {}).get('id') or '') for c in (d or []) if isinstance(c,dict)))")
+            # Apple returns iOS distribution certs under two possible
+            # certificate-type values: newer "DISTRIBUTION" and legacy
+            # "IOS_DISTRIBUTION". Query both and combine results so we
+            # don't miss any orphaned certs — the previous single-type
+            # query returned 0 certs while fetch-signing-files (which
+            # queries both) sees them and hits Apple's 2-cert cap.
+            app-store-connect --log-stream stderr certificates list --certificate-type DISTRIBUTION --json 2>/dev/null > /tmp/certs_a.json || echo '[]' > /tmp/certs_a.json
+            app-store-connect --log-stream stderr certificates list --certificate-type IOS_DISTRIBUTION --json 2>/dev/null > /tmp/certs_b.json || echo '[]' > /tmp/certs_b.json
+            CERT_IDS=$(python3 -c "import json;ids=set();[ids.add(c.get('id') or (c.get('attributes') or {}).get('id') or '') for p in ('/tmp/certs_a.json','/tmp/certs_b.json') for c in (lambda d:(d.get('data',d) if isinstance(d,dict) else d) or [])(json.load(open(p))) if isinstance(c,dict)];print('\n'.join(i for i in ids if i))")
             if [ -n "$CERT_IDS" ]; then
               echo "==> Revoking existing certs:"
               printf '%s\n' "$CERT_IDS" | while IFS= read -r CID; do
