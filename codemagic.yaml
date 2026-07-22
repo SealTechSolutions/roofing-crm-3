@@ -164,22 +164,29 @@ workflows:
           # bundle identifier if missing, and fetch/create an App Store
           # distribution profile + certificate.
           #
-          # ---- Certificate handling ----
-          # Apple caps each team at 2 iOS Distribution certificates.
-          # If the build fails with HTTP 409 "You already have a current
-          # Distribution certificate", MANUALLY revoke both existing
-          # certificates in App Store Connect (Users and Access →
-          # Integrations → Certificates) then re-run this build. Only
-          # needs to be done once — after this build succeeds, the
-          # yaml stores the private key on the Codemagic runner and
-          # reuses the same cert on subsequent builds via `--type` alone.
+          # ---- Persistent private key strategy ----
+          # Apple caps each team at 2 iOS Distribution certificates. If
+          # every build generates a fresh RSA key, we accumulate orphaned
+          # certs and hit HTTP 409 by the 3rd build. To avoid that, we
+          # store ONE stable RSA private key in the Codemagic env var
+          # `IOS_DIST_PRIVATE_KEY` (marked Secure) and reuse it forever.
+          # Apple's distribution certificate we mint against this key is
+          # valid for 1 year — after that, revoke + rebuild once.
           #
-          # `--certificate-key` supplies an RSA private key we generate
-          # on-the-fly. Without it the CLI errors "Cannot save Signing
-          # Certificates without certificate private key" because Apple
-          # requires the CSR to be signed by a key we control locally.
-          # OpenSSL is preinstalled on Codemagic's macOS images.
-          openssl genrsa -out /tmp/dist_cert_key.pem 2048
+          # If the env var isn't set (first-time bootstrap), we fall back
+          # to generating a fresh key and print a big warning telling the
+          # user to save it as an env var so the next build reuses it.
+          if [ -n "$IOS_DIST_PRIVATE_KEY" ]; then
+            echo "Using persistent iOS distribution private key from env var."
+            printf '%s\n' "$IOS_DIST_PRIVATE_KEY" > /tmp/dist_cert_key.pem
+          else
+            echo "⚠️  IOS_DIST_PRIVATE_KEY env var not set — generating a fresh RSA key."
+            echo "⚠️  This build's certificate will be ORPHANED after this run."
+            echo "⚠️  To fix: (1) revoke certs on Apple, (2) run 'openssl genrsa 2048'"
+            echo "⚠️  on your Mac, (3) paste the private key into Codemagic env vars"
+            echo "⚠️  as IOS_DIST_PRIVATE_KEY (Secure), (4) re-run this build."
+            openssl genrsa -out /tmp/dist_cert_key.pem 2048
+          fi
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --platform IOS \
             --type IOS_APP_STORE \
