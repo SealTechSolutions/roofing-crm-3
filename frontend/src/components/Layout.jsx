@@ -64,6 +64,21 @@ export default function Layout() {
               {item.label}
             </NavLink>
           ))}
+          {/* External link to the User Guide on GitHub. Uses a plain <a>
+              rather than NavLink because it opens in a new tab and does
+              not match any React Router route. Kept visually distinct
+              with a subtle bottom divider so it doesn't blend into the
+              app's internal nav. */}
+          <a
+            href="https://github.com/SealTechSolutions/roofing-crm-3/blob/main/USER_GUIDE.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="nav-user-guide"
+            className="mt-2 pt-2 border-t border-zinc-800/60 flex items-center gap-2.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors text-zinc-400 hover:text-white hover:bg-zinc-900"
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+            User Guide
+          </a>
         </nav>
         <div className="p-4 border-t border-zinc-800">
           <NavLink
