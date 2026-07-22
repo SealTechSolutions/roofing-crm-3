@@ -29,6 +29,7 @@ from PIL import Image, ExifTags
 
 from storage import put_object, get_object, APP_NAME
 from progress_timeline_pdf import build_progress_timeline_pdf
+from maintenance_report_pdf import build_maintenance_report_pdf
 
 # EXIF tag ids we care about. Pillow exposes ExifTags.TAGS as {id: name} so we
 # invert to grab the IDs once at import.
@@ -453,6 +454,45 @@ def create_router(db, get_current_user) -> APIRouter:
             except Exception:
                 pass
         return {"ok": True}
+
+    # ---------- Maintenance / Condition Report PDF ----------
+    @router.get("/photos/maintenance-report.pdf")
+    async def maintenance_report_pdf(
+        deal_id: str,
+        current=Depends(get_current_user),
+    ):
+        """Client-ready roof condition report PDF.
+
+        Compiles every non-deleted photo on the project, grouped by tag in
+        priority order (Damage Documentation → Detail Shots → Before →
+        During → After → Drone → Untagged). Photos with an
+        `annotated_storage_path` render as their inspector-annotated
+        version (arrows/circles/text markup burned in) so the report
+        surfaces the highlighted areas of concern to the customer.
+        """
+        deal = await _ensure_deal(deal_id)
+        photos = await db.project_photos.find(
+            {"deal_id": deal_id, "is_deleted": {"$ne": True}},
+            {"_id": 0},
+        ).sort("captured_at", 1).to_list(2000)
+        property_doc = None
+        if deal.get("property_id"):
+            property_doc = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
+        try:
+            pdf_bytes = build_maintenance_report_pdf(
+                deal, photos,
+                property_doc=property_doc,
+                inspector_name=current.get("name", "") or "",
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+        safe_title = "".join(c if c.isalnum() or c in "-_ " else "_" for c in (deal.get("title") or "Project"))
+        filename = f"{safe_title} - Roof Condition Report.pdf"
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     # ---------- Progress Timeline PDF ----------
     @router.get("/photos/timeline.pdf")

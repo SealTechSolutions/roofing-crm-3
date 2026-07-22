@@ -318,6 +318,33 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
     }
   };
 
+  /**
+   * Roof Condition (Maintenance) Report PDF — client-ready, grouped by
+   * damage type, prefers annotated photos. Different from Timeline PDF
+   * (which is chronological). Delivers a same-day insurance/adjuster
+   * packet the moment the rep is off the roof.
+   */
+  const downloadMaintenanceReport = async () => {
+    try {
+      const r = await api.get(
+        `/projects/${dealId}/photos/maintenance-report.pdf`,
+        { responseType: "blob" }
+      );
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      const safe = (dealTitle || "Project").replace(/[^a-z0-9\- _]/gi, "_");
+      a.download = `${safe} - Roof Condition Report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success("Condition report downloaded");
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message || "Could not generate report");
+    }
+  };
+
   const totalSize = photos.reduce((s, p) => s + (p.size || 0), 0);
 
   return (
@@ -330,6 +357,15 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            data-testid="maintenance-report-btn"
+            onClick={downloadMaintenanceReport}
+            disabled={photos.length === 0}
+            title="Client-ready condition report — grouped by damage type, prefers annotated photos"
+            className="inline-flex items-center gap-1.5 px-3 h-9 text-[10px] font-bold uppercase tracking-wider bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-40 rounded-sm"
+          >
+            <FileText className="w-3.5 h-3.5" /> Condition Report
+          </button>
           <button
             data-testid="timeline-pdf-btn"
             onClick={downloadTimelinePdf}
