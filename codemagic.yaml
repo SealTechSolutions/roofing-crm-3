@@ -82,6 +82,48 @@ workflows:
           # native code. Runs every build.
           npx cap sync ios
 
+      - name: Patch Info.plist with privacy purpose strings
+        script: |
+          # Apple's App Store validator (Feb 2024+) rejects any binary that
+          # references a privacy-relevant API without a matching *UsageDescription
+          # key, even if the app doesn't use the API directly. Capacitor's
+          # geolocation plugin transitively references location APIs, so we
+          # MUST declare NSLocationWhenInUseUsageDescription AND
+          # NSLocationAlwaysAndWhenInUseUsageDescription. Camera/photo/mic
+          # purpose strings are added here too — belt-and-suspenders for
+          # future @capacitor/camera + @capacitor/voice-recorder plugins so
+          # the next reviewer doesn't reject us for a different key.
+          #
+          # PlistBuddy is preinstalled on Codemagic macOS images. `-c "Add"`
+          # errors if the key already exists, so we swallow with `|| true`
+          # and follow with `Set` to guarantee the final value regardless of
+          # whether Capacitor's default plist already contained the key.
+          PLIST="frontend/ios/App/App/Info.plist"
+          if [ ! -f "$PLIST" ]; then
+            echo "Info.plist not found at $PLIST"; exit 1;
+          fi
+          set_key () {
+            local key="$1"; local value="$2"
+            /usr/libexec/PlistBuddy -c "Add :${key} string ${value}" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Set :${key} ${value}" "$PLIST"
+          }
+          set_key NSLocationWhenInUseUsageDescription \
+            "SealTech CRM tags site photos with GPS coordinates so you can find the property later."
+          set_key NSLocationAlwaysAndWhenInUseUsageDescription \
+            "SealTech CRM tags site photos with GPS coordinates so you can find the property later."
+          set_key NSCameraUsageDescription \
+            "SealTech CRM uses the camera to capture roof condition photos during site walks."
+          set_key NSPhotoLibraryUsageDescription \
+            "SealTech CRM saves and imports project photos from your library."
+          set_key NSPhotoLibraryAddUsageDescription \
+            "SealTech CRM saves annotated project photos to your library."
+          set_key NSMicrophoneUsageDescription \
+            "SealTech CRM records short audio notes captioning your photos."
+          set_key NSFaceIDUsageDescription \
+            "SealTech CRM uses Face ID to sign you in on this device."
+          # Show the final plist for troubleshooting; failures above surface here.
+          /usr/libexec/PlistBuddy -c "Print" "$PLIST" | head -60
+
       - name: Set app version + build number
         script: |
           cd frontend/ios/App
