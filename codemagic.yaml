@@ -164,66 +164,29 @@ workflows:
           # bundle identifier if missing, and fetch/create an App Store
           # distribution profile + certificate.
           #
-          # ---- Persistent private key strategy (preferred) ----
-          # If IOS_DIST_PRIVATE_KEY is set as a Codemagic env var, we
-          # reuse the same RSA key on every build. Apple recognizes the
-          # existing certificate and no new cert is minted — bypasses the
-          # 2-cert-per-team cap entirely. Certificate is valid for 1 year;
-          # after that, revoke + rebuild once and Apple issues a fresh one
-          # tied to the SAME persistent key.
-          #
-          # ---- Auto-revoke fallback ----
-          # When the env var isn't set (first-time bootstrap or the user
-          # doesn't want to manage a persistent key), each build generates
-          # a fresh RSA key, which orphans previous certs on Apple's side.
-          # By the 3rd build Apple returns HTTP 409. To avoid manual
-          # revoke-in-App-Store-Connect every 2 builds, we auto-revoke
-          # existing distribution certs BEFORE minting a new one.
-          # Routing log output to stderr keeps the JSON output on stdout
-          # clean for python parsing.
+          # Persistent-key preferred: set IOS_DIST_PRIVATE_KEY in Codemagic
+          # env vars (Secure) to reuse the same key + cert across builds.
+          # Otherwise we auto-revoke existing distribution certs to stay
+          # under Apple's 2-cert-per-team cap and mint a fresh one.
           if [ -n "$IOS_DIST_PRIVATE_KEY" ]; then
-            echo "==> Using persistent iOS distribution private key from IOS_DIST_PRIVATE_KEY env var."
+            echo "==> Using persistent iOS distribution private key from env var."
             printf '%s\n' "$IOS_DIST_PRIVATE_KEY" > /tmp/dist_cert_key.pem
           else
-            echo "==> No IOS_DIST_PRIVATE_KEY env var — auto-revoke + generate fresh key."
-            echo "==> Fetching existing iOS Distribution certificates..."
-            # `--log-stream stderr` sends the "Found X certs" info line to
-            # stderr; stdout gets only the JSON array. `--json` flag name
-            # varies by CLI version; we try both.
-            app-store-connect --log-stream stderr certificates list \
-              --certificate-type IOS_DISTRIBUTION --json 2>/dev/null \
-              > /tmp/certs.json || \
-            app-store-connect --log-stream stderr certificates list \
-              --type IOS_DISTRIBUTION --json 2>/dev/null \
-              > /tmp/certs.json || echo '[]' > /tmp/certs.json
-
-            CERT_IDS=$(python3 <<'PY'
-import json
-try:
-    with open('/tmp/certs.json') as f:
-        data = json.load(f)
-except Exception:
-    data = []
-# CLI may return either a top-level list or {"data":[...]}.
-if isinstance(data, dict):
-    data = data.get('data', [])
-for c in data or []:
-    cid = c.get('id') if isinstance(c, dict) else None
-    # Some CLI versions nest id under .attributes.
-    if not cid and isinstance(c, dict):
-        cid = (c.get('attributes') or {}).get('id')
-    if cid:
-        print(cid)
-PY
-)
+            echo "==> No persistent key — auto-revoke + generate fresh key."
+            # Route CLI logs to stderr so stdout is a clean JSON array we
+            # can pipe into python. `--type` and `--certificate-type` flag
+            # names have changed across CLI versions, so try both.
+            app-store-connect --log-stream stderr certificates list --certificate-type IOS_DISTRIBUTION --json 2>/dev/null > /tmp/certs.json \
+              || app-store-connect --log-stream stderr certificates list --type IOS_DISTRIBUTION --json 2>/dev/null > /tmp/certs.json \
+              || echo '[]' > /tmp/certs.json
+            # Parse cert IDs via a one-liner python invocation so we don't
+            # collide with the outer YAML literal block's indentation.
+            CERT_IDS=$(python3 -c "import json,sys;d=json.load(open('/tmp/certs.json'));d=d.get('data',d) if isinstance(d,dict) else d;print('\n'.join((c.get('id') or (c.get('attributes') or {}).get('id') or '') for c in (d or []) if isinstance(c,dict)))")
             if [ -n "$CERT_IDS" ]; then
               echo "==> Revoking existing certs:"
-              echo "$CERT_IDS" | while read CID; do
+              printf '%s\n' "$CERT_IDS" | while IFS= read -r CID; do
                 [ -n "$CID" ] || continue
                 echo "     - $CID"
-                # `--ignore-not-found` avoids failure if a cert already
-                # got manually revoked between list + delete. Some CLI
-                # versions call it "revoke", others "delete".
                 app-store-connect certificates delete "$CID" --ignore-not-found 2>&1 \
                   || app-store-connect certificates revoke "$CID" --ignore-not-found 2>&1 \
                   || echo "       (revoke failed — will attempt fetch anyway)"
@@ -231,12 +194,8 @@ PY
             else
               echo "==> No existing certs to revoke."
             fi
-
-            echo "==> Generating fresh RSA private key..."
             openssl genrsa -out /tmp/dist_cert_key.pem 2048
           fi
-
-          echo "==> Fetching signing files (may create cert if needed)..."
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --platform IOS \
             --type IOS_APP_STORE \
