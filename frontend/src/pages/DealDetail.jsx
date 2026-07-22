@@ -15,6 +15,8 @@ import { InvoiceEditor } from "@/pages/Invoices";
 import ScopeEditorModal from "@/components/ScopeEditorModal";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 import DealSchedulePanel from "@/components/DealSchedulePanel";
+import GoToProductionChecklist from "@/components/GoToProductionChecklist";
+import ProjectLivePnL from "@/components/ProjectLivePnL";
 
 // Resolve a deal's assigned_to_user_id to a human-readable name. Falls back
 // to the raw id (handy during dev) and then to "—" when nothing matches.
@@ -47,7 +49,9 @@ export default function DealDetail() {
   const [workOrderKind, setWorkOrderKind] = useState("work-order");
   const [finalInvoicePreview, setFinalInvoicePreview] = useState(null); // {contract_total, already_invoiced, final_amount, existing_final_invoice_id?}
   const [closedBannerDismissed, setClosedBannerDismissed] = useState(false);
+  const [depositBannerDismissed, setDepositBannerDismissed] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
+  const [draftingDeposit, setDraftingDeposit] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
 
   // Auto-open the scope editor when arriving from the Calculator's
@@ -121,6 +125,36 @@ export default function DealDetail() {
       toast.error(e?.response?.data?.detail || e.message || "Could not draft Final invoice");
     } finally {
       setMarkingComplete(false);
+    }
+  };
+
+  /**
+   * Draft (or reopen) the Deposit invoice for this deal at 50% of the contract
+   * total, then open the editor for review before sending. Idempotent — if a
+   * Deposit invoice already exists, we reload and open it instead.
+   */
+  const draftDepositInvoice = async (percentage = 50) => {
+    if (draftingDeposit) return;
+    setDraftingDeposit(true);
+    try {
+      const r = await api.post(`/deals/${id}/deposit-invoice?percentage=${percentage}`);
+      const newInv = r.data;
+      // Refresh the deal invoices list so the Money section reflects the new draft
+      api.get(`/invoices?deal_id=${id}`)
+        .then((rr) => setDealInvoices(rr.data || []))
+        .catch(() => { /* non-fatal */ });
+      toast.success(`Deposit invoice ${newInv.invoice_number} ready to review`);
+      // Pull the full invoice (with fresh line items) and open the editor
+      try {
+        const full = await api.get(`/invoices/${newInv.id}`);
+        setInvoiceEditor(full.data);
+      } catch {
+        setInvoiceEditor(newInv);
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || e.message || "Could not draft deposit invoice");
+    } finally {
+      setDraftingDeposit(false);
     }
   };
 
@@ -388,6 +422,106 @@ export default function DealDetail() {
           </button>
         </div>
       )}
+
+      {/* Deposit-invoice suggestion: the deal has a contract total, is past Scope Sent,
+          and has no Deposit invoice yet. Encourages a one-click "Review & Send" flow. */}
+      {(() => {
+        const contractTotal = Number(deal.chosen_amount || 0);
+        const POST_SCOPE = new Set(["Won","Deposit Paid","Materials Ordered","Scheduled","In Progress","Final Inspection","Closed","Complete"]);
+        const hasDepositInvoice = (dealInvoices || []).some(
+          (inv) => inv.invoice_type === "Deposit" && inv.status !== "Void"
+        );
+        const shouldShow =
+          !depositBannerDismissed
+          && contractTotal > 0
+          && POST_SCOPE.has(deal.status)
+          && !hasDepositInvoice;
+        if (!shouldShow) return null;
+        const depositAmount = Math.round(contractTotal * 0.5 * 100) / 100;
+        return (
+          <div
+            className="mb-6 bg-blue-50 border border-blue-300 rounded-sm p-4 flex items-start gap-3"
+            data-testid="deposit-invoice-suggestion"
+          >
+            <FileText className="w-5 h-5 text-blue-700 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-blue-900">Ready to collect a deposit?</div>
+              <div className="text-xs text-blue-800 mt-1 leading-snug">
+                Contract <b>${contractTotal.toLocaleString()}</b>
+                {" · 50% deposit = "}
+                <b className="text-blue-950">${depositAmount.toLocaleString()}</b>
+                {". "}
+                We&apos;ll draft it as a <b>Draft</b> invoice so you can review before sending.
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  data-testid="deposit-invoice-draft-btn"
+                  onClick={() => draftDepositInvoice(50)}
+                  disabled={draftingDeposit}
+                  className="inline-flex items-center gap-1.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white text-[10px] font-bold uppercase tracking-wider px-3 h-8 rounded-sm"
+                >
+                  <FileText className="w-3.5 h-3.5" /> {draftingDeposit ? "Drafting…" : "Draft Deposit Invoice"}
+                </button>
+                <button
+                  data-testid="deposit-invoice-dismiss"
+                  onClick={() => setDepositBannerDismissed(true)}
+                  className="text-[10px] font-bold uppercase tracking-wider text-blue-700 hover:text-blue-900 px-2 h-8"
+                >
+                  Not yet
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={() => setDepositBannerDismissed(true)}
+              className="text-blue-700 hover:text-blue-900 -mr-1"
+              aria-label="Dismiss"
+            >
+              <XIcon className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* Draft-deposit "Review & Send" reminder: a Draft deposit exists but
+          hasn't been sent yet. Keeps the invoice one click away from the top. */}
+      {(() => {
+        const draftDeposit = (dealInvoices || []).find(
+          (inv) => inv.invoice_type === "Deposit" && inv.status === "Draft"
+        );
+        if (!draftDeposit) return null;
+        return (
+          <div
+            className="mb-6 bg-amber-50 border border-amber-300 rounded-sm p-4 flex items-start gap-3"
+            data-testid="deposit-invoice-review-banner"
+          >
+            <Mail className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-amber-900">
+                Deposit invoice <span className="font-mono">{draftDeposit.invoice_number}</span> is drafted — ready to send?
+              </div>
+              <div className="text-xs text-amber-800 mt-1 leading-snug">
+                Amount <b>${Number(draftDeposit.total || 0).toLocaleString()}</b>. Review and email to the prospect when you&apos;re ready.
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  data-testid="deposit-invoice-review-btn"
+                  onClick={async () => {
+                    try {
+                      const full = await api.get(`/invoices/${draftDeposit.id}`);
+                      setInvoiceEditor(full.data);
+                    } catch {
+                      setInvoiceEditor(draftDeposit);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 bg-amber-700 hover:bg-amber-800 text-white text-[10px] font-bold uppercase tracking-wider px-3 h-8 rounded-sm"
+                >
+                  <Mail className="w-3.5 h-3.5" /> Review & Send
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="flex items-start justify-between mb-8 pb-6 border-b border-zinc-200 gap-4 flex-wrap">
         <div>
@@ -821,6 +955,9 @@ export default function DealDetail() {
 
       {/* ═══ GROUP: MONEY ═══ */}
       <div id="deal-group-money" data-testid="deal-group-money" className="scroll-mt-16">
+      {/* Live Project P&L — top of the Money section, answers "what did we make?" at a glance */}
+      <ProjectLivePnL deal={deal} dealInvoices={dealInvoices} vendorBills={vendorBills} />
+
       {/* Financials KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KpiCard label="Revenue" value={formatCurrency(totals.revenue)} testId="kpi-revenue" />
@@ -1114,6 +1251,21 @@ export default function DealDetail() {
 
       {/* ═══ GROUP: EXECUTION ═══ */}
       <div id="deal-group-execution" data-testid="deal-group-execution" className="scroll-mt-16">
+      {/* Go to Production — one-card checklist of the 4 things to do when a deal is Won */}
+      <GoToProductionChecklist
+        deal={deal}
+        onScrollToSchedule={() => {
+          const el = document.querySelector('[data-testid="deal-schedule-panel"]') || document.getElementById("deal-group-execution");
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+        onScrollToMaterials={() => {
+          const el = document.querySelector('[data-testid="takeoff-card"]') || document.getElementById("deal-group-scope");
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+        onSendWorkOrder={() => { setWorkOrderKind("work-order"); setWorkOrderOpen(true); }}
+        onEquipmentChange={(next) => setDeal((d) => (d ? { ...d, equipment_ordered: next } : d))}
+      />
+
       {/* Schedule / Events panel — ad-hoc appointments tied to this deal */}
       <DealSchedulePanel dealId={id} googleConnected={googleConnected} />
 

@@ -32,6 +32,9 @@ Production-ready PWA CRM. JWT auth, Visual Deals Kanban, offline-capable field c
 - 2026-02 — Sidebar grouping: 8 semantic groups (Contacts / Projects / Field / Reports / Scheduling / Library / Finance / Company Info) + User Guide link.
 - 2026-02 — Removed web "Field Camera" nav item (field capture lives in native iOS app).
 - 2026-02 — **UX scroll-order fix**: DealDetail reorganized into 5 workflow groups (Who → Scope → Money → Execution → History); Dashboard reorganized into 4 groups (Alerts → KPIs → Activity → Metrics). Sticky "Jump to" chip bars added to both pages for one-click navigation to any section.
+- 2026-02 — **Phase B — Auto-draft invoices**: `POST /api/deals/{id}/deposit-invoice` endpoint + blue "Ready to collect a deposit?" suggestion banner + amber "Deposit drafted — ready to send?" reminder banner on the deal page. Idempotent, tested (5 pytest cases). Auto-final invoice was already wired via Mark Complete.
+- 2026-02 — **Phase C — Go to Production checklist**: new `GoToProductionChecklist` component + new deal field `equipment_ordered: List[dict]`. Four-row card (Schedule / Materials / WO / Equipment) with live progress badge and inline equipment picker (Storage Container, Porta-Potty, Forklift, Manlift, Dumpster, Scaffolding, + free-form).
+- 2026-02 — **Phase D — Live Project P&L**: new `ProjectLivePnL` component at the top of the Money section. Real-time Revenue / Estimated Cost / Actual Cost / Gross Profit / Gross Margin + category breakdown bars (Materials, Labor, Subcontractor, Equipment, Other) with equipment-rental standard-rate estimates.
 
 ## Active backlog
 - **P1 — Commission Module** (spec at `/app/memory/COMMISSION_PRD.md`): blocked on user confirmation of flat % vs tiered, refund reversals, signature flow.

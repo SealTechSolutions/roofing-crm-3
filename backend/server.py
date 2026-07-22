@@ -532,6 +532,11 @@ class DealIn(BaseModel):
     scheduled_start_date: str = ""   # YYYY-MM-DD — when crews start on site
     scheduled_end_date: str = ""     # YYYY-MM-DD — anticipated completion
     material_order_date: str = ""    # YYYY-MM-DD — when materials should be delivered / PO needs to fire
+    # Production kickoff checklist — equipment rentals + on-site logistics.
+    # Each entry is a small dict {type: str, ordered_at: str, notes?: str}.
+    # Type is one of: "Storage Container", "Porta-Potty", "Forklift",
+    # "Manlift", "Dumpster", "Scaffolding" (or free-form).
+    equipment_ordered: List[dict] = Field(default_factory=list)
     # Scope send bookkeeping — populated when POST /deals/{id}/spec-sheet/email
     # succeeds; drives the "Scope Sent" pipeline dot on Deal Detail.
     last_scope_sent_at: str = ""
@@ -7743,6 +7748,35 @@ async def create_final_invoice(deal_id: str, current=Depends(get_current_user)):
                 f"${preview['already_invoiced']:,.2f} already cover the "
                 f"${preview['contract_total']:,.2f} contract."
             ),
+        )
+    return inv
+
+
+@api_router.post("/deals/{deal_id}/deposit-invoice")
+async def create_deposit_invoice(
+    deal_id: str,
+    percentage: float = 50.0,
+    current=Depends(get_current_user),
+):
+    """Drafts a Deposit Invoice for the given deal at `percentage`% of the
+    contract total. Idempotent — returns the existing Deposit invoice if one
+    already exists on the deal. Used by the "Draft Deposit Invoice" button in
+    the deal detail Money section, matching the public-sign auto-deposit path.
+    """
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if deal is None:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    try:
+        pct = float(percentage)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid percentage")
+    if pct <= 0 or pct > 100:
+        raise HTTPException(status_code=400, detail="Percentage must be between 0 and 100")
+    inv = await _auto_create_deposit_invoice(deal_id, pct)
+    if inv is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No contract total on this deal yet — pick a proposal option or set chosen_amount first.",
         )
     return inv
 

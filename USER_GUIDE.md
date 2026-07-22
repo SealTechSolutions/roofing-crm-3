@@ -13,9 +13,41 @@ The **Dashboard** and every **Deal detail page** now include a sticky "Jump to" 
 
 Sections on each page are grouped in workflow order (top → bottom):
 
-**Deal detail** — Who (contact + property) → Scope (pricing + spec + docs + take-off) → Money (KPIs, invoices, milestones, costs, P&L) → Execution (schedule, change orders, photos, maintenance) → History (activity timeline)
+**Deal detail** — Who (contact + property) → Scope (pricing + spec + docs + take-off) → Money (Live P&L, KPIs, invoices, milestones, costs) → Execution (Go to Production checklist, schedule, change orders, photos, maintenance) → History (activity timeline)
 
 **Dashboard** — Alerts (Today, Stale Deals, Compliance, COI, Materials, Recently Deleted) → KPIs (top-line + payables + books) → Activity (recent scopes, projects, revenue chart) → Metrics (secondary + maintenance KPIs)
+
+## Auto-Draft Invoices (new — Feb 2026)
+
+When a proposal is signed OR the deal is marked Won:
+
+1. **Blue banner** at the top of the deal appears: *"Ready to collect a deposit?"* — click **DRAFT DEPOSIT INVOICE** to auto-create a 50% Draft invoice, pre-filled with the customer's contact + property.
+2. Once drafted, an **amber banner** shows: *"Deposit invoice INV-XXXX is drafted — ready to send?"* — click **REVIEW & SEND** to open the editor, tweak anything, then email it to the prospect.
+3. When you click **Mark Complete**, a Final invoice is auto-drafted for the remaining balance (contract − deposit − mid-bill).
+
+All auto-drafts are idempotent — a second click won't create duplicates.
+
+## Go to Production Checklist (new — Feb 2026)
+
+At the top of the **Execution** section of every deal, you'll see a "Go to Production" card with four rows:
+
+1. **Schedule the crew** — ✓ auto-checks when `scheduled_start_date` is set. Button jumps to the schedule panel.
+2. **Order material** — ✓ when there are take-off lines. Button jumps to Material Take-Off.
+3. **Assign subcontractor + send WO** — ✓ when a work order has been sent. Button opens the WO modal.
+4. **Order on-site equipment** — expandable checklist of common items (Storage Container, Porta-Potty, Forklift, Manlift, Dumpster, Scaffolding, plus a free-form "Other" input). Toggling a checkbox instantly persists to the deal.
+
+A "X of 4 complete" badge shows overall progress.
+
+## Live Project P&L (new — Feb 2026)
+
+Every deal's **Money** section now leads with a "Live Project P&L" card that shows in real time:
+
+- **Contract Revenue** · $ received · $ outstanding
+- **Estimated Cost** · Actual cost (from vendor bills linked to the project)
+- **Gross Profit** ($) — color-coded green/red
+- **Gross Margin** (%) — color-coded green/amber/red based on 15%/5% thresholds
+- **Cost Breakdown bars** by category: Materials · Labor · Subcontractor · Equipment · Other (with % of total cost)
+- **Equipment Rentals** detail card (only when equipment is ordered) — standard-rate estimates per item, override-friendly
 
 ## Sidebar Navigation (Grouped)
 
