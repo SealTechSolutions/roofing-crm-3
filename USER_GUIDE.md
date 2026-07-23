@@ -49,6 +49,21 @@ Every deal's **Money** section now leads with a "Live Project P&L" card that sho
 - **Cost Breakdown bars** by category: Materials · Labor · Subcontractor · Equipment · Other (with % of total cost)
 - **Equipment Rentals** detail card (only when equipment is ordered) — standard-rate estimates per item, override-friendly
 
+## ZIP → City/State Autofill (new — Feb 2026)
+
+Type any 5-digit US ZIP code into a City/State/ZIP address block and the **City** and **State** auto-fill within ~250ms — saves keystrokes and prevents typos.
+
+Wired into:
+- **Contacts** — main address + billing address
+- **Properties** — property address
+- **Invoice editor** — Bill-To address
+
+**How it works:**
+- Uses the free zippopotam.us US postal database via a `/api/lookup/zip/{code}` proxy
+- Every lookup is cached in Mongo so we never hit the external service twice for the same ZIP
+- Only fills BLANK city/state fields — won't clobber values you already typed
+- Silent fail: if the lookup service is down or the ZIP is bogus, the form still works — you just have to type city/state manually
+
 ## Editable Equipment Rates (new — Feb 2026)
 
 The **Live Project P&L** rental rates are no longer hard-coded. Go to sidebar → **Company Info → Equipment Rates** (admin-only).

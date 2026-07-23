@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { US_STATES, DEFAULT_STATE } from "@/constants/states";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { formatPhoneDisplay } from "@/lib/format";
 import { ScopesButton } from "@/components/ScopesModal";
+import { useZipAutofill } from "@/hooks/useZipAutofill";
 
 const empty = {
   property_name: "",
@@ -30,6 +31,17 @@ export default function Properties() {
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState(null);
+
+  // Auto-fill City + State when the user finishes typing a 5-digit ZIP.
+  // Only fills blank fields — we won't clobber a value the user already set.
+  const fillFromZip = useCallback((city, state) => {
+    setForm((f) => ({
+      ...f,
+      property_city:  f.property_city  ? f.property_city  : city,
+      property_state: f.property_state && f.property_state !== DEFAULT_STATE ? f.property_state : state,
+    }));
+  }, []);
+  useZipAutofill(form.property_zip, fillFromZip);
 
   const load = () => api.get("/properties").then((r) => setItems(r.data));
 

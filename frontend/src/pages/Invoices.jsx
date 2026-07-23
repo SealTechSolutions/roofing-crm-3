@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API, showGlWarnings } from "@/lib/api";
 import { Receipt, Plus, Search, Download, Send, Trash2, Eye, FileText, Building2 } from "lucide-react";
 import { toast } from "sonner";
+import { useZipAutofill } from "@/hooks/useZipAutofill";
 
 const STATUS_STYLES = {
   Draft: "bg-zinc-100 text-zinc-700 border-zinc-300",
@@ -347,6 +348,17 @@ export function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [entities, setEntities] = useState([]);
   const [icPickerOpen, setIcPickerOpen] = useState(false);
+
+  // Auto-fill Bill-To City + State when the user types a 5-digit ZIP.
+  // Only fills blank fields — we won't stomp on values the user typed.
+  const fillBillToFromZip = useCallback((city, state) => {
+    setForm((f) => ({
+      ...f,
+      bill_to_city:  f.bill_to_city  ? f.bill_to_city  : city,
+      bill_to_state: f.bill_to_state ? f.bill_to_state : state,
+    }));
+  }, []);
+  useZipAutofill(form.bill_to_zip, fillBillToFromZip);
 
   // Load Books entities for the entity picker
   useEffect(() => {

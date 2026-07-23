@@ -7885,6 +7885,68 @@ def _is_number(v) -> bool:
 
 
 # ═════════════════════════════════════════════════════════════════════════
+# ZIP → City/State lookup — thin proxy around the free zippopotam.us API,
+# with permanent Mongo caching so we never hit the external service twice
+# for the same ZIP. Falls back gracefully if the external service is down.
+# ═════════════════════════════════════════════════════════════════════════
+
+@api_router.get("/lookup/zip/{code}")
+async def lookup_zip(code: str, current=Depends(get_current_user)):
+    """Given a 5-digit US ZIP code, return the matching city + state so the
+    contact / property / invoice editors can auto-fill on ZIP entry. Results
+    are cached in `zip_cache` collection so we never re-hit the external
+    API for a ZIP we've seen before."""
+    clean = "".join(ch for ch in str(code) if ch.isdigit())[:5]
+    if len(clean) != 5:
+        raise HTTPException(status_code=400, detail="ZIP must be 5 digits")
+
+    # 1. Cache hit
+    cached = await db.zip_cache.find_one({"zip": clean}, {"_id": 0})
+    if cached:
+        return {
+            "zip": clean,
+            "city": cached.get("city", ""),
+            "state": cached.get("state", ""),
+            "ok": bool(cached.get("city")),
+            "source": "cache",
+        }
+
+    # 2. Miss — call zippopotam.us (free, no key required)
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=4)) as sess:
+            async with sess.get(f"https://api.zippopotam.us/us/{clean}") as r:
+                if r.status == 404:
+                    # Cache the negative result too — no point retrying invalid ZIPs
+                    await db.zip_cache.update_one(
+                        {"zip": clean},
+                        {"$set": {"zip": clean, "city": "", "state": "", "not_found": True, "cached_at": now_iso()}},
+                        upsert=True,
+                    )
+                    raise HTTPException(status_code=404, detail=f"ZIP {clean} not found")
+                r.raise_for_status()
+                data = await r.json()
+        places = data.get("places") or []
+        if not places:
+            raise HTTPException(status_code=404, detail=f"ZIP {clean} not found")
+        p0 = places[0]
+        city = p0.get("place name") or ""
+        state = p0.get("state abbreviation") or ""
+        await db.zip_cache.update_one(
+            {"zip": clean},
+            {"$set": {"zip": clean, "city": city, "state": state, "cached_at": now_iso()}},
+            upsert=True,
+        )
+        return {"zip": clean, "city": city, "state": state, "ok": True, "source": "lookup"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Don't fail the form — return `ok: false` so the frontend keeps the
+        # user's typed values and lets them enter city/state manually.
+        return {"zip": clean, "city": "", "state": "", "ok": False, "error": str(e), "source": "error"}
+
+
+# ═════════════════════════════════════════════════════════════════════════
 # Invoices — one-click "Mark Paid" for a cleaner deposit → Books flow
 # ═════════════════════════════════════════════════════════════════════════
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { Plus, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import { US_STATES, DEFAULT_STATE } from "@/constants/states";
 import { maskPhoneInput, maskTaxIdInput, formatPhoneDisplay } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
+import { useZipAutofill } from "@/hooks/useZipAutofill";
 
 const CONTACT_TYPES = ["Owner", "Property Manager", "Tenant", "Other"];
 
@@ -47,6 +48,26 @@ export default function Contacts() {
   const [loading, setLoading] = useState(false);
   const [typeFilter, setTypeFilter] = useState("All");
   const [confirmTarget, setConfirmTarget] = useState(null);
+
+  // Auto-fill City + State when the user types a 5-digit ZIP into either the
+  // main-address or billing-address ZIP field. We only overwrite blank fields
+  // to avoid stomping on values the user may have already typed.
+  const fillMainAddr = useCallback((city, state) => {
+    setForm((f) => ({
+      ...f,
+      city: f.city ? f.city : city,
+      state: f.state ? f.state : state,
+    }));
+  }, []);
+  const fillBillingAddr = useCallback((city, state) => {
+    setForm((f) => ({
+      ...f,
+      billing_city: f.billing_city ? f.billing_city : city,
+      billing_state: f.billing_state ? f.billing_state : state,
+    }));
+  }, []);
+  useZipAutofill(form.zip_code, fillMainAddr);
+  useZipAutofill(form.billing_zip, fillBillingAddr);
 
   const load = () => api.get("/contacts").then((r) => setItems(r.data));
   useEffect(() => { load(); }, []);
