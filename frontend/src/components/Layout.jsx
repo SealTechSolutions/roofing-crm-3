@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { useForceSpellcheck } from "@/hooks/useForceSpellcheck";
 
 /**
  * Grouped sidebar navigation.
@@ -102,6 +103,11 @@ const NAV_GROUPS = [
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  // Force browser spellcheck ON for every input & textarea app-wide. Guards
+  // against typos on the Assessment form, deal notes, invoice descriptions,
+  // etc. Especially useful inside the iOS Capacitor WebView where spellcheck
+  // is disabled by default. See useForceSpellcheck for details.
+  useForceSpellcheck();
   // Filter out admin-only items for non-admins, then drop groups that
   // end up with zero visible items (e.g. Company Info for regular users).
   const isAdmin = user?.role === "admin";
