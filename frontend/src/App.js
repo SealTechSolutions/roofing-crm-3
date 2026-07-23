@@ -37,7 +37,6 @@ import EquipmentRates from "@/pages/EquipmentRates";
 import Schedule from "@/pages/Schedule";
 import FieldCapture from "@/pages/FieldCapture";
 import Scopes from "@/pages/Scopes";
-import PhotoTimeline from "@/pages/PhotoTimeline";
 import SiteVisitWrapUp from "@/pages/SiteVisitWrapUp";
 import PWAControls from "@/components/PWAControls";
 import "@/App.css";
@@ -126,7 +125,6 @@ function App() {
               <Route path="/library" element={<Library />} />
               <Route path="/assessments" element={<Assessments />} />
               <Route path="/scopes" element={<Scopes />} />
-              <Route path="/photos" element={<PhotoTimeline />} />
               <Route path="/wrap-up" element={<SiteVisitWrapUp />} />
               <Route path="/catalog" element={<ProductCatalog />} />
               <Route path="/calculator" element={<Calculator />} />

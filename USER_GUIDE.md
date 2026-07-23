@@ -121,7 +121,6 @@ The sidebar is organized into 8 groups so related items live together:
    • Calculator
 
 📸 FIELD
-   • Photo Timeline
    • Finish Site Visit
    (Field capture happens on the native iOS app — install via "Get App on My Phone")
 
@@ -313,15 +312,8 @@ To send a report to a customer:
 3. Fill out the Assessment form (or open an existing one)
 4. From the same button's dropdown, choose **Basic Evaluation → Email to Prospect**
 
-### 4e. Photo Timeline (cross-project view)
-- **Sidebar → Photo Timeline**
-- All photos across all deals, chronologically grouped (Today / Yesterday / This Week / etc.)
-- Filter by tag, day range (7D / 30D / 90D / 1Y), or search
-- Tap any photo → fullscreen lightbox with property + timestamp metadata
-- Annotate button available in the lightbox
-
 <a name="wrap-up"></a>
-### 4f. Finish Site Visit (end-of-day cleanup) 🎯
+### 4e. Finish Site Visit (end-of-day cleanup) 🎯
 - **Sidebar → Finish Site Visit** (or navigate to `/wrap-up`)
 - One card per deal you shot photos on today (or 3D / 7D toggle)
 - Each card shows:

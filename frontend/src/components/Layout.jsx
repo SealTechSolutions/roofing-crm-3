@@ -49,7 +49,6 @@ const NAV_GROUPS = [
     label: "Field",
     icon: Camera,
     items: [
-      { to: "/photos",  label: "Photo Timeline",     icon: Camera,          testId: "nav-photos" },
       { to: "/wrap-up", label: "Finish Site Visit",  icon: ClipboardCheck,  testId: "nav-wrap-up" },
     ],
   },
