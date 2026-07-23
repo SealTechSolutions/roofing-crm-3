@@ -1571,10 +1571,21 @@ async def reschedule_maintenance(deal_id: str, body: MaintenanceRescheduleIn, cu
 
 @api_router.delete("/deals/{deal_id}")
 async def delete_deal(deal_id: str, current=Depends(get_current_user)):
+    """Delete a deal + cascade-clean its project photos.
+
+    Admin does a HARD delete (deal + photos gone forever). Non-admins get a
+    soft-delete (both deal and photos flagged `is_deleted=True` so they can
+    be restored from Trash).
+    """
     if is_admin(current):
         result = await db.deals.delete_one({"id": deal_id})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Deal not found")
+        # Cascade: hard-delete every photo tied to this deal. Previously these
+        # were orphaned in `project_photos` and cluttered the Photo Timeline
+        # forever after the deal was gone.
+        photo_del = await db.project_photos.delete_many({"deal_id": deal_id})
+        return {"ok": True, "photos_deleted": photo_del.deleted_count}
     else:
         result = await db.deals.update_one(
             {"id": deal_id},
@@ -1582,7 +1593,13 @@ async def delete_deal(deal_id: str, current=Depends(get_current_user)):
         )
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Deal not found")
-    return {"ok": True}
+        # Soft-delete the photos too so the Photo Timeline honors the same
+        # state as the deal. Restoring the deal from Trash also restores photos.
+        await db.project_photos.update_many(
+            {"deal_id": deal_id, "is_deleted": {"$ne": True}},
+            {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current["id"]}},
+        )
+        return {"ok": True}
 
 
 # ----- Maintenance Plan -----
@@ -5107,7 +5124,7 @@ async def list_all_photos(
     deals_by_id: dict = {}
     prop_ids: set = set()
     if deal_ids:
-        async for d in db.deals.find({"id": {"$in": deal_ids}}, {"_id": 0, "id": 1, "title": 1, "property_id": 1, "property_name": 1, "property_address": 1, "roof_type_label": 1, "proposed_roof_type": 1}):
+        async for d in db.deals.find({"id": {"$in": deal_ids}}, {"_id": 0, "id": 1, "title": 1, "property_id": 1, "property_name": 1, "property_address": 1, "roof_type_label": 1, "proposed_roof_type": 1, "is_deleted": 1}):
             deals_by_id[d["id"]] = d
             if d.get("property_id") and not d.get("property_name"):
                 prop_ids.add(d["property_id"])
@@ -5135,6 +5152,15 @@ async def list_all_photos(
     out = []
     for p in photos:
         deal = deals_by_id.get(p.get("deal_id") or "") or {}
+        # Skip orphaned photos: their parent deal was hard-deleted, so they
+        # would show up in the Timeline as "(untitled project)" ghosts.
+        # (Photos of live-but-soft-deleted deals are already excluded by the
+        # earlier `{"id": {"$in": deal_ids}}` query — soft-deleted deals set
+        # `is_deleted=True` but still exist as rows; we filter those next.)
+        if not deal:
+            continue
+        if deal.get("is_deleted"):
+            continue
         # Fill in property_name / address from the properties collection when
         # the deal itself didn't carry them (older imports).
         prop_id = deal.get("property_id")
@@ -5153,6 +5179,32 @@ async def list_all_photos(
 
     out.sort(key=lambda x: (x.get("captured_at") or x.get("created_at") or ""), reverse=True)
     return out[:limit]
+
+
+@api_router.post("/photos/purge-orphans")
+async def purge_orphan_photos(current=Depends(get_current_user)):
+    """Admin one-click cleanup: hard-deletes every photo whose parent deal
+    no longer exists (deal was hard-deleted before we added cascade cleanup).
+    Returns how many were purged.
+
+    Safe to run anytime — only affects photos whose `deal_id` doesn't match
+    any existing row in `deals`. Photos of live or soft-deleted deals are
+    untouched."""
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    live_deal_ids = set()
+    async for d in db.deals.find({}, {"_id": 0, "id": 1}):
+        if d.get("id"):
+            live_deal_ids.add(d["id"])
+    orphan_photo_ids: list[str] = []
+    async for p in db.project_photos.find({}, {"_id": 0, "id": 1, "deal_id": 1}):
+        did = p.get("deal_id")
+        if not did or did not in live_deal_ids:
+            orphan_photo_ids.append(p["id"])
+    if not orphan_photo_ids:
+        return {"purged": 0, "message": "No orphaned photos found"}
+    result = await db.project_photos.delete_many({"id": {"$in": orphan_photo_ids}})
+    return {"purged": result.deleted_count, "message": f"Purged {result.deleted_count} orphaned photos"}
 
 
 @api_router.get("/deals/{deal_id}/spec-sheet.pdf")

@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
-import { Search, MapPin, Camera, ExternalLink, Filter, X, Pen } from "lucide-react";
+import { Search, MapPin, Camera, ExternalLink, Filter, X, Pen, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
+import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 import PhotoAnnotator from "@/components/PhotoAnnotator";
 
 const PRESET_TAGS = ["Before", "During", "After", "Drone", "Detail Shots", "Damage Documentation"];
