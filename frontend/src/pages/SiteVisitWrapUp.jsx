@@ -4,7 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import {
   Camera, MapPin, ArrowRight, CheckCircle2, AlertCircle,
-  Send, Tag, ChevronDown, ChevronUp, Loader2, ClipboardCheck,
+  Tag, ChevronDown, ChevronUp, Loader2, ClipboardCheck,
 } from "lucide-react";
 
 /**
@@ -15,13 +15,10 @@ import {
  *   • deal title + property address
  *   • photo count + counters (untagged, no-description, annotated, paired)
  *   • "Add Tags" quick chip (bulk-tags untagged photos in one API call)
- *   • "Send Report" button (fires the Condition Report email)
- *   • "Open deal" link
+ *   • "Open deal → Assessment" link (send the formal report from there)
  *
- * The pending-actions pip (yellow dot) shows on cards with missing
- * metadata OR whose latest photo was shot AFTER the last condition
- * report — so once you shoot new photos, the deal re-flags itself as
- * needing follow-up even if you already sent a report earlier in the day.
+ * The pending-actions pip (yellow dot) shows on cards with missing metadata
+ * on photos, so the rep knows which deals still need a tag / caption pass.
  *
  * Mobile-first: cards stack vertically, all tap targets are ≥40px, chips
  * wrap on narrow screens. This is the screen a rep opens right after
@@ -130,7 +127,6 @@ function EmptyState() {
 function SiteVisitCard({ visit, onChanged }) {
   const [expanded, setExpanded] = useState(visit.has_pending_actions);
   const [tagging, setTagging] = useState(false);
-  const [sending, setSending] = useState(false);
 
   const applyTag = async (tag) => {
     if (tagging || visit.untagged_count === 0) return;
@@ -146,24 +142,6 @@ function SiteVisitCard({ visit, onChanged }) {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message || "Tag failed");
     } finally {
       setTagging(false);
-    }
-  };
-
-  const sendReport = async () => {
-    if (sending) return;
-    setSending(true);
-    try {
-      const r = await api.post(`/deals/${visit.deal_id}/condition-report/email`, {
-        // Backend auto-fills to_email from the deal's primary contact
-      });
-      const d = r.data || {};
-      toast.success(`Sent to ${d.to || "customer"} · ${d.photos_included} photos`, { duration: 6000 });
-      onChanged && onChanged();
-    } catch (e) {
-      const msg = formatApiError(e?.response?.data?.detail) || e.message || "Send failed";
-      toast.error(msg, { duration: 8000 });
-    } finally {
-      setSending(false);
     }
   };
 
@@ -216,11 +194,6 @@ function SiteVisitCard({ visit, onChanged }) {
                 {visit.paired_count} paired
               </span>
             )}
-            {visit.last_condition_report_sent_at && (
-              <span className="px-1.5 py-0.5 rounded-sm bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Report sent {new Date(visit.last_condition_report_sent_at).toLocaleDateString()}
-              </span>
-            )}
           </div>
         </div>
         {expanded ? <ChevronUp className="w-4 h-4 text-zinc-400 shrink-0 mt-1" /> : <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0 mt-1" />}
@@ -251,23 +224,20 @@ function SiteVisitCard({ visit, onChanged }) {
             </div>
           )}
 
-          {/* Action row */}
+          {/* Action row — the field wrap-up is a tagging + pairing session; the
+              formal customer report is now the Basic Evaluation on the deal's
+              Assessment (unified — no separate Condition Report). */}
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <button
-              onClick={sendReport}
-              disabled={sending || visit.photo_count === 0}
-              className="inline-flex items-center gap-1.5 h-10 px-4 text-[11px] font-bold uppercase tracking-wider bg-emerald-700 text-white hover:bg-emerald-800 rounded-sm disabled:opacity-50"
-              data-testid={`wrap-send-${visit.deal_id}`}
-            >
-              {sending ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending…</> : <><Send className="w-3.5 h-3.5" /> Send condition report</>}
-            </button>
             <Link
-              to={`/deals/${visit.deal_id}#project-photos`}
+              to={`/deals/${visit.deal_id}#deal-group-scope`}
               className="inline-flex items-center gap-1.5 h-10 px-3 text-[11px] font-bold uppercase tracking-wider border border-zinc-300 text-zinc-700 hover:bg-white rounded-sm"
               data-testid={`wrap-open-${visit.deal_id}`}
             >
-              Open deal <ArrowRight className="w-3.5 h-3.5" />
+              Open deal → Assessment <ArrowRight className="w-3.5 h-3.5" />
             </Link>
+            <span className="text-[10px] text-zinc-500 italic">
+              Send the formal report from the deal&apos;s <b>Assessment ▾</b> button.
+            </span>
           </div>
         </div>
       )}

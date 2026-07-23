@@ -287,20 +287,16 @@ Every photo lives in **Deals → [pick deal] → Project Photos section**. Below
 - Open the Pair Picker on either photo → red **"Un-pair"** button (at bottom)
 - Backend also auto-cleans back-references when a photo is deleted
 
-### 4d. Email Condition Report 📧
-1. Top of Project Photos section → **"Email Report"** button (emerald outline)
-2. Modal opens: *"Email Condition Report"*
-3. **To** auto-fills from the deal's primary contact
-4. Optional: add CC email + personal note
-5. Tap **Send Report**
-6. Recipient inbox receives a professional PDF (see [Condition Report PDF](#docs))
+### 4d. Client-Ready Report (send from the Assessment)
+*Retired in Feb 2026:* the "Condition Report" was a separate photo-driven PDF that
+overlapped with the Assessment → Basic Evaluation flow. We consolidated to a
+single customer-facing report so there's no confusion about which one to send.
 
-**What gets attached:**
-- Cover page: property, inspector, date, executive summary
-- Photos grouped by damage type (Damage → Detail Shots → Before → During → After → Drone)
-- Annotated photos preferred over raw
-- Green ★ chip marks photos with inspector annotations
-- Deal history logs: *"Condition Report emailed to X on [date]"*
+To send a report to a customer:
+1. Open the deal
+2. Click the purple **Assessment ▾** button in the deal action bar
+3. Fill out the Assessment form (or open an existing one)
+4. From the same button's dropdown, choose **Basic Evaluation → Email to Prospect**
 
 ### 4e. Photo Timeline (cross-project view)
 - **Sidebar → Photo Timeline**
@@ -315,16 +311,16 @@ Every photo lives in **Deals → [pick deal] → Project Photos section**. Below
 - One card per deal you shot photos on today (or 3D / 7D toggle)
 - Each card shows:
   - Photo count + counters (untagged / no-caption / annotated / paired)
-  - **Amber pip** if action pending (untagged photos, missing captions, or new photos since last report)
+  - **Amber pip** if action pending (untagged photos or missing captions)
 - **Bulk-tag chips** (6 large color-coded buttons) → tap "Damage Documentation" → every untagged photo on that deal gets tagged in one click
-- **"Send Condition Report"** → one-tap email to primary contact
+- **"Open deal → Assessment"** link — the formal customer-facing report is sent from the deal's Assessment ▾ button
 
 **Field team workflow:**
 1. Shoot photos throughout the day (multiple deals)
 2. Get in truck at end of day
 3. Open **Finish Site Visit**
-4. For each deal card: tap 1-2 tag chips + tap Send Condition Report
-5. **Total time: ~30 seconds per site visit** vs 15 min of manual admin
+4. For each deal card: tap 1-2 tag chips to clean up metadata
+5. Later at the office (or in the truck): open the deal → Assessment ▾ → Email Basic Evaluation to the customer
 
 ---
 
