@@ -4201,9 +4201,9 @@ async def email_condition_report(deal_id: str, body: dict = Body(default={}), cu
     # left it blank — this is the common "send while still on-site" flow
     # where the rep hasn't stopped to look up the customer's address.
     if not to_email:
-        cid = deal.get("primary_contact_id")
+        cid = deal.get("customer_contact_id") or deal.get("contact_id")
         if cid:
-            c = await db.contacts.find_one({"id": cid}, {"_id": 0, "email": 1, "first_name": 1, "last_name": 1})
+            c = await db.contacts.find_one({"id": cid}, {"_id": 0, "email": 1})
             if c and c.get("email"):
                 to_email = c["email"]
     if not to_email:
@@ -4237,13 +4237,13 @@ async def email_condition_report(deal_id: str, body: dict = Body(default={}), cu
 
     # Look up the customer's name/company for a warm salutation.
     cust_name = ""
-    cid = deal.get("primary_contact_id")
+    cid = deal.get("customer_contact_id") or deal.get("contact_id")
     if cid:
-        c = await db.contacts.find_one({"id": cid}, {"_id": 0, "first_name": 1, "last_name": 1, "company": 1})
+        c = await db.contacts.find_one({"id": cid}, {"_id": 0, "contact_name": 1, "company_name": 1})
         if c:
-            cust_name = (c.get("first_name") or "").strip()
-            if not cust_name and c.get("company"):
-                cust_name = c["company"]
+            cust_name = (c.get("contact_name") or "").strip()
+            if not cust_name and c.get("company_name"):
+                cust_name = c["company_name"]
 
     annotated_ct = sum(1 for p in photos if p.get("annotated_storage_path"))
     intro = custom_message or (
@@ -4377,7 +4377,7 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
 
     if not to_email:
         # Auto-populate from primary contact if available
-        cid = deal.get("primary_contact_id")
+        cid = deal.get("customer_contact_id") or deal.get("contact_id")
         if cid:
             c = await db.contacts.find_one({"id": cid}, {"_id": 0, "email": 1})
             if c and c.get("email"):
@@ -4437,7 +4437,7 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
             continue
 
     cust_company = ""
-    cid = deal.get("primary_contact_id")
+    cid = deal.get("customer_contact_id") or deal.get("contact_id")
     if cid:
         c = await db.contacts.find_one({"id": cid}, {"_id": 0, "company_name": 1, "contact_name": 1})
         if c:
