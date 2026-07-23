@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise, Camera, Package, Calculator as CalcIcon, FolderKanban, TrendingUp, Wallet as FinanceIcon, Settings } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise, Camera, Package, Calculator as CalcIcon, FolderKanban, TrendingUp, Wallet as FinanceIcon, Settings, Search } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
+import GlobalSearch from "@/components/GlobalSearch";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { useForceSpellcheck } from "@/hooks/useForceSpellcheck";
@@ -274,6 +275,24 @@ export default function Layout() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
+
+      {/* Floating Cmd+K trigger — bottom-right, always visible */}
+      <button
+        type="button"
+        onClick={() => {
+          const evt = new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true });
+          document.dispatchEvent(evt);
+        }}
+        title="Search everything (⌘K)"
+        data-testid="global-search-trigger"
+        className="fixed bottom-5 right-5 z-40 h-11 pl-3 pr-4 bg-zinc-950 text-white rounded-full shadow-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-xs font-bold uppercase tracking-wider"
+      >
+        <Search className="w-4 h-4" />
+        <span className="hidden sm:inline">Search</span>
+        <kbd className="hidden sm:inline text-[9px] font-bold border border-white/30 rounded-sm px-1.5 py-0.5 ml-1">⌘K</kbd>
+      </button>
+
+      <GlobalSearch />
 
       {showGetApp && (
         <GetAppOnPhoneModal

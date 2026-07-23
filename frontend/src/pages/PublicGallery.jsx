@@ -52,7 +52,7 @@ export default function PublicGallery() {
           <div className="text-xs text-zinc-500 mt-1">
             {photos.length} photo{photos.length === 1 ? "" : "s"}
             {data.album_name ? ` · ${data.album_name}` : ""}
-            {data.tag ? ` · ${data.tag}` : ""}
+            {Array.isArray(data.tags) && data.tags.length > 0 ? ` · ${data.tags.join(" + ")}` : (data.tag ? ` · ${data.tag}` : "")}
             {downloadEnabled ? " · High-res downloads enabled" : " · View only"}
           </div>
         </div>

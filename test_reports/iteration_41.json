@@ -1,0 +1,37 @@
+{
+  "summary": "Iter 41 verified 4 new features end-to-end (backend + frontend). Backend: 9/9 pytest cases pass in test_iter41_new_features.py — (a) /api/deals/photo-counts returns int map and real deal b2f4b511... shows exactly 38 photos, (b) /api/search works for q='roof' (deals), q='darren' (contacts), q='xxxxxnope' (all empty), q='a' (too short - all empty), (c) POST /photos/auto-tag with explicit photo_ids for indices 12+13 and only_untagged=false returns processed=2 with tagged+skipped=2 and the 2 photos are reverted to their original tags in the finally block, (d) POST /photo-shares accepts new tags=['Damage Documentation','After'] and echoes both back — public GET /api/public/photo-share/{token} (no auth) also returns the tags array; legacy tag='Before' still works; both test shares revoked after test. Frontend: (1) Deals list — photo-count-badge-b2f4b511... visible with text '38' and camera SVG icon. (2) Global Search — floating trigger pill visible, click opens data-testid=global-search-modal, typing 'roof' produces >=1 deal result with data-testid=global-search-result-deal-*, ArrowDown+Enter navigates to /projects/{deal_id} correctly. (3) AI Auto-Tag button visible on the real deal detail page with violet-outlined pill style and label 'AI AUTO-TAG' — NOT clicked on real deal per instructions. (4) Multi-tag Share Modal — Share with Customer button opens modal showing 2 quick-preset buttons (share-preset-client-ready + share-preset-all) and all 6 tag chips (before/during/after/drone/detail-shots/damage-documentation). Clicking Client-Ready preset correctly flips ONLY the 'After' + 'Damage Documentation' chips to active styling (green + red) while leaving Before/During/Drone/Detail-Shots inactive. Modal closed via Esc — no test share persisted to real deal.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global (any page with Layout)", "issues": ["React hydration warning in console: '<span> option cannot be a child of <select>'. Some native <select> in Layout (likely a dropdown in the sidebar/header) is being fed <span>-wrapped <option> children. Non-blocking but produces console noise on every page load and is a legit HTML validity error. Suggest replacing the offending <select> with a proper <select><option>...</option></select> or migrating to the shadcn Select primitive."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter41_new_features.py",
+    "/app/test_reports/pytest/pytest_iter41.xml"
+  ],
+  "action_items": [
+    "(Minor) Fix the '<span> cannot be a child of <select>' React hydration warning shown in browser console — trace to the sidebar/topbar dropdown in Layout.jsx or a nested component. Doesn't affect functionality but pollutes the console."
+  ],
+  "critical_code_review_comments": [
+    "server.py L1305-1322 (photo-counts): One aggregation query with $group on deal_id — snappy and correctly excludes soft-deleted photos via is_deleted:{$ne:true}. Good.",
+    "server.py L1325-1379 (search): Correctly re.escapes user input before regex (no injection). Caps results at 8 per group. Sales-role restriction is only applied to Deals (as intended — contacts/props/invoices are shared). Correct.",
+    "project_photos.py L920-950 (create_share): tags list is validated against PRESET_TAGS with a clear 400 error, and legacy `tag` param is preserved via fallback into `tags_list`. Multi-tag storage populates both `tag` (only when exactly 1) and `tags` (always) — nice backward-compat pattern.",
+    "project_photos.py L985-1017 (public_list / public_file): Correctly reads `share_tags` from either new `tags` or legacy `tag`, and builds a `$in` filter when >1 tag. No auth on the router itself — correct for a public share. Increments view_count on every read. Good.",
+    "project_photos.py L720-841 (auto-tag): Correctly caps max_photos to 200, gracefully handles Pillow decode errors, normalizes model output with a substring match on PRESET_TAGS (robust against Claude replying with e.g. 'The photo is Damage Documentation.'). Uses a per-photo session_id so parallel invocations don't cross-contaminate. Good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter41_new_features.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (4/4 features verified)"},
+  "test_credentials": "darren@sealtechsolutions.co / admin123",
+  "seed_data_creation": "None. Auto-tag test on real deal reverted the 2 touched photos in finally block; 2 test share tokens created + revoked; no persistent mutations to the real deal b2f4b511-09ee-411d-978f-44a02ac24d13.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 4 iter-41 features (photo-counts badge, /api/search, AI auto-tag, multi-tag share modal) are green backend + frontend. Regression suite: `pytest /app/backend/tests/test_iter41_new_features.py -v` (9 tests, ~8s). Frontend routes: deal detail lives at `/projects/{deal_id}` (NOT `/deals/{deal_id}`). AI Auto-Tag button label is CSS-uppercased to 'AI AUTO-TAG' — test string comparisons should use case-insensitive match or check innerText carefully. Small non-blocking HTML validity warning outstanding: '<span> option cannot be a child of <select>' — pass to main agent to investigate."
+}

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, formatApiError, formatCurrency } from "@/lib/api";
-import { Plus, Pencil, Trash2, ArrowUpRight, Archive, FileText, Calculator } from "lucide-react";
+import { Plus, Pencil, Trash2, ArrowUpRight, Archive, FileText, Calculator, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { StatusPill } from "@/pages/Dashboard";
@@ -123,6 +123,7 @@ export default function Deals() {
   const [contacts, setContacts] = useState([]);
   const [properties, setProperties] = useState([]);
   const [dealInvoicesMap, setDealInvoicesMap] = useState({});
+  const [photoCounts, setPhotoCounts] = useState({});
   const [users, setUsers] = useState([]);
   const [options, setOptions] = useState({ lead_sources: [], project_types: [], roof_types: [], current_roof_types: [], deal_statuses: [] });
   const [open, setOpen] = useState(false);
@@ -148,6 +149,7 @@ export default function Deals() {
       }
       setDealInvoicesMap(map);
     }).catch(() => setDealInvoicesMap({}));
+    api.get("/deals/photo-counts").then((r) => setPhotoCounts(r.data || {})).catch(() => setPhotoCounts({}));
     api.get("/options").then((r) => setOptions(r.data));
   }, []);
 
@@ -375,6 +377,16 @@ export default function Deals() {
                       <Link to={`/projects/${d.id}`} className="font-bold text-zinc-950 hover:text-blue-700 inline-flex items-center gap-1">
                         {d.title} <ArrowUpRight className="w-3.5 h-3.5" />
                       </Link>
+                      {photoCounts[d.id] > 0 && (
+                        <span
+                          className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm bg-sky-100 text-sky-800 align-middle"
+                          title={`${photoCounts[d.id]} photo${photoCounts[d.id] === 1 ? "" : "s"} in this project`}
+                          data-testid={`photo-count-badge-${d.id}`}
+                        >
+                          <Camera className="w-2.5 h-2.5" />
+                          {photoCounts[d.id]}
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-zinc-700">{d.deal_type || "Scope"}</td>
                     <td className="px-6 py-3"><StatusPill status={d.status} /></td>

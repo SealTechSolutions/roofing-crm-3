@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { Camera, Upload, Trash2, Share2, X, Download, Image as ImageIcon, Star, Link2, Copy, Eye, EyeOff, FileText, Pen, GitCompareArrows } from "lucide-react";
+import { Camera, Upload, Trash2, Share2, X, Download, Image as ImageIcon, Star, Link2, Copy, Eye, EyeOff, FileText, Pen, GitCompareArrows, Sparkles } from "lucide-react";
 import CameraCaptureButton from "@/components/CameraCaptureButton";
 import PhotoAnnotator from "@/components/PhotoAnnotator";
 import VoiceCaptionButton from "@/components/VoiceCaptionButton";
@@ -55,6 +55,10 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
   // picks a YYYY-MM-DD; backend normalizes it to noon UTC so the day
   // header lands cleanly.
   const [bulkCapturedAt, setBulkCapturedAt] = useState("");
+  // AI auto-tag in flight — disables the button and shows a spinner label
+  // so the rep doesn't fire two batches in parallel (each call bills Claude
+  // Vision credits per photo).
+  const [autoTagBusy, setAutoTagBusy] = useState(false);
   const fileInputRef = useRef(null);
 
   const toggleSelect = (id) => {
@@ -191,6 +195,47 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
     }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [dealId]);
+
+  /**
+   * Batch-classify untagged photos using Claude Sonnet 4.6 Vision.
+   * By default only touches photos with no tag so we don't overwrite
+   * manual labels. Uses `only_untagged=true` unless the user has a
+   * selection active (in which case it re-tags the selection).
+   */
+  const runAutoTag = async () => {
+    const untagged = photos.filter((p) => !p.tag);
+    const selectedList = selectMode ? Array.from(selectedIds) : [];
+    const target = selectedList.length ? selectedList : untagged.map((p) => p.id);
+    if (!target.length) {
+      toast.info("Every photo already has a tag. Select specific photos to re-tag them.");
+      return;
+    }
+    const promptMsg = selectedList.length
+      ? `Re-tag ${selectedList.length} selected photo${selectedList.length === 1 ? "" : "s"} with AI?`
+      : `Auto-tag ${untagged.length} untagged photo${untagged.length === 1 ? "" : "s"}? Claude Vision will classify each as Before / During / After / Damage etc.`;
+    if (!window.confirm(promptMsg)) return;
+
+    setAutoTagBusy(true);
+    const toastId = toast.loading(`AI tagging ${target.length} photo${target.length === 1 ? "" : "s"}…`);
+    try {
+      const body = selectedList.length
+        ? { photo_ids: target, only_untagged: false }
+        : { only_untagged: true, max_photos: 100 };
+      const r = await api.post(`/projects/${dealId}/photos/auto-tag`, body);
+      const { tagged = 0, skipped = 0, processed = 0 } = r.data || {};
+      if (tagged > 0) {
+        toast.success(`AI tagged ${tagged} of ${processed} photo${processed === 1 ? "" : "s"}${skipped ? ` · ${skipped} skipped` : ""}`, { id: toastId });
+      } else {
+        toast.warning(`No photos tagged (${skipped} skipped). Try uploading clearer shots.`, { id: toastId });
+      }
+      clearSelection();
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message || "AI tag failed", { id: toastId });
+    } finally {
+      setAutoTagBusy(false);
+    }
+  };
 
   const albums = useMemo(() => {
     const set = new Set(photos.map((p) => p.album_name || "Default"));
@@ -343,6 +388,15 @@ export default function ProjectPhotos({ dealId, dealTitle }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            data-testid="ai-auto-tag-btn"
+            onClick={runAutoTag}
+            disabled={autoTagBusy || photos.length === 0}
+            title="Use Claude Vision to auto-tag untagged photos (Before/During/After/Damage/etc.)"
+            className="inline-flex items-center gap-1.5 px-3 h-9 text-[10px] font-bold uppercase tracking-wider bg-white border border-violet-700 text-violet-700 hover:bg-violet-50 disabled:opacity-40 rounded-sm"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> {autoTagBusy ? "AI Tagging…" : "AI Auto-Tag"}
+          </button>
           <button
             data-testid="timeline-pdf-btn"
             onClick={downloadTimelinePdf}
@@ -885,11 +939,21 @@ function EditPhotoModal({ dealId, photo, onClose, onSaved }) {
 // ============ Share Modal ============
 function ShareModal({ dealId, dealTitle, albums, onClose }) {
   const [albumName, setAlbumName] = useState("");
-  const [tag, setTag] = useState("");
+  // Multi-tag filter: array of tag strings. Empty = all tags.
+  const [tags, setTags] = useState([]);
   const [downloadEnabled, setDownloadEnabled] = useState(true);
   const [expiresInDays, setExpiresInDays] = useState(90);
   const [creating, setCreating] = useState(false);
   const [shares, setShares] = useState([]);
+
+  const toggleTag = (t) => {
+    setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
+  };
+  // "Client-ready" preset — the shortcut roofers use most often: send
+  // insurance adjusters just the damage evidence + finished-work shots.
+  const applyClientReadyPreset = () => {
+    setTags(["Damage Documentation", "After"]);
+  };
 
   const loadShares = async () => {
     try {
@@ -904,7 +968,7 @@ function ShareModal({ dealId, dealTitle, albums, onClose }) {
     try {
       const r = await api.post(`/projects/${dealId}/photo-shares`, {
         album_name: albumName || null,
-        tag: tag || null,
+        tags: tags.length ? tags : null,
         download_enabled: downloadEnabled,
         expires_in_days: parseInt(expiresInDays) || 0,
       });
@@ -944,17 +1008,37 @@ function ShareModal({ dealId, dealTitle, albums, onClose }) {
         </div>
 
         <div className="p-6 space-y-4">
+          {/* Curated presets — one-click shortcuts to the most common
+              client-facing shares. Ships as-is with a Client-Ready button
+              that pre-selects Damage Documentation + After. */}
+          <div className="border border-emerald-200 bg-emerald-50/50 rounded-sm p-3">
+            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-800 mb-2">Quick Presets</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={applyClientReadyPreset}
+                data-testid="share-preset-client-ready"
+                className="inline-flex items-center gap-1.5 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-emerald-700 text-white hover:bg-emerald-800 rounded-sm"
+                title="Preselects Damage Documentation + After tags — the shots insurance adjusters and clients actually need."
+              >
+                Client-Ready · Damage + After
+              </button>
+              <button
+                type="button"
+                onClick={() => setTags([])}
+                data-testid="share-preset-all"
+                className="inline-flex items-center gap-1.5 px-3 h-8 text-[10px] font-bold uppercase tracking-wider bg-white border border-emerald-700 text-emerald-800 hover:bg-emerald-50 rounded-sm"
+              >
+                Share Everything (No Filter)
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="Album (optional — leave blank to share all)">
               <select value={albumName} onChange={(e) => setAlbumName(e.target.value)} className="w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white" data-testid="share-album">
                 <option value="">All albums</option>
                 {albums.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </Field>
-            <Field label="Tag (optional)">
-              <select value={tag} onChange={(e) => setTag(e.target.value)} className="w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm bg-white" data-testid="share-tag">
-                <option value="">All tags</option>
-                {PRESET_TAGS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </Field>
             <Field label="Allow Downloads?">
@@ -967,6 +1051,30 @@ function ShareModal({ dealId, dealTitle, albums, onClose }) {
               <input type="number" min={0} max={365} value={expiresInDays} onChange={(e) => setExpiresInDays(e.target.value)} className="w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm font-mono" data-testid="share-expires" />
             </Field>
           </div>
+
+          <Field label={`Tags · ${tags.length ? `${tags.length} selected` : "all tags"}`}>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {PRESET_TAGS.map((t) => {
+                const active = tags.includes(t);
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => toggleTag(t)}
+                    data-testid={`share-tag-${t.replace(/\s+/g, "-").toLowerCase()}`}
+                    className={`px-2.5 h-8 text-[10px] font-bold uppercase tracking-wider rounded-sm border transition-colors ${active ? `${TAG_TONES[t] || "bg-blue-100 text-blue-800"} border-current` : "bg-white border-zinc-300 text-zinc-600 hover:border-zinc-500"}`}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="text-[10px] text-zinc-500 mt-1.5">
+              {tags.length === 0
+                ? "No tag filter — the share will include every photo in the album."
+                : `Only photos tagged ${tags.map((t) => `"${t}"`).join(" or ")} will appear in this share.`}
+            </div>
+          </Field>
 
           <button
             onClick={createShare}
@@ -983,15 +1091,18 @@ function ShareModal({ dealId, dealTitle, albums, onClose }) {
               <div className="space-y-2">
                 {shares.map((s) => {
                   const url = `${window.location.origin}/share/photos/${s.token}`;
+                  const shareTags = s.tags || (s.tag ? [s.tag] : []);
                   return (
                     <div key={s.token} className="border border-zinc-200 rounded-sm p-3 bg-zinc-50/40" data-testid={`active-share-${s.token}`}>
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <div className="flex items-center gap-1.5 text-[10px]">
+                        <div className="flex items-center gap-1.5 text-[10px] flex-wrap">
                           {s.download_enabled
                             ? <span className="px-1.5 py-0.5 font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-sm inline-flex items-center gap-1"><Download className="w-2.5 h-2.5" /> Download</span>
                             : <span className="px-1.5 py-0.5 font-bold uppercase tracking-wider bg-zinc-200 text-zinc-700 rounded-sm inline-flex items-center gap-1"><EyeOff className="w-2.5 h-2.5" /> View only</span>}
                           {s.album_name && <span className="px-1.5 py-0.5 font-bold uppercase tracking-wider bg-blue-100 text-blue-800 rounded-sm">Album: {s.album_name}</span>}
-                          {s.tag && <span className="px-1.5 py-0.5 font-bold uppercase tracking-wider bg-violet-100 text-violet-800 rounded-sm">{s.tag}</span>}
+                          {shareTags.map((t) => (
+                            <span key={t} className={`px-1.5 py-0.5 font-bold uppercase tracking-wider rounded-sm ${TAG_TONES[t] || "bg-violet-100 text-violet-800"}`}>{t}</span>
+                          ))}
                           <span className="text-zinc-500">· {s.view_count || 0} views</span>
                           {s.expires_at && <span className="text-zinc-500">· Expires {new Date(s.expires_at).toLocaleDateString()}</span>}
                         </div>

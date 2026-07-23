@@ -102,9 +102,17 @@ class PhotoUpdate(BaseModel):
 class ShareCreate(BaseModel):
     model_config = ConfigDict(extra="ignore")
     album_name: Optional[str] = None              # filter the share to one album (None = all)
-    tag: Optional[str] = None                     # filter the share to one tag
+    tag: Optional[str] = None                     # DEPRECATED — single tag (kept for back-compat)
+    tags: Optional[list[str]] = None              # multi-tag filter (None/empty = all tags)
     download_enabled: bool = True
     expires_in_days: Optional[int] = 90           # None or 0 → no expiry
+
+
+class AutoTagRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    only_untagged: bool = True                    # skip photos that already have a tag
+    photo_ids: Optional[list[str]] = None         # explicit photo list (overrides only_untagged)
+    max_photos: int = 100                         # safety cap per invocation
 
 
 # ---------- Helpers ----------
@@ -709,6 +717,129 @@ def create_router(db, get_current_user) -> APIRouter:
                 pass
         return {"ok": True}
 
+    # ---------- AI Auto-Tag (Claude Sonnet 4.6 Vision) ----------
+    @router.post("/photos/auto-tag")
+    async def auto_tag_photos(
+        deal_id: str,
+        body: AutoTagRequest = Body(default_factory=AutoTagRequest),
+        _=Depends(get_current_user),
+    ):
+        """Batch-classify photos into one of the preset tags using Claude Vision.
+
+        Photos are streamed one at a time (the SDK doesn't yet expose a
+        batched image endpoint) with strict single-word output. The model
+        returns exactly one of:
+            Before | During | After | Drone | Damage Documentation | Detail Shots | none
+
+        `none` means the model isn't confident enough to guess — we skip
+        the DB update so we don't create wrong tags. Returns per-photo
+        outcomes so the frontend can show a summary toast.
+        """
+        await _ensure_deal(deal_id)
+        key = os.environ.get("EMERGENT_LLM_KEY")
+        if not key:
+            raise HTTPException(500, "AI auto-tag not configured (missing EMERGENT_LLM_KEY)")
+
+        # Build the target set
+        q = {"deal_id": deal_id, "is_deleted": {"$ne": True}}
+        if body.photo_ids:
+            q["id"] = {"$in": [pid for pid in body.photo_ids if pid]}
+        elif body.only_untagged:
+            q["$or"] = [{"tag": {"$exists": False}}, {"tag": None}, {"tag": ""}]
+        photos = await db.project_photos.find(q, {"_id": 0}).sort("created_at", -1).to_list(max(1, min(body.max_photos, 200)))
+        if not photos:
+            return {"processed": 0, "tagged": 0, "skipped": 0, "results": [], "message": "No photos matched."}
+
+        # Emergent LLM chat client — one per request session (persistent context
+        # doesn't help us here since each photo is an independent classification).
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+        import base64 as _b64
+        import mimetypes as _mimetypes
+        from PIL import Image as _PIL
+
+        VALID = {t.lower(): t for t in PRESET_TAGS}       # {"before": "Before", ...}
+        VALID["none"] = None                              # explicit "no confidence" sentinel
+
+        system_prompt = (
+            "You are classifying a jobsite photo for a commercial roofing CRM. "
+            "Look at the image and respond with EXACTLY ONE of these labels, no other words:\n"
+            "- Before  (roof condition before work started — dirty, damaged, weathered surface, no repair activity)\n"
+            "- During  (active construction — workers, tools, torch, coating in progress, half-finished sections)\n"
+            "- After   (finished restoration — clean uniform new coating/membrane, no active work)\n"
+            "- Drone   (aerial/overhead view — clearly shot from above)\n"
+            "- Damage Documentation  (close-up of specific damage: cracks, blisters, ponding, tears, penetrations)\n"
+            "- Detail Shots  (close-up of a specific detail like a flashing, drain, seam, curb — NOT damage-focused)\n"
+            "- none    (if you cannot confidently determine)\n"
+            "Reply with only the label. No punctuation, no explanation."
+        )
+
+        results = []
+        tagged_count = 0
+        skipped_count = 0
+
+        for p in photos:
+            outcome = {"id": p["id"], "display_name": p.get("display_name", ""), "old_tag": p.get("tag") or None, "new_tag": None, "error": None}
+            try:
+                content, ct = get_object(p["storage_path"])
+                # Force to JPEG/PNG (Claude vision only accepts these) — HEIC and
+                # weird formats need transcoding. Also cap size to keep the
+                # request payload small.
+                try:
+                    with _PIL.open(io.BytesIO(content)) as img:
+                        img = img.convert("RGB")
+                        img.thumbnail((1024, 1024), _PIL.LANCZOS)
+                        out = io.BytesIO()
+                        img.save(out, format="JPEG", quality=82, optimize=True)
+                        content = out.getvalue()
+                    ct = "image/jpeg"
+                except Exception:
+                    # If Pillow can't decode, use whatever content-type is on record
+                    ct = ct or "image/jpeg"
+                b64 = _b64.b64encode(content).decode("ascii")
+
+                chat = LlmChat(
+                    api_key=key,
+                    session_id=f"autotag-{deal_id}-{p['id']}",
+                    system_message=system_prompt,
+                ).with_model("anthropic", "claude-sonnet-4-6")
+
+                image_content = ImageContent(image_base64=b64)
+                msg = UserMessage(
+                    text="Classify this photo. Reply with exactly one label from the allowed list.",
+                    file_contents=[image_content],
+                )
+                response_text = await chat.send_message(msg)
+                # Normalize the model output → strip whitespace/punctuation, lowercase
+                raw = (response_text or "").strip().strip(".!?,;:").lower()
+                # Model sometimes replies with a full sentence — extract by matching known labels
+                new_tag = None
+                for key_lower, canonical in VALID.items():
+                    if key_lower in raw:
+                        new_tag = canonical
+                        break
+                if new_tag is None and raw and raw != "none":
+                    outcome["error"] = f"unrecognized response: {raw[:80]!r}"
+                if new_tag is not None:
+                    await db.project_photos.update_one(
+                        {"id": p["id"], "deal_id": deal_id},
+                        {"$set": {"tag": new_tag, "auto_tagged": True, "auto_tagged_at": _now_iso(), "updated_at": _now_iso()}},
+                    )
+                    outcome["new_tag"] = new_tag
+                    tagged_count += 1
+                else:
+                    skipped_count += 1
+            except Exception as e:
+                outcome["error"] = str(e)[:200]
+                skipped_count += 1
+            results.append(outcome)
+
+        return {
+            "processed": len(photos),
+            "tagged": tagged_count,
+            "skipped": skipped_count,
+            "results": results,
+        }
+
     # ---------- Maintenance / Condition Report PDF ----------
     @router.get("/photos/maintenance-report.pdf")
     async def maintenance_report_pdf(
@@ -792,11 +923,20 @@ def create_router(db, get_current_user) -> APIRouter:
         expires_at = None
         if body.expires_in_days and body.expires_in_days > 0:
             expires_at = (datetime.now(timezone.utc) + timedelta(days=int(body.expires_in_days))).isoformat()
+        # Normalize tags: accept new `tags` list, fall back to legacy single `tag`
+        tags_list = [t.strip() for t in (body.tags or []) if t and t.strip()]
+        if not tags_list and body.tag and body.tag.strip():
+            tags_list = [body.tag.strip()]
+        # Reject unknown tag names so a typo doesn't silently share zero photos
+        for t in tags_list:
+            if t not in PRESET_TAGS:
+                raise HTTPException(400, f"Invalid tag: {t}. Allowed: {', '.join(PRESET_TAGS)}")
         doc = {
             "token": token,
             "deal_id": deal_id,
             "album_name": (body.album_name or "").strip() or None,
-            "tag": (body.tag or "").strip() or None,
+            "tag": tags_list[0] if len(tags_list) == 1 else None,   # legacy single-tag field
+            "tags": tags_list or None,                                # new multi-tag field
             "download_enabled": bool(body.download_enabled),
             "created_at": _now_iso(),
             "created_by": current["id"],
@@ -844,12 +984,14 @@ def create_public_router(db) -> APIRouter:
     @router.get("/{token}")
     async def public_list(token: str):
         share = await _resolve_share(token)
-        # Filter photos per the share's album_name + tag filters
+        # Filter photos per the share's album_name + tag(s) filters
         q = {"deal_id": share["deal_id"], "is_deleted": {"$ne": True}}
         if share.get("album_name"):
             q["album_name"] = share["album_name"]
-        if share.get("tag"):
-            q["tag"] = share["tag"]
+        # New-style multi-tag: `tags` is a list. Fall back to legacy single `tag`.
+        share_tags = share.get("tags") or ([share["tag"]] if share.get("tag") else [])
+        if share_tags:
+            q["tag"] = {"$in": share_tags} if len(share_tags) > 1 else share_tags[0]
         photos = await db.project_photos.find(q, {"_id": 0, "storage_path": 0, "uploaded_by": 0}).sort("created_at", -1).to_list(2000)
         # Fetch deal title for the gallery header
         deal = await db.deals.find_one({"id": share["deal_id"]}, {"_id": 0, "title": 1})
@@ -860,6 +1002,7 @@ def create_public_router(db) -> APIRouter:
             "download_enabled": bool(share.get("download_enabled")),
             "album_name": share.get("album_name"),
             "tag": share.get("tag"),
+            "tags": share_tags or None,
             "photos": photos,
         }
 
@@ -869,8 +1012,9 @@ def create_public_router(db) -> APIRouter:
         q = {"id": photo_id, "deal_id": share["deal_id"], "is_deleted": {"$ne": True}}
         if share.get("album_name"):
             q["album_name"] = share["album_name"]
-        if share.get("tag"):
-            q["tag"] = share["tag"]
+        share_tags = share.get("tags") or ([share["tag"]] if share.get("tag") else [])
+        if share_tags:
+            q["tag"] = {"$in": share_tags} if len(share_tags) > 1 else share_tags[0]
         rec = await db.project_photos.find_one(q, {"_id": 0})
         if not rec:
             raise HTTPException(status_code=404, detail="Photo not found in this share")

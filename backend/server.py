@@ -1302,6 +1302,83 @@ async def list_deals(current=Depends(get_current_user)):
     return [scrub_deal(d, current) for d in items]
 
 
+@api_router.get("/deals/photo-counts")
+async def deals_photo_counts(current=Depends(get_current_user)):
+    """Return a `{deal_id: photo_count}` map for every deal the user can see.
+
+    Used by the Deals list to render a compact 📷N badge on each row so
+    photo-empty jobsites are visible at a glance. One aggregation query
+    keeps this snappy even at 500+ deals with 20K+ photos.
+    """
+    pipeline = [
+        {"$match": {"is_deleted": {"$ne": True}}},
+        {"$group": {"_id": "$deal_id", "count": {"$sum": 1}}},
+    ]
+    counts: dict = {}
+    async for row in db.project_photos.aggregate(pipeline):
+        did = row.get("_id")
+        if did:
+            counts[did] = int(row.get("count") or 0)
+    return counts
+
+
+@api_router.get("/search")
+async def global_search(q: str = "", current=Depends(get_current_user)):
+    """Global omnibar search — deals, contacts, properties, invoices, vendors.
+
+    Case-insensitive substring match. Capped at 8 results per collection so
+    the modal stays scannable. Sales users only see their own deals; every
+    other collection is unrestricted by role (matches the rest of the app).
+    """
+    query = (q or "").strip()
+    if len(query) < 2:
+        return {"deals": [], "contacts": [], "properties": [], "invoices": [], "vendors": []}
+    import re as _re
+    rx = {"$regex": _re.escape(query), "$options": "i"}
+    is_sales = current.get("role") == "sales"
+
+    # Deals
+    deal_q: dict = {
+        "is_deleted": {"$ne": True},
+        "$or": [{"title": rx}, {"custom_scope": rx}, {"notes": rx}, {"project_type": rx}, {"proposed_roof_type": rx}],
+    }
+    if is_sales:
+        deal_q["$and"] = [{"$or": [{"assigned_to_user_id": current["id"]}, {"created_by_user_id": current["id"]}]}]
+    deals = await db.deals.find(deal_q, {"_id": 0, "id": 1, "title": 1, "status": 1, "project_type": 1, "proposed_roof_type": 1}).limit(8).to_list(8)
+
+    # Contacts
+    contact_q = {
+        "is_deleted": {"$ne": True},
+        "$or": [{"contact_name": rx}, {"company_name": rx}, {"email": rx}, {"phone": rx}],
+    }
+    contacts = await db.contacts.find(contact_q, {"_id": 0, "id": 1, "contact_name": 1, "company_name": 1, "email": 1, "phone": 1, "kind": 1}).limit(8).to_list(8)
+    # Split vendors/subs out from plain contacts so the UI can group them
+    vendors = [c for c in contacts if c.get("kind") in ("Vendor", "Subcontractor")]
+    people = [c for c in contacts if c.get("kind") not in ("Vendor", "Subcontractor")]
+
+    # Properties
+    prop_q = {
+        "is_deleted": {"$ne": True},
+        "$or": [{"property_name": rx}, {"address_line_1": rx}, {"city": rx}, {"state": rx}, {"zip_code": rx}],
+    }
+    properties = await db.properties.find(prop_q, {"_id": 0, "id": 1, "property_name": 1, "address_line_1": 1, "city": 1, "state": 1}).limit(8).to_list(8)
+
+    # Invoices — invoice_number, notes
+    inv_q = {
+        "is_deleted": {"$ne": True},
+        "$or": [{"invoice_number": rx}, {"notes": rx}, {"billing_contact_snapshot.company_name": rx}, {"billing_contact_snapshot.contact_name": rx}],
+    }
+    invoices = await db.invoices.find(inv_q, {"_id": 0, "id": 1, "invoice_number": 1, "amount": 1, "status": 1, "deal_id": 1, "billing_contact_snapshot": 1}).limit(8).to_list(8)
+
+    return {
+        "deals": deals,
+        "contacts": people,
+        "properties": properties,
+        "invoices": invoices,
+        "vendors": vendors,
+    }
+
+
 @api_router.post("/deals", response_model=Deal)
 async def create_deal(body: DealIn, current=Depends(get_current_user)):
     data = normalize_deal(body.model_dump())
