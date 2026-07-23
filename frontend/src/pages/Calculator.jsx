@@ -526,6 +526,27 @@ export default function Calculator() {
   };
   const OPTION_LETTER = { 25: "A", 20: "B", 15: "C", 10: "D" };
 
+  /**
+   * Map a Calculator system's `system_type` to the `proposed_roof_type`
+   * enum on the Deal. This is what drives which scope PDF template gets
+   * rendered — without this, pushing a Silicone job from the Calculator
+   * would leave the deal set to whatever it was created with (usually
+   * "TPO Over-Lay" default) and the scope would come out as "TPO Layover".
+   *
+   * Only returns a value for system_types where the mapping is unambiguous;
+   * unknown types leave `proposed_roof_type` untouched so we never break
+   * an unrelated scope the rep already dialled in manually.
+   */
+  const roofTypeForSystem = (sys) => {
+    const t = (sys?.system_type || "").toLowerCase();
+    if (t === "silicone") return "Silicone";
+    if (t === "farm") return "FARM (Fluid Applied Reinforced Membrane)";
+    // "All-Acrylic" is a coating chemistry not present in the Deal roof-type
+    // enum — leave the field alone so the rep can still pick from the full
+    // dropdown on the deal page.
+    return null;
+  };
+
   /** ESTIMATE mode: only write the Customer Price into the matching
    *  proposal_option_* field on the deal. No cost lines, no PO. */
   const setOptionOnDeal = async (col) => {
@@ -558,6 +579,10 @@ export default function Calculator() {
       if (laborField) body[laborField] = Math.round((col.laborAdd || 0) * 100) / 100;
       if (ohField) body[ohField] = col.ohPct;
       if (prField) body[prField] = col.prPct;
+      // Auto-align the deal's proposed roof type to match the system being
+      // pushed, so subsequent scope PDF generation picks the right template.
+      const newRoofType = roofTypeForSystem(col.system);
+      if (newRoofType) body.proposed_roof_type = newRoofType;
       // Persist the rep's typed custom add-ons (e.g. Metal Flashing $650) so
       // the spec sheet PDF can render them as visible scope-inclusion bullets
       // — and so re-opening the calc on this deal restores the same rows.
@@ -621,7 +646,13 @@ export default function Calculator() {
       toast.warning("None of the picked systems have a matching A/B/C/D warranty (10/15/20/25-yr)");
       return;
     }
-    if (!window.confirm(`Set on "${deal.title || deal.id}":\n\n${summary.join("\n")}\n\nThis OVERWRITES any existing amounts in those fields.`)) return;
+    // Auto-align the deal's proposed roof type to match the systems being
+    // pushed. All bundled columns share the same vendor/system_type in
+    // practice (a rep doesn't push Silicone + FARM in one shot), so we
+    // key off the first column that yields a mapping.
+    const bulkRoofType = columns.map((c) => roofTypeForSystem(c.system)).find(Boolean);
+    if (bulkRoofType) updates.proposed_roof_type = bulkRoofType;
+    if (!window.confirm(`Set on "${deal.title || deal.id}":\n\n${summary.join("\n")}${bulkRoofType && bulkRoofType !== deal.proposed_roof_type ? `\n\nRoof type will change: ${deal.proposed_roof_type || "(unset)"} → ${bulkRoofType}` : ""}\n\nThis OVERWRITES any existing amounts in those fields.`)) return;
     setSavingToDeal(true);
     try {
       const body = { ...deal, ...updates };
