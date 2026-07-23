@@ -10,13 +10,14 @@ import { ScopePreview } from "@/pages/Deals";
 import { formatPhoneDisplay } from "@/lib/format";
 import ProjectPhotos from "@/components/ProjectPhotos";
 import GrammarCheck from "@/components/GrammarCheck";
-import { DealStagePipeline, NextStepCard, DealActivityTimeline, DealQuickActions } from "@/components/DealWorkflow";
+import { DealStagePipeline, NextStepCard, DealActivityTimeline } from "@/components/DealWorkflow";
 import { InvoiceEditor } from "@/pages/Invoices";
 import ScopeEditorModal from "@/components/ScopeEditorModal";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 import DealSchedulePanel from "@/components/DealSchedulePanel";
 import GoToProductionChecklist from "@/components/GoToProductionChecklist";
 import ProjectLivePnL from "@/components/ProjectLivePnL";
+import DealActionBar from "@/components/DealActionBar";
 
 // Resolve a deal's assigned_to_user_id to a human-readable name. Falls back
 // to the raw id (handy during dev) and then to "—" when nothing matches.
@@ -208,6 +209,68 @@ export default function DealDetail() {
       }
     } catch (e) {
       toast.error(e?.response?.data?.detail || e.message || "Could not draft milestone invoice");
+    }
+  };
+
+  /**
+   * Opens the invoice editor pre-filled with contact + property + contract totals.
+   * Reused by the Money section header "+ Invoice" button and the DealQuickActions
+   * menu (kept for the mobile / non-header path).
+   */
+  const openNewInvoice = () => {
+    const contractTotal = Number(deal.chosen_amount || 0);
+    const desc = deal.title ? `${deal.title} — Contract` : "Project Invoice";
+    const fullAddr = [property?.address, property?.city, property?.state, property?.zip]
+      .filter(Boolean)
+      .join(", ");
+    setInvoiceEditor({
+      deal_id: deal.id,
+      customer_contact_id: deal.contact_id || "",
+      invoice_type: "Project Amount",
+      bill_to_company: property?.name || contact?.company || "",
+      bill_to_name: contact?.name || "",
+      bill_to_address: property?.address || contact?.address || "",
+      bill_to_city: property?.city || contact?.city || "",
+      bill_to_state: property?.state || contact?.state || "",
+      bill_to_zip: property?.zip || contact?.zip || "",
+      bill_to_email: contact?.email || "",
+      invoice_date: new Date().toISOString().slice(0, 10),
+      terms: "Due Upon Receipt",
+      project_title: deal.title || "",
+      project_address: fullAddr,
+      project_total: contractTotal,
+      line_items: contractTotal > 0
+        ? [{ description: desc, quantity: 1, unit_price: contractTotal, amount: contractTotal }]
+        : [{ description: desc, quantity: 1, unit_price: 0, amount: 0 }],
+      status: "Draft",
+    });
+  };
+
+  /** Opens the oldest unpaid invoice for payment recording. */
+  const openRecordPayment = async () => {
+    const unpaid = (dealInvoices || []).filter(
+      (inv) => !["Paid", "Void"].includes(inv.status) &&
+        Number(inv.balance_due || 0) > 0.005
+    );
+    if (unpaid.length === 0) {
+      toast.info(
+        "No open invoices on this project yet. Click + Invoice first, save it, then come back to record a payment."
+      );
+      return;
+    }
+    const target = [...unpaid].sort((a, b) =>
+      String(a.invoice_date || a.created_at || "").localeCompare(
+        String(b.invoice_date || b.created_at || "")
+      )
+    )[0];
+    try {
+      const full = await api.get(`/invoices/${target.id}`);
+      setInvoiceEditor({
+        ...full.data,
+        payment_date: full.data.payment_date || new Date().toISOString().slice(0, 10),
+      });
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
     }
   };
 
@@ -615,182 +678,24 @@ export default function DealDetail() {
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            data-testid="generate-spec-sheet"
-            onClick={async () => {
-              const token = localStorage.getItem("crm_token");
-              try {
-                toast.info("Generating spec sheet...");
-                const r = await fetch(`${API}/deals/${id}/spec-sheet.pdf`, { headers: { Authorization: `Bearer ${token}` } });
-                if (!r.ok) {
-                  const txt = await r.text();
-                  throw new Error(`Spec sheet failed (${r.status}): ${txt.slice(0,200)}`);
-                }
-                const blob = await r.blob();
-                const url = URL.createObjectURL(blob);
-                const newWin = window.open(url, "_blank");
-                if (!newWin) {
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `sealtech-scope-${(deal.title || "project").replace(/\s+/g, "_")}.pdf`;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                }
-                setTimeout(() => URL.revokeObjectURL(url), 60_000);
-                toast.success("Spec sheet ready");
-              } catch (e) {
-                toast.error(e.message || "Could not generate spec sheet");
-              }
-            }}
-            className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
-          >
-            <Download className="w-4 h-4" /> View / Download
-          </button>
-          <button
-            data-testid="print-spec-sheet"
-            onClick={async () => {
-              const token = localStorage.getItem("crm_token");
-              try {
-                toast.info("Preparing for print...");
-                const r = await fetch(`${API}/deals/${id}/spec-sheet.pdf`, { headers: { Authorization: `Bearer ${token}` } });
-                if (!r.ok) throw new Error(`Print failed (${r.status})`);
-                const blob = await r.blob();
-                const url = URL.createObjectURL(blob);
-                const win = window.open(url, "_blank");
-                if (!win) {
-                  toast.error("Pop-up blocked. Allow pop-ups from this site to print directly.");
-                } else {
-                  // Try to auto-trigger print once the PDF loads
-                  win.addEventListener("load", () => { try { win.print(); } catch (e) {} });
-                  // Fallback: trigger print after 1.5s in case load doesn't fire for PDFs
-                  setTimeout(() => { try { win.print(); } catch (e) {} }, 1500);
-                }
-                setTimeout(() => URL.revokeObjectURL(url), 60_000);
-              } catch (e) {
-                toast.error(e.message || "Could not print");
-              }
-            }}
-            className="inline-flex items-center gap-2 bg-zinc-950 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-zinc-800 rounded-sm transition-colors"
-          >
-            <Printer className="w-4 h-4" /> Print
-          </button>
-          <button
-            data-testid="email-spec-sheet"
-            onClick={() => setEmailScopeOpen(true)}
-            className="inline-flex items-center gap-2 border border-zinc-300 text-zinc-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:border-zinc-950 rounded-sm transition-colors"
-          >
-            <Mail className="w-4 h-4" /> Email to Prospect
-          </button>
-          <button
-            data-testid="send-work-order"
-            onClick={() => { setWorkOrderKind("work-order"); setWorkOrderOpen(true); }}
-            title="Issue a Work Order to the subcontractor — includes the spec sheet"
-            className="inline-flex items-center gap-2 bg-blue-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm transition-colors"
-          >
-            <FileText className="w-4 h-4" /> Send Work Order
-          </button>
-          <button
-            data-testid="send-change-order"
-            onClick={() => { setWorkOrderKind("change-order"); setWorkOrderOpen(true); }}
-            title="Issue a Change Order amending the original Work Order — no spec sheet attached"
-            className="inline-flex items-center gap-2 border border-amber-600 text-amber-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-amber-50 rounded-sm transition-colors"
-          >
-            <FileText className="w-4 h-4" /> Send Change Order
-          </button>
-          <button
-            data-testid="new-assessment-from-deal"
-            onClick={async () => {
-              try {
-                const r = await api.post("/assessments", { deal_id: id });
-                nav(`/assessments/${r.data.id}`);
-              } catch (e) {
-                toast.error(e?.response?.data?.detail || e.message);
-              }
-            }}
-            className="inline-flex items-center gap-2 border border-blue-700 text-blue-700 px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-50 rounded-sm transition-colors"
-          >
-            <ClipboardCheck className="w-4 h-4" /> New Assessment
-          </button>
-          <button
-            data-testid="send-to-field"
-            onClick={() => setSendToFieldOpen(true)}
-            title="Open Field Photo Capture on your phone with this project pre-selected"
-            className="inline-flex items-center gap-2 bg-amber-600 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-amber-700 rounded-sm transition-colors"
-          >
-            <Camera className="w-4 h-4" /> Send to Field
-          </button>
-          <button
-            data-testid="mark-complete-btn"
-            onClick={markCompleteAndInvoice}
-            disabled={markingComplete}
-            title="Mark this project complete and draft the Final invoice for the remaining balance"
-            className="inline-flex items-center gap-2 bg-emerald-700 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-emerald-800 disabled:opacity-50 rounded-sm transition-colors"
-          >
-            <CheckSquare className="w-4 h-4" /> {markingComplete ? "Drafting…" : "Mark Complete"}
-          </button>
-          <DealQuickActions
+          <DealActionBar
             deal={deal}
+            contact={contact}
+            dealAssessments={dealAssessments}
+            onScopeEdit={() => setScopeEditorOpen(true)}
             onEmailScope={() => setEmailScopeOpen(true)}
-            onEditScope={() => setScopeEditorOpen(true)}
-            onCreateInvoice={() => {
-              // Prefill from deal + linked contact + property
-              const contractTotal = Number(deal.chosen_amount || 0);
-              const desc = deal.title ? `${deal.title} — Contract` : "Project Invoice";
-              const fullAddr = [property?.address, property?.city, property?.state, property?.zip]
-                .filter(Boolean)
-                .join(", ");
-              setInvoiceEditor({
-                deal_id: deal.id,
-                customer_contact_id: deal.contact_id || "",
-                invoice_type: "Project Amount",
-                bill_to_company: property?.name || contact?.company || "",
-                bill_to_name: contact?.name || "",
-                bill_to_address: property?.address || contact?.address || "",
-                bill_to_city: property?.city || contact?.city || "",
-                bill_to_state: property?.state || contact?.state || "",
-                bill_to_zip: property?.zip || contact?.zip || "",
-                bill_to_email: contact?.email || "",
-                invoice_date: new Date().toISOString().slice(0, 10),
-                terms: "Due Upon Receipt",
-                project_title: deal.title || "",
-                project_address: fullAddr,
-                project_total: contractTotal,
-                line_items: contractTotal > 0
-                  ? [{ description: desc, quantity: 1, unit_price: contractTotal, amount: contractTotal }]
-                  : [{ description: desc, quantity: 1, unit_price: 0, amount: 0 }],
-                status: "Draft",
-              });
+            onEmailAssessment={(_assessmentId, variant) => {
+              // Assessments module handles this via its editor page today; for
+              // now surface the option from here by nav'ing to the editor with
+              // an anchor. TODO: expose an inline modal similar to email-scope.
+              const a = (dealAssessments || [])[0];
+              if (a?.id) nav(`/assessments/${a.id}?email=${variant}`);
             }}
-            onRecordPayment={async () => {
-              // Find an open invoice on this deal; if none, prompt user to create one first
-              const unpaid = (dealInvoices || []).filter(
-                (inv) => !["Paid", "Void"].includes(inv.status) &&
-                  Number(inv.balance_due || 0) > 0.005
-              );
-              if (unpaid.length === 0) {
-                toast.info(
-                  "No open invoices on this project yet. Click + Invoice first, save it, then come back to record a payment."
-                );
-                return;
-              }
-              // Pick the oldest unpaid (FIFO collection) and open the editor
-              const target = [...unpaid].sort((a, b) =>
-                String(a.invoice_date || a.created_at || "").localeCompare(
-                  String(b.invoice_date || b.created_at || "")
-                )
-              )[0];
-              try {
-                const full = await api.get(`/invoices/${target.id}`);
-                setInvoiceEditor({
-                  ...full.data,
-                  // Default the payment date to today so the form is one click away from save
-                  payment_date: full.data.payment_date || new Date().toISOString().slice(0, 10),
-                });
-              } catch (e) {
-                toast.error(formatApiError(e?.response?.data?.detail) || e.message);
-              }
-            }}
+            onWorkOrder={() => { setWorkOrderKind("work-order"); setWorkOrderOpen(true); }}
+            onChangeOrder={() => { setWorkOrderKind("change-order"); setWorkOrderOpen(true); }}
+            onSendToField={() => setSendToFieldOpen(true)}
+            onMarkComplete={markCompleteAndInvoice}
+            markingComplete={markingComplete}
           />
         </div>
       </div>
@@ -1024,6 +929,29 @@ export default function DealDetail() {
 
       {/* ═══ GROUP: MONEY ═══ */}
       <div id="deal-group-money" data-testid="deal-group-money" className="scroll-mt-16">
+      {/* Money section header — quick actions for adding invoices and recording payments */}
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap" data-testid="money-section-header">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-blue-700 mb-1">Money</div>
+          <h2 className="font-heading text-xl font-bold tracking-tight">Financials, invoices & payments</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openNewInvoice}
+            data-testid="money-new-invoice-btn"
+            className="inline-flex items-center gap-1.5 border border-zinc-300 hover:border-zinc-950 text-zinc-800 px-3 h-9 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Invoice
+          </button>
+          <button
+            onClick={openRecordPayment}
+            data-testid="money-record-payment-btn"
+            className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 h-9 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-colors"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" /> Record Payment
+          </button>
+        </div>
+      </div>
       {/* Live Project P&L — top of the Money section, answers "what did we make?" at a glance */}
       <ProjectLivePnL deal={deal} dealInvoices={dealInvoices} vendorBills={vendorBills} />
 

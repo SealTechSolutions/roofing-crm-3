@@ -73,6 +73,21 @@ The **Payment Milestones** table on every deal now has an **Invoice** column:
 - If the milestone already has an invoice → the button becomes an **OPEN** shortcut showing the invoice number for quick access.
 - Idempotent: repeated clicks won't create duplicates.
 
+## Redesigned Deal Action Bar (new — Feb 2026)
+
+The old row of 8 buttons (View/Download, Print, Email to Prospect, Send Work Order, Send Change Order, New Assessment, Send to Field, Mark Complete) has been replaced with **6 smart color-coded buttons** grouped by document type + workflow color:
+
+| # | Button | Color | Behavior |
+|---|--------|-------|----------|
+| 1 | Assessment | 🟣 Purple | Ghost when none exists → "+ Create Assessment"; solid when exists → menu with Full Report + Basic Evaluation each having View / Download / Print / Email + Edit |
+| 2 | Scope | 🔵 Blue | Ghost when no chosen amount → "+ Create Scope"; solid when set → menu with View / Download / Print / Email to Prospect / Edit |
+| 3 | Work Order | 🟠 Orange | Ghost until sent → "Send Work Order"; solid once sent → menu shows Resend + last-sent date |
+| 4 | Change Order | 🟡 Amber | Always shows "Change Order" (ghost) — opens the CO modal |
+| 5 | Send to Field | 🟢 Teal | Always visible — dispatches on-site info to the crew |
+| 6 | Mark Complete | 🟢 Emerald | Confirmation dialog reminds "This will draft the FINAL INVOICE for $X and close the deal — Continue?" |
+
+**Money section quick actions:** the `+ Invoice` and green **Record Payment** buttons moved from the top action row into the Money section header where they contextually belong.
+
 ## Sidebar Navigation (Grouped)
 
 The sidebar is organized into 8 groups so related items live together:
