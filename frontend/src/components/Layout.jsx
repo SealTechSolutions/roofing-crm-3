@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise, Camera, Package, Calculator as CalcIcon, FolderKanban, TrendingUp, Wallet as FinanceIcon, Settings, Search } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
@@ -115,6 +115,18 @@ export default function Layout() {
     .map((g) => ({ ...g, items: g.items.filter((i) => !i.adminOnly || isAdmin) }))
     .filter((g) => g.items.length > 0);
   const [showGetApp, setShowGetApp] = useState(false);
+  // Reset scroll position of the main content pane on every route change.
+  // React Router doesn't do this by default when scroll lives on a nested
+  // container (our `<main>` scrolls, not `window`), so the previous page's
+  // scroll bled into the next page and users landed at the bottom of every
+  // navigation. Also resets the browser's own scroll for safety on mobile
+  // (Capacitor / iOS PWA sometimes scrolls the window instead of main).
+  const mainRef = useRef(null);
+  const location = useLocation();
+  useEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = 0;
+    if (typeof window !== "undefined") window.scrollTo(0, 0);
+  }, [location.pathname]);
   return (
     <div className="min-h-screen flex bg-zinc-100">
       {/* Sidebar */}
@@ -272,7 +284,7 @@ export default function Layout() {
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-auto">
+      <main ref={mainRef} className="flex-1 overflow-auto">
         <Outlet />
       </main>
 
