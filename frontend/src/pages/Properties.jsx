@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, FolderPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Modal, Field, Grid2, Input, Select, Th } from "@/pages/Contacts";
 import { ExportButtons, ImportButton } from "@/components/ExportImport";
@@ -31,6 +32,11 @@ export default function Properties() {
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState(null);
+  // Tracks the id of the property currently spawning a deal so the button
+  // shows a spinner state instead of allowing double-clicks (which would
+  // create duplicate deals).
+  const [creatingDealFor, setCreatingDealFor] = useState(null);
+  const navigate = useNavigate();
 
   // Auto-fill City + State when the user finishes typing a 5-digit ZIP.
   // Only fills blank fields — we won't clobber a value the user already set.
@@ -94,6 +100,40 @@ export default function Properties() {
 
   const remove = (p) => setConfirmTarget(p);
 
+  /**
+   * One-click "spawn a deal from this property".
+   * Pre-fills the deal with the property's address, on-site contact, and
+   * a sensible auto-generated title. All other deal fields keep their
+   * DealIn defaults so the rep can dial them in on the deal detail page.
+   */
+  const createDealFromProperty = async (p) => {
+    if (creatingDealFor) return;
+    setCreatingDealFor(p.id);
+    try {
+      // Title: prefer property name; fall back to street address if the name
+      // is missing so we never create a titleless deal.
+      const baseTitle = (p.property_name || p.property_address || "New Site").trim();
+      const title = baseTitle.length > 90 ? baseTitle.slice(0, 90) : baseTitle;
+      const contactId = p.property_contact_id || null;
+      const payload = {
+        title,
+        deal_type: "Scope",
+        property_id: p.id,
+        contact_id: contactId,
+        customer_contact_id: contactId,
+        owner_contact_id: contactId,
+      };
+      const r = await api.post("/deals", payload);
+      const dealId = r.data?.id;
+      toast.success(`Created deal · ${title}`);
+      if (dealId) navigate(`/projects/${dealId}`);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setCreatingDealFor(null);
+    }
+  };
+
   const contactOpts = [{ value: "", label: "— None —" }, ...contacts.map((c) => ({ value: c.id, label: `${c.contact_name}${c.company_name ? " · " + c.company_name : ""}` }))];
 
   return (
@@ -137,6 +177,16 @@ export default function Properties() {
                   <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{formatPhoneDisplay(p.property_contact_phone)}</td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1">
+                      <button
+                        data-testid={`create-deal-from-property-${p.id}`}
+                        onClick={() => createDealFromProperty(p)}
+                        disabled={creatingDealFor === p.id}
+                        title="Create a new deal pre-filled with this property's info"
+                        className="inline-flex items-center gap-1 px-2 h-7 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 rounded-sm"
+                      >
+                        <FolderPlus className="w-3 h-3" />
+                        {creatingDealFor === p.id ? "Creating…" : "New Deal"}
+                      </button>
                       <ScopesButton propertyId={p.id} testIdPrefix="property-scopes" />
                       <button data-testid={`edit-property-${p.id}`} onClick={() => openEdit(p)} className="p-1.5 hover:bg-zinc-200 rounded-sm"><Pencil className="w-3.5 h-3.5" /></button>
                       <button data-testid={`delete-property-${p.id}`} onClick={() => remove(p)} className="p-1.5 hover:bg-red-100 text-red-700 rounded-sm"><Trash2 className="w-3.5 h-3.5" /></button>
