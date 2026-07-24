@@ -13,7 +13,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Plus, Trash2, Upload, Package, Layers, Settings, ChevronRight, Save, X } from "lucide-react";
+import { Plus, Trash2, Upload, Package, Layers, Settings, ChevronRight, ChevronDown, Save, X, Search } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const api = axios.create({ baseURL: API });
@@ -77,6 +77,11 @@ function ProductsTab() {
   const [importing, setImporting] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState({});
+  // UI state: search box + which manufacturer sections are expanded.
+  // Default all vendors expanded so a first-time visitor sees the full
+  // catalog. Collapsing state is per-vendor and persists in local state.
+  const [search, setSearch] = useState("");
+  const [collapsed, setCollapsed] = useState({});
 
   const load = async () => {
     try { setRows((await api.get("/products")).data); }
@@ -99,62 +104,141 @@ function ProductsTab() {
     load();
   };
 
+  // Group products by vendor/manufacturer. Products without a vendor land
+  // in "(No vendor)" so they stay discoverable at the bottom. Search
+  // filters *before* grouping so empty vendors don't show up.
+  const grouped = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? rows.filter((r) =>
+          [r.name, r.vendor, r.category, r.sku, r.notes]
+            .filter(Boolean).some((v) => String(v).toLowerCase().includes(q))
+        )
+      : rows;
+    const g = {};
+    filtered.forEach((r) => {
+      const v = (r.vendor || "").trim() || "(No vendor)";
+      (g[v] ||= []).push(r);
+    });
+    // Keep each vendor's products sorted by name so the list is stable.
+    Object.values(g).forEach((arr) => arr.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+    return g;
+  }, [rows, search]);
+
+  const vendorOrder = useMemo(
+    () => Object.keys(grouped).sort((a, b) => {
+      if (a === "(No vendor)") return 1;
+      if (b === "(No vendor)") return -1;
+      return a.localeCompare(b);
+    }),
+    [grouped],
+  );
+
+  const toggle = (v) => setCollapsed((c) => ({ ...c, [v]: !c[v] }));
+  const expandAll = () => setCollapsed({});
+  const collapseAll = () => setCollapsed(vendorOrder.reduce((acc, v) => ({ ...acc, [v]: true }), {}));
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 justify-end">
-        <button onClick={() => setImporting(true)} className="inline-flex items-center gap-2 border border-zinc-300 px-3 h-9 text-xs font-bold uppercase tracking-wider hover:border-blue-700 hover:text-blue-700" data-testid="import-csv-btn">
+      {/* Toolbar: search + expand/collapse + import/add */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <div className="relative flex-1 min-w-[240px]">
+          <Search className="w-4 h-4 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Search product, SKU, category, notes…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-9 pl-8 pr-3 border border-zinc-300 rounded-sm text-sm"
+            data-testid="products-search"
+          />
+        </div>
+        <button onClick={expandAll} data-testid="products-expand-all" className="border border-zinc-300 px-2.5 h-9 text-[10px] font-bold uppercase tracking-wider hover:border-blue-700 hover:text-blue-700 rounded-sm">Expand All</button>
+        <button onClick={collapseAll} data-testid="products-collapse-all" className="border border-zinc-300 px-2.5 h-9 text-[10px] font-bold uppercase tracking-wider hover:border-blue-700 hover:text-blue-700 rounded-sm">Collapse All</button>
+        <button onClick={() => setImporting(true)} className="inline-flex items-center gap-2 border border-zinc-300 px-3 h-9 text-xs font-bold uppercase tracking-wider hover:border-blue-700 hover:text-blue-700 rounded-sm" data-testid="import-csv-btn">
           <Upload className="w-3.5 h-3.5" /> Import CSV
         </button>
-        <button onClick={() => setAdding(true)} className="inline-flex items-center gap-2 bg-blue-700 text-white px-3 h-9 text-xs font-bold uppercase tracking-wider hover:bg-blue-800" data-testid="add-product-btn">
+        <button onClick={() => setAdding(true)} className="inline-flex items-center gap-2 bg-blue-700 text-white px-3 h-9 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm" data-testid="add-product-btn">
           <Plus className="w-3.5 h-3.5" /> Add Product
         </button>
       </div>
-      <div className="border border-zinc-200 rounded-sm overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-            <tr>
-              <th className="text-left px-3 py-2">Name</th>
-              <th className="text-left px-3 py-2">Vendor</th>
-              <th className="text-left px-3 py-2">Category</th>
-              <th className="text-right px-3 py-2">Pkg</th>
-              <th className="text-left px-3 py-2">Unit</th>
-              <th className="text-right px-3 py-2">Unit Price</th>
-              <th className="w-20"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr><td colSpan={7} className="text-center text-zinc-400 py-8 text-sm">No products yet — tap <b>Add Product</b> or <b>Import CSV</b></td></tr>
+
+      {rows.length === 0 && (
+        <div className="text-zinc-400 text-sm text-center py-8 border border-dashed border-zinc-200 rounded-sm">
+          No products yet — tap <b>Add Product</b> or <b>Import CSV</b>
+        </div>
+      )}
+      {rows.length > 0 && vendorOrder.length === 0 && (
+        <div className="text-zinc-400 text-sm text-center py-8 border border-dashed border-zinc-200 rounded-sm" data-testid="products-empty-search">
+          No products match “{search}”.
+        </div>
+      )}
+
+      {vendorOrder.map((vendor) => {
+        const items = grouped[vendor];
+        const isCollapsed = !!collapsed[vendor];
+        return (
+          <div key={vendor} className="border border-zinc-200 rounded-sm overflow-hidden" data-testid={`products-vendor-${vendor.replace(/\s+/g, "-").toLowerCase()}`}>
+            {/* Vendor header — click to collapse/expand */}
+            <button
+              type="button"
+              onClick={() => toggle(vendor)}
+              className="w-full flex items-center gap-2 px-4 py-2.5 bg-zinc-50 hover:bg-zinc-100 border-b border-zinc-200 text-left"
+              data-testid={`products-vendor-header-${vendor.replace(/\s+/g, "-").toLowerCase()}`}
+            >
+              {isCollapsed ? <ChevronRight className="w-4 h-4 text-zinc-500" /> : <ChevronDown className="w-4 h-4 text-zinc-500" />}
+              <span className="font-heading text-sm font-black tracking-tight text-zinc-900">{vendor}</span>
+              <span className="ml-auto text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                {items.length} product{items.length === 1 ? "" : "s"}
+              </span>
+            </button>
+
+            {!isCollapsed && (
+              <table className="w-full text-sm">
+                <thead className="bg-white text-[10px] font-bold uppercase tracking-widest text-zinc-500 border-b border-zinc-100">
+                  <tr>
+                    <th className="text-left px-3 py-2">Name</th>
+                    <th className="text-left px-3 py-2">SKU</th>
+                    <th className="text-left px-3 py-2">Category</th>
+                    <th className="text-right px-3 py-2">Pkg</th>
+                    <th className="text-left px-3 py-2">Unit</th>
+                    <th className="text-right px-3 py-2">Unit Price</th>
+                    <th className="w-20"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((p) => editingId === p.id ? (
+                    <tr key={p.id} className="border-t border-zinc-100 bg-blue-50/40">
+                      <td className="px-3 py-2"><input className={inputCls} value={draft.name||""} onChange={(e)=>setDraft({...draft,name:e.target.value})} /></td>
+                      <td className="px-3 py-2"><input className={inputCls} value={draft.sku||""} onChange={(e)=>setDraft({...draft,sku:e.target.value})} /></td>
+                      <td className="px-3 py-2"><select className={inputCls} value={draft.category||""} onChange={(e)=>setDraft({...draft,category:e.target.value})}><option value="">—</option>{CATEGORIES.map((c)=><option key={c} value={c}>{c}</option>)}</select></td>
+                      <td className="px-3 py-2"><input type="number" step="0.01" className={inputCls + " text-right"} value={draft.package_size||""} onChange={(e)=>setDraft({...draft,package_size:e.target.value})} /></td>
+                      <td className="px-3 py-2"><select className={inputCls} value={draft.unit||""} onChange={(e)=>setDraft({...draft,unit:e.target.value})}>{UNITS.map((u)=><option key={u} value={u}>{u}</option>)}</select></td>
+                      <td className="px-3 py-2"><input type="number" step="0.01" className={inputCls + " text-right"} value={draft.unit_price||""} onChange={(e)=>setDraft({...draft,unit_price:e.target.value})} /></td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <button onClick={saveEdit} className="p-1 text-emerald-700 hover:bg-emerald-50"><Save className="w-4 h-4" /></button>
+                        <button onClick={cancelEdit} className="p-1 text-zinc-500 hover:bg-zinc-100"><X className="w-4 h-4" /></button>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={p.id} className="border-t border-zinc-100 hover:bg-zinc-50 cursor-pointer" onClick={()=>startEdit(p)} data-testid={`product-row-${p.id}`}>
+                      <td className="px-3 py-2 font-medium">{p.name}</td>
+                      <td className="px-3 py-2 text-zinc-500 font-mono text-xs">{p.sku || <span className="text-zinc-300">—</span>}</td>
+                      <td className="px-3 py-2"><span className="text-[10px] font-bold uppercase tracking-wider bg-zinc-100 px-1.5 py-0.5 rounded-sm">{p.category||"—"}</span></td>
+                      <td className="px-3 py-2 text-right text-zinc-600">{p.package_size}</td>
+                      <td className="px-3 py-2 text-zinc-600">{p.unit}</td>
+                      <td className="px-3 py-2 text-right font-mono">${(p.unit_price ?? 0).toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right">
+                        <button onClick={(e)=>{e.stopPropagation(); removeProduct(p);}} className="p-1 text-rose-600 hover:bg-rose-50"><Trash2 className="w-4 h-4" /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
-            {rows.map((p) => editingId === p.id ? (
-              <tr key={p.id} className="border-t border-zinc-200 bg-blue-50/40">
-                <td className="px-3 py-2"><input className={inputCls} value={draft.name||""} onChange={(e)=>setDraft({...draft,name:e.target.value})} /></td>
-                <td className="px-3 py-2"><input className={inputCls} value={draft.vendor||""} onChange={(e)=>setDraft({...draft,vendor:e.target.value})} /></td>
-                <td className="px-3 py-2"><select className={inputCls} value={draft.category||""} onChange={(e)=>setDraft({...draft,category:e.target.value})}><option value="">—</option>{CATEGORIES.map((c)=><option key={c} value={c}>{c}</option>)}</select></td>
-                <td className="px-3 py-2"><input type="number" step="0.01" className={inputCls + " text-right"} value={draft.package_size||""} onChange={(e)=>setDraft({...draft,package_size:e.target.value})} /></td>
-                <td className="px-3 py-2"><select className={inputCls} value={draft.unit||""} onChange={(e)=>setDraft({...draft,unit:e.target.value})}>{UNITS.map((u)=><option key={u} value={u}>{u}</option>)}</select></td>
-                <td className="px-3 py-2"><input type="number" step="0.01" className={inputCls + " text-right"} value={draft.unit_price||""} onChange={(e)=>setDraft({...draft,unit_price:e.target.value})} /></td>
-                <td className="px-3 py-2 text-right whitespace-nowrap">
-                  <button onClick={saveEdit} className="p-1 text-emerald-700 hover:bg-emerald-50"><Save className="w-4 h-4" /></button>
-                  <button onClick={cancelEdit} className="p-1 text-zinc-500 hover:bg-zinc-100"><X className="w-4 h-4" /></button>
-                </td>
-              </tr>
-            ) : (
-              <tr key={p.id} className="border-t border-zinc-200 hover:bg-zinc-50 cursor-pointer" onClick={()=>startEdit(p)}>
-                <td className="px-3 py-2 font-medium">{p.name}</td>
-                <td className="px-3 py-2 text-zinc-600">{p.vendor || <span className="text-zinc-300">—</span>}</td>
-                <td className="px-3 py-2"><span className="text-[10px] font-bold uppercase tracking-wider bg-zinc-100 px-1.5 py-0.5 rounded-sm">{p.category||"—"}</span></td>
-                <td className="px-3 py-2 text-right text-zinc-600">{p.package_size}</td>
-                <td className="px-3 py-2 text-zinc-600">{p.unit}</td>
-                <td className="px-3 py-2 text-right font-mono">${p.unit_price?.toFixed(2)}</td>
-                <td className="px-3 py-2 text-right">
-                  <button onClick={(e)=>{e.stopPropagation(); removeProduct(p);}} className="p-1 text-rose-600 hover:bg-rose-50"><Trash2 className="w-4 h-4" /></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        );
+      })}
       {adding && <AddProductModal onClose={()=>{setAdding(false);load();}} />}
       {importing && <ImportCsvModal onClose={()=>{setImporting(false);load();}} />}
     </div>

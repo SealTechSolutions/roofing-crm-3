@@ -1,0 +1,41 @@
+[
+  {
+    "_id": "6a2dd17caffa2ccc07a753ef",
+    "id": "d0755d2b-2c80-4032-9cdf-8577d1c1154d",
+    "entity_id": "541f5adc-e1ca-4754-8de4-9e14cfa6df88",
+    "entity_name": "SealTech Holdings",
+    "period": "2026-05",
+    "period_start": "2026-05-01",
+    "period_end": "2026-05-31",
+    "closed_at": "2026-06-14T03:03:33.987678+00:00",
+    "closed_by_user_id": "ebd982cb-666e-4d7e-aad0-597aecba0634",
+    "is_reopened": true,
+    "reopened_at": "2026-06-14T03:06:20.761154+00:00",
+    "reopened_by_user_id": "ebd982cb-666e-4d7e-aad0-597aecba0634",
+    "late_fee_accrual": {
+      "as_of": "2026-05-31",
+      "period": "2026-05",
+      "entities_touched": 0,
+      "invoices_accrued": 0,
+      "invoices_skipped": 1,
+      "total_late_fees": 0.0
+    },
+    "depreciation_posted": 1500.0,
+    "depreciation_journal_id": "65ef8d73-ef0f-4273-ba64-b8301543336c",
+    "pdf_document_ids": [
+      "1c1a0486-f3d7-4fb2-8353-ce8ceb353aa8",
+      "25a5f3c5-31f6-4bd8-bef8-fe057188183b"
+    ],
+    "snapshot": {
+      "revenue": 0,
+      "cogs": 0,
+      "gross_profit": 0,
+      "operating_expense": 1500.0,
+      "net_income": -1500.0,
+      "assets": -1500.0,
+      "liabilities": 0,
+      "equity_total": -1500.0,
+      "balanced": true
+    }
+  }
+]

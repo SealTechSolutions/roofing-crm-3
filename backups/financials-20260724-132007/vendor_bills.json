@@ -1,0 +1,38 @@
+[
+  {
+    "_id": "6a2c7129d71236e601dfc4c5",
+    "vendor_id": "136ca9af-cb31-4da4-8cc3-13a4f6c0e500",
+    "vendor_name": "ABC SUPPLY",
+    "bill_number": "INV-A-99",
+    "bill_date": "2026-06-12",
+    "received_date": "2026-06-12",
+    "due_date": "2026-06-13",
+    "terms": "Due on Receipt",
+    "total": 4500.0,
+    "subtotal": 0.0,
+    "tax": 0.0,
+    "status": "Paid",
+    "notes": "",
+    "attached_file_id": null,
+    "parsed_by_ai": false,
+    "line_items": [
+      {
+        "id": "eee42a51-5c47-4153-b09b-02f090107654",
+        "description": "5 gal silicone x 20",
+        "project_id": "095ef141-c391-4c19-8f22-14a9cd4d3d32",
+        "project_title": "13730 E Mississippi Ave",
+        "quantity": 1.0,
+        "unit_price": 0.0,
+        "amount": 4500.0
+      }
+    ],
+    "paid_amount": 4500.0,
+    "paid_date": "2026-06-12",
+    "paid_method": "ACH",
+    "paid_reference": "",
+    "id": "3f5e3d72-d8fb-4670-a590-aff22bae9c95",
+    "created_at": "2026-06-12T20:50:49.615745+00:00",
+    "created_by_user_id": "ebd982cb-666e-4d7e-aad0-597aecba0634",
+    "is_deleted": false
+  }
+]
