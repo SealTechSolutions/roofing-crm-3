@@ -32,6 +32,43 @@ const COVERAGE_BASIS = [
   { value: "per_each_optional", label: "user enters qty" },
 ];
 
+/**
+ * Explicit brand tones for the vendors currently in the catalog. Anything
+ * not in this map hashes into one of the fallback tones so new vendors
+ * still get *a* color (stable per name) without a code change.
+ * Keys are matched case-insensitively.
+ */
+const VENDOR_TONES = {
+  "everest systems":       { chip: "bg-blue-600 text-white",       accent: "border-l-blue-600 bg-blue-50/40" },
+  "western colloid":       { chip: "bg-orange-600 text-white",     accent: "border-l-orange-600 bg-orange-50/40" },
+  "gaco":                  { chip: "bg-emerald-600 text-white",    accent: "border-l-emerald-600 bg-emerald-50/40" },
+  "sesco":                 { chip: "bg-violet-600 text-white",     accent: "border-l-violet-600 bg-violet-50/40" },
+  "national waterproofing":{ chip: "bg-sky-600 text-white",        accent: "border-l-sky-600 bg-sky-50/40" },
+  "gaf":                   { chip: "bg-red-600 text-white",        accent: "border-l-red-600 bg-red-50/40" },
+  "carlisle":              { chip: "bg-amber-600 text-white",      accent: "border-l-amber-600 bg-amber-50/40" },
+  "firestone":             { chip: "bg-rose-600 text-white",       accent: "border-l-rose-600 bg-rose-50/40" },
+  "tremco":                { chip: "bg-teal-600 text-white",       accent: "border-l-teal-600 bg-teal-50/40" },
+};
+const FALLBACK_TONES = [
+  { chip: "bg-indigo-600 text-white",  accent: "border-l-indigo-600 bg-indigo-50/40" },
+  { chip: "bg-cyan-600 text-white",    accent: "border-l-cyan-600 bg-cyan-50/40" },
+  { chip: "bg-lime-600 text-white",    accent: "border-l-lime-600 bg-lime-50/40" },
+  { chip: "bg-fuchsia-600 text-white", accent: "border-l-fuchsia-600 bg-fuchsia-50/40" },
+  { chip: "bg-stone-700 text-white",   accent: "border-l-stone-700 bg-stone-50" },
+];
+const NO_VENDOR_TONE = { chip: "bg-zinc-400 text-white", accent: "border-l-zinc-300 bg-zinc-50" };
+const vendorTone = (raw) => {
+  const v = (raw || "").trim();
+  if (!v || v === "(No vendor)") return NO_VENDOR_TONE;
+  const explicit = VENDOR_TONES[v.toLowerCase()];
+  if (explicit) return explicit;
+  // Stable fallback: sum char codes → index into FALLBACK_TONES. Keeps the
+  // same vendor coloured the same way across page reloads.
+  let hash = 0;
+  for (let i = 0; i < v.length; i += 1) hash = (hash * 31 + v.charCodeAt(i)) | 0;
+  return FALLBACK_TONES[Math.abs(hash) % FALLBACK_TONES.length];
+};
+
 const inputCls = "border border-zinc-300 px-3 h-9 text-sm w-full focus:outline-none focus:border-blue-700";
 const labelCls = "text-[10px] font-bold uppercase tracking-widest text-zinc-500 block mb-1";
 
@@ -177,17 +214,20 @@ function ProductsTab() {
       {vendorOrder.map((vendor) => {
         const items = grouped[vendor];
         const isCollapsed = !!collapsed[vendor];
+        const tone = vendorTone(vendor);
         return (
-          <div key={vendor} className="border border-zinc-200 rounded-sm overflow-hidden" data-testid={`products-vendor-${vendor.replace(/\s+/g, "-").toLowerCase()}`}>
-            {/* Vendor header — click to collapse/expand */}
+          <div key={vendor} className={`border border-zinc-200 rounded-sm overflow-hidden border-l-4 ${tone.accent.split(" ")[0]}`} data-testid={`products-vendor-${vendor.replace(/\s+/g, "-").toLowerCase()}`}>
+            {/* Vendor header — click to collapse/expand. Bg tint uses the
+                vendor's own light shade so each section is visually
+                distinct at a glance. */}
             <button
               type="button"
               onClick={() => toggle(vendor)}
-              className="w-full flex items-center gap-2 px-4 py-2.5 bg-zinc-50 hover:bg-zinc-100 border-b border-zinc-200 text-left"
+              className={`w-full flex items-center gap-2 px-4 py-2.5 hover:brightness-95 border-b border-zinc-200 text-left ${tone.accent.split(" ").slice(1).join(" ")}`}
               data-testid={`products-vendor-header-${vendor.replace(/\s+/g, "-").toLowerCase()}`}
             >
               {isCollapsed ? <ChevronRight className="w-4 h-4 text-zinc-500" /> : <ChevronDown className="w-4 h-4 text-zinc-500" />}
-              <span className="font-heading text-sm font-black tracking-tight text-zinc-900">{vendor}</span>
+              <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded-sm ${tone.chip}`}>{vendor}</span>
               <span className="ml-auto text-[10px] font-bold uppercase tracking-widest text-zinc-500">
                 {items.length} product{items.length === 1 ? "" : "s"}
               </span>
@@ -239,16 +279,20 @@ function ProductsTab() {
           </div>
         );
       })}
-      {adding && <AddProductModal onClose={()=>{setAdding(false);load();}} />}
+      {adding && <AddProductModal knownVendors={vendorOrder.filter((v) => v !== "(No vendor)")} onClose={()=>{setAdding(false);load();}} />}
       {importing && <ImportCsvModal onClose={()=>{setImporting(false);load();}} />}
     </div>
   );
 }
 
-function AddProductModal({ onClose }) {
-  const [draft, setDraft] = useState({ name:"", vendor:"", category:"FARM", unit:"gal", package_size:1, unit_price:0 });
+function AddProductModal({ knownVendors = [], onClose }) {
+  const [draft, setDraft] = useState({ name:"", vendor:knownVendors[0] || "", category:"FARM", unit:"gal", package_size:1, unit_price:0 });
+  // "+ Add new vendor…" mode — swaps the vendor select for a free-text
+  // input so the rep can type a brand-new manufacturer name.
+  const [customVendor, setCustomVendor] = useState(false);
   const submit = async () => {
     if (!draft.name.trim()) { toast.error("Name required"); return; }
+    if (!draft.vendor.trim()) { toast.error("Vendor required"); return; }
     try { await api.post("/products", draft); toast.success("Product added"); onClose(); }
     catch (e) { toast.error(e.response?.data?.detail || "Add failed"); }
   };
@@ -259,7 +303,29 @@ function AddProductModal({ onClose }) {
         <div className="space-y-3">
           <div><label className={labelCls}>Name</label><input className={inputCls} value={draft.name} onChange={(e)=>setDraft({...draft,name:e.target.value})} autoFocus /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className={labelCls}>Vendor</label><input className={inputCls} value={draft.vendor} onChange={(e)=>setDraft({...draft,vendor:e.target.value})} /></div>
+            <div>
+              <label className={labelCls}>Vendor</label>
+              {customVendor ? (
+                <div className="flex gap-1">
+                  <input className={inputCls} value={draft.vendor} onChange={(e)=>setDraft({...draft,vendor:e.target.value})} placeholder="New vendor name" autoFocus />
+                  <button type="button" onClick={()=>{setCustomVendor(false); setDraft({...draft, vendor: knownVendors[0] || ""});}} className="border border-zinc-300 px-2 text-xs" title="Cancel new vendor">×</button>
+                </div>
+              ) : (
+                <select
+                  className={inputCls}
+                  value={draft.vendor}
+                  onChange={(e) => {
+                    if (e.target.value === "__new__") { setCustomVendor(true); setDraft({ ...draft, vendor: "" }); }
+                    else setDraft({ ...draft, vendor: e.target.value });
+                  }}
+                  data-testid="add-product-vendor"
+                >
+                  {knownVendors.length === 0 && <option value="">— No vendors yet —</option>}
+                  {knownVendors.map((v) => <option key={v} value={v}>{v}</option>)}
+                  <option value="__new__">+ Add new vendor…</option>
+                </select>
+              )}
+            </div>
             <div><label className={labelCls}>Category</label><select className={inputCls} value={draft.category} onChange={(e)=>setDraft({...draft,category:e.target.value})}>{CATEGORIES.map((c)=><option key={c} value={c}>{c}</option>)}</select></div>
             <div><label className={labelCls}>Package size</label><input type="number" step="0.01" className={inputCls} value={draft.package_size} onChange={(e)=>setDraft({...draft,package_size:e.target.value})} /></div>
             <div><label className={labelCls}>Unit</label><select className={inputCls} value={draft.unit} onChange={(e)=>setDraft({...draft,unit:e.target.value})}>{UNITS.map((u)=><option key={u} value={u}>{u}</option>)}</select></div>
@@ -352,9 +418,16 @@ function SystemsTab() {
         </button>
       </div>
       {rows.length === 0 && <div className="text-zinc-400 text-sm text-center py-8 border border-dashed border-zinc-200">No systems yet — tap <b>Add System</b></div>}
-      {vendorOrder.map((vendor) => (
+      {vendorOrder.map((vendor) => {
+        const tone = vendorTone(vendor);
+        return (
         <div key={vendor}>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">{vendor}</div>
+          <div className={`flex items-center gap-2 mb-2 border-l-4 pl-2 py-1 ${tone.accent}`}>
+            <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded-sm ${tone.chip}`}>{vendor}</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+              {grouped[vendor].length} system{grouped[vendor].length === 1 ? "" : "s"}
+            </span>
+          </div>
           <div className="border border-zinc-200 rounded-sm overflow-hidden">
             {grouped[vendor].map((s, i) => (
               <div key={s.id} className={`flex items-center justify-between px-4 py-3 hover:bg-zinc-50 cursor-pointer ${i>0 ? "border-t border-zinc-200" : ""}`} onClick={()=>setEditingRecipe(s)} data-testid={`system-row-${s.id}`}>
@@ -375,7 +448,7 @@ function SystemsTab() {
             ))}
           </div>
         </div>
-      ))}
+      );})}
       {adding && <AddSystemModal onClose={()=>{setAdding(false);load();}} />}
       {editingRecipe && <RecipeEditor system={editingRecipe} onClose={()=>{setEditingRecipe(null);load();}} />}
     </div>
@@ -434,6 +507,27 @@ function RecipeEditor({ system, onClose }) {
     })();
   }, [system.id]);
 
+  // Group products by vendor so the picker uses <optgroup> — MUCH easier to
+  // scan 73+ items when they're broken out by manufacturer. The system's
+  // own vendor floats to the top so the natural picks are one glance away.
+  const productGroups = useMemo(() => {
+    const g = {};
+    products.forEach((p) => {
+      const v = (p.vendor || "").trim() || "(No vendor)";
+      (g[v] ||= []).push(p);
+    });
+    Object.values(g).forEach((arr) => arr.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+    const vendors = Object.keys(g).sort((a, b) => {
+      if (a === "(No vendor)") return 1;
+      if (b === "(No vendor)") return -1;
+      // Bubble the current system's vendor to the top of the picker.
+      if (a === system.vendor) return -1;
+      if (b === system.vendor) return 1;
+      return a.localeCompare(b);
+    });
+    return vendors.map((v) => ({ vendor: v, items: g[v] }));
+  }, [products, system.vendor]);
+
   const addRow = () => setItems((arr) => [...arr, { product_id:"", coverage_rate:0, coverage_basis:"per_100sf", optional:false, default_included:true, notes:"" }]);
   const updateRow = (idx, patch) => setItems((arr) => arr.map((it,i)=>i===idx?{...it,...patch}:it));
   const removeRow = (idx) => setItems((arr) => arr.filter((_,i)=>i!==idx));
@@ -464,9 +558,13 @@ function RecipeEditor({ system, onClose }) {
                 <div key={idx} className="grid grid-cols-12 gap-2 items-center p-2 border border-zinc-200 rounded-sm">
                   <div className="col-span-4">
                     <label className={labelCls}>Product</label>
-                    <select className={inputCls} value={it.product_id} onChange={(e)=>updateRow(idx,{product_id:e.target.value})}>
+                    <select className={inputCls} value={it.product_id} onChange={(e)=>updateRow(idx,{product_id:e.target.value})} data-testid={`recipe-product-picker-${idx}`}>
                       <option value="">— Select product —</option>
-                      {products.map((p)=><option key={p.id} value={p.id}>{p.name} {p.vendor && `· ${p.vendor}`}</option>)}
+                      {productGroups.map((grp) => (
+                        <optgroup key={grp.vendor} label={grp.vendor}>
+                          {grp.items.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </optgroup>
+                      ))}
                     </select>
                   </div>
                   <div className="col-span-2">
