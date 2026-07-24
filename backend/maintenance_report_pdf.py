@@ -344,14 +344,18 @@ def _footer(canvas, doc):
 # ═══════════════════════════════════════════════════════════════════════
 
 SERVICE_LIFE_OPTIONS_PDF = ["15-20 Years", "10-15 Years", "5-10 Years", "3-5 Years", "1-3 Years", "<1 Year"]
-SERVICE_LIFE_TONES = [                                # left→right = healthy→failing
-    ("#166534", "#dcfce7"),                           # deep green / light green
-    ("#65a30d", "#ecfccb"),                           # lime
-    ("#eab308", "#fef9c3"),                           # amber
-    ("#f97316", "#ffedd5"),                           # orange
-    ("#dc2626", "#fee2e2"),                           # red
-    ("#7f1d1d", "#fecaca"),                           # dark red
+# Row colors, left→right matching the STBS template's healthy→failing gradient
+SERVICE_LIFE_BAR_COLORS = [
+    "#166534",  # dark green — 15-20y
+    "#84cc16",  # bright green — 10-15y
+    "#facc15",  # yellow — 5-10y
+    "#fb923c",  # orange — 3-5y
+    "#ef4444",  # red — 1-3y
+    "#111827",  # near-black — <1y
 ]
+# Progress-bar widths (longer bar = longer service life expectation, matches the
+# visual metaphor in the STBS template).
+SERVICE_LIFE_BAR_WIDTHS = [1.00, 0.85, 0.70, 0.50, 0.30, 0.15]
 
 
 def _stbs_photo_bytes(photo: dict, max_px: int = 900) -> Optional[bytes]:
@@ -432,36 +436,40 @@ def _annual_styles():
 
 
 def _photo_block_flowable(photo: dict, num: int, project_title: str, styles: dict):
-    """Render one numbered "Before" or "After" photo block:
+    """Render one numbered "Before" or "After" photo block.
 
-        ┌────────────────┬──────────────────────────┐
-        │       [1]      │  OBSERVATION             │
-        │   ┌────────┐   │  <observation text>      │
-        │   │ PHOTO  │   │                          │
-        │   │        │   │  NOTES                   │
-        │   └────────┘   │  <notes text>            │
-        │                │                          │
-        │                │  Project: <title>        │
-        └────────────────┴──────────────────────────┘
+    Layout:
+        ┌─────────────┬────────────────────┐
+        │             │  [1]               │
+        │   PHOTO     │  OBSERVATION       │
+        │             │  <observation>     │
+        │             │  NOTES             │
+        │             │  <notes>           │
+        │             │  Project: <title>  │
+        └─────────────┴────────────────────┘
 
-    Photo cell = 45% of content width. Text cell = 55%."""
+    Photo cell = 42% of content width; text cell = 55%. Both cells are
+    VALIGN=TOP so the numbered header sits at the same Y as the top of
+    the photo — matching the STBS template.
+    """
     photo_col_w = CONTENT_W * 0.42
     text_col_w = CONTENT_W * 0.55
-    photo_h = 3.0 * inch
+    photo_h = 3.2 * inch
 
-    num_para = Paragraph(f"<b>{num}</b>", styles["photo_num"])
-    img = _stbs_photo_flowable(photo, photo_col_w - 0.3 * inch, photo_h - 0.5 * inch)
-    photo_cell = Table([[num_para], [img]], colWidths=[photo_col_w], rowHeights=[0.45 * inch, photo_h])
+    img = _stbs_photo_flowable(photo, photo_col_w - 0.15 * inch, photo_h)
+    photo_cell = Table([[img]], colWidths=[photo_col_w], rowHeights=[photo_h])
     photo_cell.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#f8fafc")),
-        ("BOX", (0, 1), (-1, 1), 0.5, colors.HexColor("#e2e8f0")),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
 
     obs = (photo.get("observation") or photo.get("description") or "").strip()
     notes = (photo.get("maint_notes") or "").strip()
-    text_flow = []
+    text_flow = [Paragraph(f"<b>{num}</b>", styles["photo_num"])]
     if obs:
         text_flow.append(Paragraph("OBSERVATION", styles["obs_label"]))
         text_flow.append(Paragraph(obs.replace("\n", "<br/>"), styles["obs_body"]))
@@ -486,25 +494,73 @@ def _photo_block_flowable(photo: dict, num: int, project_title: str, styles: dic
 
 
 def _service_life_chart(selected: Optional[str], styles: dict):
-    """Horizontal bar strip labelled 'Roof Estimated Service Life'. The
-    selected option renders with a vibrant fill; the rest are faded."""
-    cells = []
-    for opt, tones in zip(SERVICE_LIFE_OPTIONS_PDF, SERVICE_LIFE_TONES):
+    """Vertical list of 6 rows — one per service-life range — matching the
+    STBS template exactly:
+
+        [X]  ██████████████████████████  15-20 Years
+        [ ]  ████████████████████░░░░░░  10-15 Years
+        [ ]  ████████████████░░░░░░░░░░  5-10 Years
+        ...
+
+    The row whose text matches `selected` gets a filled/checked box
+    ([X]) so the property owner immediately sees the assessed range.
+    """
+    checkbox_col_w = 0.35 * inch
+    bar_max_w = CONTENT_W - checkbox_col_w - 1.6 * inch          # leave room for label
+    label_col_w = 1.4 * inch
+    row_h = 0.32 * inch
+
+    rows_data = []
+    row_styles = []
+    for idx, opt in enumerate(SERVICE_LIFE_OPTIONS_PDF):
         is_selected = (opt == selected)
-        fg = colors.HexColor(tones[0]) if is_selected else colors.HexColor("#94a3b8")
-        bg = colors.HexColor(tones[0]) if is_selected else colors.HexColor(tones[1])
-        text_color = colors.white if is_selected else colors.HexColor("#334155")
-        cell = Table([[Paragraph(f"<b>{opt}</b>", ParagraphStyle('svl', fontName='Helvetica-Bold', fontSize=9, textColor=text_color, alignment=TA_CENTER, leading=12))]], colWidths=[CONTENT_W / 6], rowHeights=[0.45 * inch])
-        cell.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), bg),
-            ("BOX", (0, 0), (-1, -1), 1 if is_selected else 0.5, fg),
+        # Checkbox — filled square + white X when selected, empty outlined square otherwise.
+        cbox_para = Paragraph(
+            "<b>X</b>" if is_selected else "&nbsp;",
+            ParagraphStyle("cbox", fontName="Helvetica-Bold", fontSize=11,
+                           textColor=colors.white if is_selected else colors.HexColor("#94a3b8"),
+                           alignment=TA_CENTER, leading=13),
+        )
+        cbox = Table([[cbox_para]], colWidths=[0.25 * inch], rowHeights=[0.25 * inch])
+        cbox.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#0f172a")),
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0f172a") if is_selected else colors.white),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ]))
-        cells.append(cell)
-    row = Table([cells], colWidths=[CONTENT_W / 6] * 6, rowHeights=[0.45 * inch])
-    row.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
-    return row
+
+        # Horizontal colored bar — width scales with service-life expectation.
+        bar_color = colors.HexColor(SERVICE_LIFE_BAR_COLORS[idx])
+        bar_w = bar_max_w * SERVICE_LIFE_BAR_WIDTHS[idx]
+        bar = Table([[""]], colWidths=[bar_w], rowHeights=[0.18 * inch])
+        bar.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), bar_color),
+            ("BOX", (0, 0), (-1, -1), 0.5, bar_color),
+        ]))
+
+        label = Paragraph(
+            f"<b>{opt}</b>",
+            ParagraphStyle("svl_label", fontName="Helvetica-Bold", fontSize=11,
+                           textColor=colors.HexColor("#0f172a" if is_selected else "#334155"),
+                           alignment=TA_LEFT, leading=13),
+        )
+        rows_data.append([cbox, bar, label])
+        if is_selected:
+            row_styles.append(("BACKGROUND", (0, len(rows_data) - 1), (-1, len(rows_data) - 1), colors.HexColor("#f1f5f9")))
+
+    tbl = Table(rows_data, colWidths=[checkbox_col_w, bar_max_w, label_col_w], rowHeights=[row_h] * len(rows_data))
+    base_style = [
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (1, -1), "LEFT"),      # bars align left so length is meaningful
+        ("ALIGN", (2, 0), (2, -1), "LEFT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]
+    tbl.setStyle(TableStyle(base_style + row_styles))
+    return tbl
 
 
 def build_annual_maintenance_report_pdf(
@@ -551,9 +607,28 @@ def build_annual_maintenance_report_pdf(
     story = []
 
     # ---------- Page 1: Cover ----------
-    story.append(Spacer(1, 1.2 * inch))
-    story.append(Paragraph("SEALTECH BUILDING SOLUTIONS", styles["brand"]))
-    story.append(Paragraph("Commercial Roofing · Restoration · Maintenance", styles["brand_tag"]))
+    # SealTech logo — large and centered. If the asset is missing (dev env)
+    # we quietly fall back to the text brand line so the PDF still renders.
+    import os as _os
+    logo_path = _os.path.join(_os.path.dirname(__file__), "assets", "sealtech-logo.png")
+    if _os.path.exists(logo_path):
+        try:
+            from PIL import Image as _PIL
+            with _PIL.open(logo_path) as _img:
+                iw, ih = _img.size
+            # Scale to ~4" wide, preserve aspect ratio
+            logo_w = 4.5 * inch
+            logo_h = logo_w * (ih / iw) if iw > 0 else 1.4 * inch
+            story.append(Spacer(1, 1.2 * inch))
+            story.append(RLImage(logo_path, width=logo_w, height=logo_h, hAlign="CENTER"))
+        except Exception:
+            story.append(Spacer(1, 1.2 * inch))
+            story.append(Paragraph("SEALTECH BUILDING SOLUTIONS", styles["brand"]))
+            story.append(Paragraph("Commercial Roofing · Restoration · Maintenance", styles["brand_tag"]))
+    else:
+        story.append(Spacer(1, 1.2 * inch))
+        story.append(Paragraph("SEALTECH BUILDING SOLUTIONS", styles["brand"]))
+        story.append(Paragraph("Commercial Roofing · Restoration · Maintenance", styles["brand_tag"]))
     story.append(Paragraph("Annual Maintenance Report", styles["cover_title"]))
     # Format visit date human-friendly
     try:
