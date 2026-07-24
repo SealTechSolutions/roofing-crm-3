@@ -1886,6 +1886,179 @@ async def annual_maintenance_report_pdf(
     )
 
 
+@api_router.post("/deals/{deal_id}/maintenance-visits/{visit_id}/email")
+async def email_annual_maintenance_report(deal_id: str, visit_id: str, body: dict = Body(default={}), current=Depends(get_current_user)):
+    """Email the STBS-format Annual Maintenance Report to the building contact.
+
+    Body (all optional — the frontend preview modal supplies these):
+      to_email       — defaults to the visit's `building_contact_email`
+      cc_email       — extra recipient
+      bcc_email      — extra BCC (defaults to `maintenance@sealtechsolutions.co`
+                       so the maintenance inbox always has a copy)
+      subject        — override default subject line
+      message        — override default intro paragraph
+      from_email     — override the FROM (routed via `maintenance` category by default)
+
+    Also stamps `visit.report_sent_at` + `visit.report_sent_to` so the
+    Reports drawer can show "Emailed" state next to each visit.
+    """
+    from maintenance_report_pdf import build_annual_maintenance_report_pdf
+    from email_sender import send_email, EmailNotConfigured, get_from_aliases
+    from email_routing import get_from_for_category
+
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Project not found")
+    visits = deal.get("maintenance_visits") or []
+    idx = next((i for i, v in enumerate(visits) if v.get("id") == visit_id), None)
+    if idx is None:
+        raise HTTPException(status_code=404, detail="Maintenance visit not found")
+    visit = visits[idx]
+
+    to_email = (body.get("to_email") or "").strip() or (visit.get("building_contact_email") or "").strip()
+    cc_email = (body.get("cc_email") or "").strip()
+    # BCC defaults to maintenance@ so the maintenance inbox has a copy of every
+    # report that goes out — matches the user's explicit request.
+    bcc_email = (body.get("bcc_email") or "maintenance@sealtechsolutions.co").strip()
+    from_email = (body.get("from_email") or "").strip() or None
+    subject_override = (body.get("subject") or "").strip()
+    custom_message = (body.get("message") or "").strip()
+
+    if not to_email:
+        raise HTTPException(status_code=400, detail="No recipient email — provide one or set a Building Contact Email on the visit.")
+
+    if not from_email:
+        allowed = set(get_from_aliases())
+        resolved = await get_from_for_category(db, "maintenance")
+        from_email = resolved if (resolved and resolved in allowed) else (os.environ.get("GMAIL_FROM_EMAIL") or "").strip() or None
+
+    property_doc = None
+    if deal.get("property_id"):
+        property_doc = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
+
+    photos = await db.project_photos.find(
+        {"deal_id": deal_id, "maintenance_visit_id": visit_id, "is_deleted": {"$ne": True}},
+        {"_id": 0},
+    ).to_list(2000)
+    role_key = {"before": 0, "after": 1, None: 2}
+    photos.sort(key=lambda p: (role_key.get(p.get("maint_role")), int(p.get("sort_order") or 999), p.get("captured_at") or ""))
+
+    hero_photo = None
+    if visit.get("hero_photo_id"):
+        hero_photo = next((p for p in photos if p.get("id") == visit["hero_photo_id"]), None)
+
+    try:
+        pdf_bytes = build_annual_maintenance_report_pdf(deal=deal, visit=visit, property_doc=property_doc, photos=photos, hero_photo=hero_photo)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {type(e).__name__}: {e}")
+
+    year = (visit.get("visit_date") or "")[:4] or datetime.now(timezone.utc).strftime("%Y")
+    safe_title = (deal.get("title") or "Project").replace("/", "-").replace("\\", "-")[:60]
+    filename = f"{safe_title} - Annual Maintenance {year}.pdf"
+    contact_name = (visit.get("building_contact_name") or "there").strip() or "there"
+    default_intro = (
+        f"Attached is your Annual Maintenance Report for {deal.get('title') or 'your property'}, "
+        f"documenting the site visit on {visit.get('visit_date') or year}. "
+        f"The report walks through the before/after condition of the roof, includes our observations and notes for each "
+        f"area serviced, and closes with our estimated service life for the current system."
+    )
+    intro = custom_message or default_intro
+    subject = subject_override or f"Annual Maintenance Report — {deal.get('title') or 'your property'} — {year}"
+
+    body_text = (
+        f"Hello {contact_name},\n\n"
+        f"{intro}\n\n"
+        f"  Attached: {filename}\n\n"
+        f"If any of the findings need follow-up or you'd like to schedule additional work, reply to this email "
+        f"or call us at 720-715-9955.\n\n"
+        f"Thank you,\n"
+        f"SealTech Building Solutions\n"
+        f"720-715-9955  ·  {from_email or 'maintenance@sealtechsolutions.co'}"
+    )
+    body_html = f"""
+    <html><body style="font-family: Arial, Helvetica, sans-serif; color: #0A0A0A; max-width: 620px;">
+      <p style="margin: 0 0 16px;">Hello {contact_name},</p>
+      <p style="margin: 0 0 16px;">{intro.replace(chr(10), '<br/>')}</p>
+      <p style="margin: 0 0 16px; color: #52525B; font-size: 13px;"><b>Attached:</b> {filename}</p>
+      <p style="margin: 16px 0;">If any of the findings need follow-up or you'd like to schedule additional work, reply to this email or call us at 720-715-9955.</p>
+      <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
+        <b style="color: #0A0A0A;">SealTech Building Solutions</b><br/>
+        720-715-9955  ·  {from_email or 'maintenance@sealtechsolutions.co'}
+      </p>
+    </body></html>
+    """
+
+    attachments = [{"filename": filename, "data": pdf_bytes, "mime": "application/pdf"}]
+
+    try:
+        result = send_email(
+            to=to_email, cc=cc_email, bcc=bcc_email, subject=subject,
+            body_text=body_text, body_html=body_html,
+            reply_to=os.environ.get("GMAIL_FROM_EMAIL") or None,
+            attachments=attachments, from_email=from_email,
+        )
+    except EmailNotConfigured as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except smtplib.SMTPAuthenticationError as e:
+        raise HTTPException(status_code=500, detail=f"Gmail authentication failed. ({e.smtp_code})")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email send failed: {type(e).__name__}: {e}")
+
+    # Stamp send audit trail so the Reports drawer can show "Emailed 2026-02-24"
+    visits[idx] = {
+        **visit,
+        "report_sent_at": now_iso(),
+        "report_sent_to": to_email,
+        "report_sent_by": current["id"],
+    }
+    await db.deals.update_one({"id": deal_id}, {"$set": {"maintenance_visits": visits}})
+    return {"ok": True, "to": to_email, "cc": cc_email, "bcc": bcc_email, "message_id": result.get("message_id") if isinstance(result, dict) else None}
+
+
+@api_router.post("/deals/{deal_id}/maintenance-visits/{visit_id}/copy-from-prior")
+async def copy_from_prior_visit(deal_id: str, visit_id: str, current=Depends(get_current_user)):
+    """Copy the summary text and service-life estimate from the PREVIOUS
+    maintenance visit on this deal into the target visit. Used by the
+    editor to spare the rep from retyping the year-over-year context.
+
+    Never overwrites fields that already have content on the target
+    visit — only fills in what's blank. If there is no prior visit,
+    returns a 400 so the UI can show a friendly message.
+    """
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Project not found")
+    visits = list(deal.get("maintenance_visits") or [])
+    idx = next((i for i, v in enumerate(visits) if v.get("id") == visit_id), None)
+    if idx is None:
+        raise HTTPException(status_code=404, detail="Maintenance visit not found")
+    # "Prior" = the visit with the most recent visit_date that is STRICTLY
+    # BEFORE the target's own visit_date. Sort descending, skip target.
+    target = visits[idx]
+    target_date = (target.get("visit_date") or "")
+    priors = [v for v in visits if v.get("id") != visit_id and (v.get("visit_date") or "") < target_date]
+    if not priors:
+        raise HTTPException(status_code=400, detail="No earlier visit found to copy from")
+    priors.sort(key=lambda v: v.get("visit_date") or "", reverse=True)
+    prior = priors[0]
+    filled = {}
+    if not (target.get("summary_text") or "").strip() and (prior.get("summary_text") or "").strip():
+        filled["summary_text"] = prior["summary_text"]
+    if not (target.get("service_life_estimate") or "").strip() and (prior.get("service_life_estimate") or "").strip():
+        filled["service_life_estimate"] = prior["service_life_estimate"]
+    if not (target.get("building_contact_name") or "").strip() and (prior.get("building_contact_name") or "").strip():
+        filled["building_contact_name"] = prior["building_contact_name"]
+    if not (target.get("building_contact_phone") or "").strip() and (prior.get("building_contact_phone") or "").strip():
+        filled["building_contact_phone"] = prior["building_contact_phone"]
+    if not (target.get("building_contact_email") or "").strip() and (prior.get("building_contact_email") or "").strip():
+        filled["building_contact_email"] = prior["building_contact_email"]
+    if not filled:
+        return {"ok": True, "filled": {}, "prior_visit_date": prior.get("visit_date"), "message": "Prior visit found but all fields are already filled — nothing copied."}
+    visits[idx] = {**target, **filled}
+    await db.deals.update_one({"id": deal_id}, {"$set": {"maintenance_visits": visits}})
+    return {"ok": True, "filled": filled, "prior_visit_date": prior.get("visit_date")}
+
+
 # ----- Material Take-Off -----
 class TakeoffLineIn(BaseModel):
     """Single line being added to a project's take-off. Server snapshots the catalog fields."""

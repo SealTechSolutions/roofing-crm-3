@@ -55,6 +55,7 @@ def send_email(
     body_text: str,
     body_html: Optional[str] = None,
     cc: Optional[str] = None,
+    bcc: Optional[str] = None,
     attachments: Optional[List[dict]] = None,
     reply_to: Optional[str] = None,
     from_email: Optional[str] = None,
@@ -106,10 +107,15 @@ def send_email(
             maintype, subtype = "application", "octet-stream"
         msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
 
-    # Build recipient list (To + Cc) for the actual SMTP envelope
+    # Build recipient list (To + Cc + Bcc) for the actual SMTP envelope.
+    # BCC recipients are added to the envelope but NOT to any header so
+    # the To/Cc recipients never see the BCC addresses (matches email
+    # client behavior).
     rcpts = [to.strip()]
     if cc and cc.strip():
         rcpts.append(cc.strip())
+    if bcc and bcc.strip():
+        rcpts.append(bcc.strip())
 
     ctx = ssl.create_default_context()
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
@@ -123,6 +129,7 @@ def send_email(
         "ok": True,
         "to": to.strip(),
         "cc": cc.strip() if cc else "",
+        "bcc": bcc.strip() if bcc else "",
         "message_id": msg["Message-ID"],
     }
 

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, API, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { ArrowLeft, Upload, Save, FileText, Trash2, Sparkles, GripVertical, Star, StarOff, Loader2 } from "lucide-react";
+import { ArrowLeft, Upload, Save, FileText, Trash2, Sparkles, GripVertical, Star, StarOff, Loader2, Mail, Receipt, Copy } from "lucide-react";
 
 const SERVICE_LIFE_OPTIONS = ["15-20 Years", "10-15 Years", "5-10 Years", "3-5 Years", "1-3 Years", "<1 Year"];
 
@@ -40,6 +40,9 @@ export default function MaintenanceReport() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
   const [uploadRole, setUploadRole] = useState("before");
+  // Modal state for Phase 2 flows
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
 
   // ── Loaders ──────────────────────────────────────────────────────────
   const loadEverything = useCallback(async () => {
@@ -182,6 +185,28 @@ export default function MaintenanceReport() {
     window.open(url, "_blank");
   };
 
+  /**
+   * Copy summary + service-life estimate + contact snapshot from the
+   * prior year's visit into this one. Server-side check ensures we only
+   * fill fields that are currently blank so the rep doesn't lose edits.
+   */
+  const copyFromPrior = async () => {
+    try {
+      const r = await api.post(`/deals/${dealId}/maintenance-visits/${visitId}/copy-from-prior`);
+      const filled = r.data?.filled || {};
+      const priorDate = r.data?.prior_visit_date || "prior visit";
+      if (Object.keys(filled).length === 0) {
+        toast.info(`Nothing to copy from ${priorDate} — all target fields already filled.`);
+        return;
+      }
+      setVisit((cur) => ({ ...cur, ...filled }));
+      toast.success(`Copied ${Object.keys(filled).length} field${Object.keys(filled).length === 1 ? "" : "s"} from ${priorDate} visit`);
+    } catch (e) {
+      const msg = formatApiError(e?.response?.data?.detail) || e.message;
+      toast.warning(msg);
+    }
+  };
+
   if (loading) return <div className="p-10 text-center text-zinc-500"><Loader2 className="w-5 h-5 animate-spin inline mr-2" /> Loading report…</div>;
   if (!visit) return null;
 
@@ -197,13 +222,37 @@ export default function MaintenanceReport() {
           <h1 className="font-heading text-3xl font-black tracking-tight">{deal?.title}</h1>
           <div className="text-xs text-zinc-500 mt-1">Visit Date: <span className="font-mono font-bold text-zinc-900">{visit.visit_date}</span></div>
         </div>
-        <button
-          onClick={openPdf}
-          data-testid="generate-report-pdf"
-          className="inline-flex items-center gap-2 bg-zinc-950 text-white px-4 h-10 text-xs font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm"
-        >
-          <FileText className="w-4 h-4" /> Generate Report PDF
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={copyFromPrior}
+            data-testid="mr-copy-prior"
+            title="Fill blank fields from the previous year's visit — saves you from retyping context that carries over."
+            className="inline-flex items-center gap-1 px-3 h-10 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 text-zinc-700 hover:border-zinc-950 rounded-sm"
+          >
+            <Copy className="w-3.5 h-3.5" /> Copy from Prior Visit
+          </button>
+          <button
+            onClick={() => setInvoiceModalOpen(true)}
+            data-testid="mr-open-invoice-modal"
+            className="inline-flex items-center gap-1 px-3 h-10 text-[10px] font-bold uppercase tracking-wider bg-white border border-emerald-700 text-emerald-700 hover:bg-emerald-50 rounded-sm"
+          >
+            <Receipt className="w-3.5 h-3.5" /> Draft Invoice
+          </button>
+          <button
+            onClick={() => setEmailModalOpen(true)}
+            data-testid="mr-open-email-modal"
+            className="inline-flex items-center gap-1 px-3 h-10 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm"
+          >
+            <Mail className="w-3.5 h-3.5" /> Email Report
+          </button>
+          <button
+            onClick={openPdf}
+            data-testid="generate-report-pdf"
+            className="inline-flex items-center gap-2 bg-zinc-950 text-white px-3 h-10 text-[10px] font-bold uppercase tracking-wider hover:bg-blue-800 rounded-sm"
+          >
+            <FileText className="w-3.5 h-3.5" /> Preview PDF
+          </button>
+        </div>
       </div>
 
       {/* Building Information */}
@@ -311,6 +360,29 @@ export default function MaintenanceReport() {
           <div className="text-[10px] text-zinc-500 mt-1">Single-select. Click the active option again to clear.</div>
         </div>
       </section>
+
+      {emailModalOpen && (
+        <EmailReportModal
+          dealId={dealId}
+          visitId={visitId}
+          visit={visit}
+          deal={deal}
+          onClose={() => setEmailModalOpen(false)}
+          onSent={(sentInfo) => {
+            setEmailModalOpen(false);
+            setVisit((cur) => ({ ...cur, report_sent_at: new Date().toISOString(), report_sent_to: sentInfo.to }));
+          }}
+        />
+      )}
+      {invoiceModalOpen && (
+        <InvoiceReviewModal
+          dealId={dealId}
+          visitId={visitId}
+          visit={visit}
+          deal={deal}
+          onClose={() => setInvoiceModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -407,6 +479,151 @@ function PhotoRow({ photo, num, role, isHero, onPatch, onDelete, onAiDescribe, o
         <button type="button" onClick={() => onDelete(photo.id)} className="inline-flex items-center justify-center gap-1 h-8 px-2 text-[10px] font-bold uppercase tracking-wider bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-sm" data-testid={`mr-delete-${photo.id}`}>
           <Trash2 className="w-3 h-3" /> Delete
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Email Report Preview Modal ─────────────────────────────────────
+function EmailReportModal({ dealId, visitId, visit, deal, onClose, onSent }) {
+  const defaultSubject = `Annual Maintenance Report — ${deal?.title || "your property"} — ${(visit?.visit_date || "").slice(0, 4)}`;
+  const defaultMessage = `Attached is your Annual Maintenance Report for ${deal?.title || "your property"}, documenting the site visit on ${visit?.visit_date}. The report walks through the before/after condition of the roof, includes our observations and notes for each area serviced, and closes with our estimated service life for the current system.`;
+  const [to, setTo] = useState(visit?.building_contact_email || "");
+  const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("maintenance@sealtechsolutions.co");
+  const [subject, setSubject] = useState(defaultSubject);
+  const [message, setMessage] = useState(defaultMessage);
+  const [sending, setSending] = useState(false);
+
+  const previewPdf = () => {
+    const url = `${API}/deals/${dealId}/maintenance-visits/${visitId}/report.pdf?token=${encodeURIComponent(localStorage.getItem("crm_token") || "")}`;
+    window.open(url, "_blank");
+  };
+
+  const send = async () => {
+    if (!to.trim()) { toast.error("Recipient email required"); return; }
+    setSending(true);
+    try {
+      const r = await api.post(`/deals/${dealId}/maintenance-visits/${visitId}/email`, {
+        to_email: to.trim(), cc_email: cc.trim(), bcc_email: bcc.trim(),
+        subject: subject.trim(), message: message.trim(),
+      });
+      toast.success(`Report emailed to ${r.data.to}${r.data.bcc ? ` (BCC ${r.data.bcc})` : ""}`);
+      onSent({ to: r.data.to });
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-zinc-950/60 flex items-center justify-center p-4" onClick={onClose} data-testid="email-report-modal">
+      <div className="bg-white w-full max-w-2xl rounded-sm shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-zinc-200">
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700">Email Annual Maintenance Report</div>
+          <div className="font-heading text-xl font-black tracking-tight mt-1">{deal?.title}</div>
+          <div className="text-xs text-zinc-500 mt-0.5">Visit: {visit?.visit_date}</div>
+        </div>
+        <div className="p-5 space-y-3">
+          <Field label="To">
+            <input type="email" data-testid="email-to" value={to} onChange={(e) => setTo(e.target.value)} className="w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm font-mono" />
+          </Field>
+          <Field label="CC (optional)">
+            <input type="email" data-testid="email-cc" value={cc} onChange={(e) => setCc(e.target.value)} className="w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm font-mono" placeholder="Additional recipient" />
+          </Field>
+          <Field label="BCC (defaults to maintenance@ — every report is archived here)">
+            <input type="email" data-testid="email-bcc" value={bcc} onChange={(e) => setBcc(e.target.value)} className="w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm font-mono" />
+          </Field>
+          <Field label="Subject">
+            <input type="text" data-testid="email-subject" value={subject} onChange={(e) => setSubject(e.target.value)} className="w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm" />
+          </Field>
+          <Field label="Message">
+            <textarea rows={6} data-testid="email-message" value={message} onChange={(e) => setMessage(e.target.value)} className="w-full px-2 py-2 border border-zinc-300 rounded-sm text-sm leading-relaxed" />
+          </Field>
+          <div className="text-[10px] text-zinc-500">
+            The freshly-generated PDF will be attached automatically as <span className="font-mono">{`${(deal?.title || "Project").slice(0, 50)} - Annual Maintenance ${(visit?.visit_date || "").slice(0, 4)}.pdf`}</span>
+          </div>
+        </div>
+        <div className="px-5 py-4 border-t border-zinc-200 flex justify-between items-center gap-2 flex-wrap">
+          <button onClick={previewPdf} data-testid="email-preview-pdf" className="inline-flex items-center gap-1 px-3 h-9 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 text-zinc-700 hover:border-zinc-950 rounded-sm">
+            <FileText className="w-3.5 h-3.5" /> Preview PDF
+          </button>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-4 h-9 text-xs font-bold uppercase tracking-wider border border-zinc-300 text-zinc-700 hover:border-zinc-950 rounded-sm" data-testid="email-cancel">Cancel</button>
+            <button onClick={send} disabled={sending} data-testid="email-send" className="inline-flex items-center gap-1 px-4 h-9 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm disabled:opacity-50">
+              <Mail className="w-3.5 h-3.5" /> {sending ? "Sending…" : "Send"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Invoice Review Modal ───────────────────────────────────────────
+function InvoiceReviewModal({ dealId, visitId, visit, deal, onClose }) {
+  const [amount, setAmount] = useState(visit?.amount || deal?.maintenance_rate || 0);
+  const [saving, setSaving] = useState(false);
+  const [invoice, setInvoice] = useState(null);            // populated after draft is created
+  const create = async () => {
+    setSaving(true);
+    try {
+      // Update the visit's amount to match the reviewed number, then draft the invoice
+      if (Number(amount || 0) !== Number(visit?.amount || 0)) {
+        await api.patch(`/deals/${dealId}/maintenance-visits/${visitId}`, { amount: Number(amount || 0) });
+      }
+      const r = await api.post("/invoices/from-maintenance-visit", { deal_id: dealId, visit_id: visitId });
+      setInvoice(r.data);
+      toast.success(`Draft invoice ${r.data.invoice_number} created`);
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="fixed inset-0 z-50 bg-zinc-950/60 flex items-center justify-center p-4" onClick={onClose} data-testid="invoice-review-modal">
+      <div className="bg-white w-full max-w-md rounded-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-zinc-200">
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700">Draft Invoice for This Visit</div>
+          <div className="font-heading text-xl font-black tracking-tight mt-1">{deal?.title}</div>
+          <div className="text-xs text-zinc-500 mt-0.5">{visit?.visit_date} · Review before creating</div>
+        </div>
+        <div className="p-5 space-y-4">
+          {!invoice ? (
+            <>
+              <Field label="Invoice Amount ($)">
+                <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} data-testid="invoice-amount" className="w-full h-10 px-2 border border-zinc-300 rounded-sm text-sm font-mono" autoFocus />
+              </Field>
+              <div className="text-[10px] text-zinc-500">
+                A draft invoice will be created and can be edited from the Invoices page before sending. Nothing is emailed at this step.
+              </div>
+              <div className="border border-zinc-200 rounded-sm p-3 bg-zinc-50 text-xs space-y-1">
+                <div><span className="text-zinc-500">Deal:</span> <span className="font-bold">{deal?.title}</span></div>
+                <div><span className="text-zinc-500">Visit Date:</span> <span className="font-mono">{visit?.visit_date}</span></div>
+                <div><span className="text-zinc-500">Amount:</span> <span className="font-mono font-bold text-emerald-700">${Number(amount || 0).toLocaleString()}</span></div>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <div className="text-sm">
+                Draft <b>{invoice.invoice_number}</b> created for <b>${Number(invoice.amount || 0).toLocaleString()}</b>.
+              </div>
+              <a href="/invoices" className="inline-flex items-center gap-1 px-3 h-9 text-[10px] font-bold uppercase tracking-wider bg-emerald-700 text-white hover:bg-emerald-800 rounded-sm">
+                <Receipt className="w-3.5 h-3.5" /> Open Invoices
+              </a>
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-4 border-t border-zinc-200 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 h-9 text-xs font-bold uppercase tracking-wider border border-zinc-300 text-zinc-700 hover:border-zinc-950 rounded-sm" data-testid="invoice-cancel">{invoice ? "Close" : "Cancel"}</button>
+          {!invoice && (
+            <button onClick={create} disabled={saving || !Number(amount)} data-testid="invoice-create" className="inline-flex items-center gap-1 px-4 h-9 text-xs font-bold uppercase tracking-wider bg-emerald-700 text-white hover:bg-emerald-800 rounded-sm disabled:opacity-50">
+              <Receipt className="w-3.5 h-3.5" /> {saving ? "Creating…" : "Create Draft"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

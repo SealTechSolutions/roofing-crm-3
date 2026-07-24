@@ -65,6 +65,11 @@ export default function FieldCapture() {
   const [me, setMe] = useState(null);
   const [deals, setDeals] = useState([]);
   const [dealId, setDealId] = useState("");
+  // Active maintenance visit + role. When set, every photo captured
+  // during this session is auto-tagged with these values so it lands
+  // in the correct STBS report section (Before / After).
+  const [activeVisitId, setActiveVisitId] = useState("");
+  const [activeVisitRole, setActiveVisitRole] = useState("before");
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
   // iOS Safari occasionally hands back a "live" MediaStream that never paints
@@ -141,6 +146,25 @@ export default function FieldCapture() {
   useEffect(() => {
     if (dealId) localStorage.setItem("field_capture_last_deal_id", dealId);
   }, [dealId]);
+
+  // Persist the active maintenance-visit + role per deal so a phone
+  // refresh mid-visit doesn't lose context. Restore on deal switch.
+  useEffect(() => {
+    if (!dealId) { setActiveVisitId(""); return; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(`field_capture_visit_${dealId}`) || "{}");
+      setActiveVisitId(saved.visit_id || "");
+      setActiveVisitRole(saved.role || "before");
+    } catch { setActiveVisitId(""); setActiveVisitRole("before"); }
+  }, [dealId]);
+  useEffect(() => {
+    if (!dealId) return;
+    if (activeVisitId) {
+      localStorage.setItem(`field_capture_visit_${dealId}`, JSON.stringify({ visit_id: activeVisitId, role: activeVisitRole }));
+    } else {
+      localStorage.removeItem(`field_capture_visit_${dealId}`);
+    }
+  }, [dealId, activeVisitId, activeVisitRole]);
 
   // Lock browser viewport zoom while this page is mounted. Phones default
   // to pinch-zooming the whole page, which makes the shutter button huge
@@ -415,6 +439,11 @@ export default function FieldCapture() {
           if (item.gps_accuracy != null) fd.append("gps_accuracy", String(item.gps_accuracy));
           if (item.captured_at) fd.append("captured_at", item.captured_at);
           if (item.stamped) fd.append("stamped", "true");
+          // Preserved maintenance-visit context (added during Phase 2).
+          // Ensures offline-queued photos still land in the right STBS
+          // section after they eventually flush to the server.
+          if (item.maintenance_visit_id) fd.append("maintenance_visit_id", item.maintenance_visit_id);
+          if (item.maint_role) fd.append("maint_role", item.maint_role);
           await axios.post(
             `${API_BASE}/api/projects/${item.deal_id}/photos`,
             fd,
@@ -591,6 +620,13 @@ export default function FieldCapture() {
           if (meta.gps_accuracy != null) fd.append("gps_accuracy", String(meta.gps_accuracy));
           fd.append("captured_at", capturedAt);
           if (stampEnabled) fd.append("stamped", "true");
+          // Attach maintenance-visit context so the photo is filed under
+          // the right STBS report section instead of mixing with the
+          // deal's proposal/damage photos.
+          if (activeVisitId) {
+            fd.append("maintenance_visit_id", activeVisitId);
+            fd.append("maint_role", activeVisitRole || "before");
+          }
           await axios.post(
             `${API_BASE}/api/projects/${dealId}/photos`,
             fd,
@@ -599,17 +635,17 @@ export default function FieldCapture() {
           setUploadedCount((n) => n + 1);
         } catch {
           // network blip mid-upload — drop into queue (stamp already baked in)
-          await queueAdd({ deal_id: dealId, blob, filename, created_at: Date.now(), ...meta });
+          await queueAdd({ deal_id: dealId, blob, filename, created_at: Date.now(), maintenance_visit_id: activeVisitId || null, maint_role: activeVisitId ? (activeVisitRole || "before") : null, ...meta });
           await refreshQueueCount();
         }
       } else {
-        await queueAdd({ deal_id: dealId, blob, filename, created_at: Date.now(), ...meta });
+        await queueAdd({ deal_id: dealId, blob, filename, created_at: Date.now(), maintenance_visit_id: activeVisitId || null, maint_role: activeVisitId ? (activeVisitRole || "before") : null, ...meta });
         await refreshQueueCount();
       }
     } finally {
       setUploadingShot(false);
     }
-  }, [dealId, cameraReady, uploadingShot, token, refreshQueueCount, zoom, paintStamp, position, stampEnabled]);
+  }, [dealId, cameraReady, uploadingShot, token, refreshQueueCount, zoom, paintStamp, position, stampEnabled, activeVisitId, activeVisitRole]);
 
   // ---------- Pinch-to-zoom + tap-to-zoom ----------
   const onTouchStart = useCallback((e) => {
@@ -724,6 +760,45 @@ export default function FieldCapture() {
           <LogOut className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Maintenance-visit context strip. If the picked deal has open
+          maintenance visits, offer to file every photo under one of
+          them + Before/After role. When set, uploaded photos land in
+          the STBS report instead of the deal's general photo bucket. */}
+      {activeDeal && Array.isArray(activeDeal.maintenance_visits) && activeDeal.maintenance_visits.length > 0 && (
+        <div className="px-3 py-2 bg-blue-900/40 border-b border-blue-800 flex items-center gap-2 text-xs" data-testid="field-visit-strip">
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-200 flex-shrink-0">Visit</div>
+          <select
+            value={activeVisitId}
+            onChange={(e) => setActiveVisitId(e.target.value)}
+            className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 text-white text-xs px-2 h-8 rounded-sm"
+            data-testid="field-visit-picker"
+          >
+            <option value="">(No visit — regular photo)</option>
+            {[...activeDeal.maintenance_visits].sort((a, b) => (b.visit_date || "").localeCompare(a.visit_date || "")).map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.visit_date} · {v.notes ? v.notes.slice(0, 24) : "Annual"}
+              </option>
+            ))}
+          </select>
+          {activeVisitId && (
+            <div className="flex bg-zinc-800 rounded-sm overflow-hidden border border-zinc-700">
+              <button
+                type="button"
+                onClick={() => setActiveVisitRole("before")}
+                className={`px-2.5 h-8 text-[10px] font-bold uppercase tracking-wider ${activeVisitRole === "before" ? "bg-blue-700 text-white" : "text-zinc-300 hover:text-white"}`}
+                data-testid="field-role-before"
+              >Before</button>
+              <button
+                type="button"
+                onClick={() => setActiveVisitRole("after")}
+                className={`px-2.5 h-8 text-[10px] font-bold uppercase tracking-wider ${activeVisitRole === "after" ? "bg-emerald-700 text-white" : "text-zinc-300 hover:text-white"}`}
+                data-testid="field-role-after"
+              >After</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Live camera */}
       <div
