@@ -214,6 +214,11 @@ export default function Calculator() {
   const [deals, setDeals] = useState([]);
   const [selectedDealId, setSelectedDealId] = useState(initialDealId || "");
   const [deal, setDeal] = useState(null);
+  // Property record for the picked deal. Loaded lazily via the deal's
+  // `property_id` — used only to display the site address in the sticky
+  // "Working On" banner so the rep never loses context while comparing
+  // systems below.
+  const [property, setProperty] = useState(null);
   const [savingToDeal, setSavingToDeal] = useState(false);
   const [generatingPo, setGeneratingPo] = useState(false);
   // "estimate" = pre-signature compare; "materials" = post-signature push-to-PO.
@@ -256,10 +261,32 @@ export default function Calculator() {
   useEffect(() => {
     if (!selectedDealId) {
       setDeal(null);
+      setProperty(null);
       return;
     }
     api.get(`/deals/${selectedDealId}`).then(async (r) => {
       setDeal(r.data);
+      // Property record for the picked deal. Loaded lazily via the deal's
+      // `property_id` — used both for the sticky banner (address) and as
+      // the SF fallback below.
+      let propertyDoc = null;
+      if (r.data.property_id) {
+        try {
+          const pr = await api.get(`/properties/${r.data.property_id}`);
+          propertyDoc = pr.data || null;
+        } catch { propertyDoc = null; }
+      }
+      setProperty(propertyDoc);
+      // Smart SF preference order:
+      //   1. deal.total_sqft  — backend-computed roof+parapet total
+      //      (= property_sqft + perimeter_lnft × avg_parapet_height)
+      //   2. deal.property_sqft  — bare floor area (legacy / no parapet)
+      //   3. property record's roof_area / square_footage
+      // The Calculator drives material PO counts so we MUST use the
+      // parapet-inclusive figure when it's available.
+      let sf = r.data.total_sqft || r.data.property_sqft || r.data.total_sf;
+      if (!sf && propertyDoc) sf = propertyDoc.roof_area || propertyDoc.square_footage;
+      if (sf) setTotalSf(String(sf));
       // Pre-fill the per-warranty labor + OH/P inputs from whatever the rep
       // saved last time on this deal (mirrors how warranty_*_add is persisted).
       const numOrUndef = (v) => (v === null || v === undefined || v === "") ? undefined : Number(v);
@@ -305,21 +332,6 @@ export default function Calculator() {
       // (Darren can manually toggle back to Estimate if needed).
       if (r.data.scope_signed_at) setMode("materials");
       else setMode("estimate");
-      // Smart SF preference order:
-      //   1. deal.total_sqft  — backend-computed roof+parapet total
-      //      (= property_sqft + perimeter_lnft × avg_parapet_height)
-      //   2. deal.property_sqft  — bare floor area (legacy / no parapet)
-      //   3. property record's roof_area / square_footage
-      // The Calculator drives material PO counts so we MUST use the
-      // parapet-inclusive figure when it's available.
-      let sf = r.data.total_sqft || r.data.property_sqft || r.data.total_sf;
-      if (!sf && r.data.property_id) {
-        try {
-          const pr = await api.get(`/properties/${r.data.property_id}`);
-          sf = pr.data?.roof_area || pr.data?.square_footage;
-        } catch { /* ignore */ }
-      }
-      if (sf) setTotalSf(String(sf));
       // Keep ?deal=<id> in the URL in sync so refresh keeps the selection
       const next = new URLSearchParams(params);
       next.set("deal", selectedDealId);
@@ -933,6 +945,61 @@ export default function Calculator() {
           </div>
         )}
       </header>
+
+      {/* Working-On sticky context banner. Only renders when a deal is
+          picked. Sits just below the page header and sticks to the top
+          on scroll so the rep never loses track of which deal they're
+          building an estimate for. Everything is one row on desktop and
+          wraps naturally on mobile. */}
+      {deal && (
+        <div
+          className="sticky top-0 z-30 -mx-6 px-6 py-3 bg-blue-900 text-white shadow-md flex flex-wrap items-center gap-x-4 gap-y-1.5"
+          data-testid="working-on-banner"
+        >
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="text-[9px] font-bold uppercase tracking-[0.25em] text-blue-300 flex-shrink-0">Working On</div>
+            <Link
+              to={`/projects/${deal.id}`}
+              className="font-heading text-lg font-black tracking-tight truncate hover:text-blue-200 transition-colors"
+              title="Jump back to the deal"
+              data-testid="working-on-deal-title"
+            >
+              {deal.title || "Untitled Deal"}
+            </Link>
+            {deal.status && (
+              <span className="ml-1 inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-blue-700 text-white rounded-sm flex-shrink-0">
+                {deal.status}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-xs text-blue-200 flex-wrap">
+            {property?.address_line_1 && (
+              <span className="inline-flex items-center gap-1" title="Site address">
+                <span className="text-blue-300">📍</span>
+                <span className="truncate max-w-[280px]">{[property.address_line_1, property.city, property.state].filter(Boolean).join(", ")}</span>
+              </span>
+            )}
+            {deal.proposed_roof_type && (
+              <span className="inline-flex items-center gap-1" title="Proposed roof type">
+                <span className="text-blue-300">Roof:</span>
+                <span className="font-bold text-white">{deal.proposed_roof_type}</span>
+              </span>
+            )}
+            {totalSf && (
+              <span className="inline-flex items-center gap-1" title="Total roof SF">
+                <span className="text-blue-300">SF:</span>
+                <span className="font-mono font-bold text-white">{Number(totalSf).toLocaleString()}</span>
+              </span>
+            )}
+            {deal.chosen_amount ? (
+              <span className="inline-flex items-center gap-1" title="Contract amount">
+                <span className="text-blue-300">Contract:</span>
+                <span className="font-mono font-bold text-emerald-300">${Number(deal.chosen_amount).toLocaleString()}</span>
+              </span>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       {/* Manufacturer + Deal selector strip (the two "pre-flight" choices). */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-zinc-50 border-2 border-zinc-300 rounded-sm">
