@@ -6,8 +6,11 @@ import { ExportButtons } from "@/components/ExportImport";
 import { toast } from "sonner";
 import { openScopePdf } from "@/components/ScopesModal";
 
-const KPI = ({ label, value, hint, icon: Icon, testId }) => (
-  <div className="bg-white border border-zinc-200 p-6 rounded-sm" data-testid={testId}>
+const KPI = ({ label, value, hint, icon: Icon, testId, clickable }) => (
+  <div
+    className={`bg-white border border-zinc-200 p-6 rounded-sm transition-colors ${clickable ? "hover:border-zinc-950 hover:shadow-sm cursor-pointer" : ""}`}
+    data-testid={testId}
+  >
     <div className="flex items-start justify-between mb-4">
       <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">{label}</div>
       <Icon className="w-4 h-4 text-zinc-400" />
@@ -100,22 +103,30 @@ export default function Dashboard() {
       {/* ═══ GROUP: KPIS — TOP-LINE NUMBERS ═══ */}
       <div id="dash-group-kpi" data-testid="dash-group-kpi" className="scroll-mt-16">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <KPI label="Open Leads" value={data.open_leads} hint={`${data.deals_count} total deals`} icon={TrendingUp} testId="kpi-open-leads" />
-        <KPI label="Won Deals" value={data.won_deals} hint={`${data.lost_deals} lost`} icon={Trophy} testId="kpi-won-deals" />
-        <KPI label="Pipeline Revenue" value={formatCurrency(data.pipeline_revenue)} hint="Open deals — chosen amount or mid proposal option" icon={DollarSign} testId="kpi-pipeline" />
-        <KPI label="Profit YTD" value={formatCurrency(data.profit_ytd)} hint={`Won revenue ${formatCurrency(data.won_revenue)}`} icon={FileSpreadsheet} testId="kpi-profit-ytd" />
+        <Link to="/projects?filter=Lead" className="block" data-testid="kpi-link-open-leads">
+          <KPI clickable label="Open Leads" value={data.open_leads} hint={`${data.deals_count} total deals`} icon={TrendingUp} testId="kpi-open-leads" />
+        </Link>
+        <Link to="/projects?filter=Won" className="block" data-testid="kpi-link-won-deals">
+          <KPI clickable label="Won Deals" value={data.won_deals} hint={`${data.lost_deals} lost`} icon={Trophy} testId="kpi-won-deals" />
+        </Link>
+        <Link to="/projects" className="block" data-testid="kpi-link-pipeline">
+          <KPI clickable label="Pipeline Revenue" value={formatCurrency(data.pipeline_revenue)} hint="Open deals — chosen amount or mid proposal option" icon={DollarSign} testId="kpi-pipeline" />
+        </Link>
+        <Link to="/books" className="block" data-testid="kpi-link-profit-ytd">
+          <KPI clickable label="Profit YTD" value={formatCurrency(data.profit_ytd)} hint={`Won revenue ${formatCurrency(data.won_revenue)}`} icon={FileSpreadsheet} testId="kpi-profit-ytd" />
+        </Link>
       </div>
 
       {/* Payables KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-12">
         <Link to="/payables" className="block">
-          <KPI label="Payables Outstanding" value={formatCurrency(data.payables_outstanding || 0)} hint="All unpaid vendor bills" icon={Wallet} testId="kpi-payables-outstanding" />
+          <KPI clickable label="Payables Outstanding" value={formatCurrency(data.payables_outstanding || 0)} hint="All unpaid vendor bills" icon={Wallet} testId="kpi-payables-outstanding" />
         </Link>
-        <Link to="/payables" className="block">
-          <KPI label="Payables Overdue" value={formatCurrency(data.payables_overdue || 0)} hint={`${data.payables_overdue_count || 0} bills past due`} icon={Wallet} testId="kpi-payables-overdue" />
+        <Link to="/payables?filter=overdue" className="block">
+          <KPI clickable label="Payables Overdue" value={formatCurrency(data.payables_overdue || 0)} hint={`${data.payables_overdue_count || 0} bills past due`} icon={Wallet} testId="kpi-payables-overdue" />
         </Link>
-        <Link to="/payables" className="block">
-          <KPI label="Due This Week" value={formatCurrency(data.payables_due_this_week || 0)} hint={`${data.payables_due_this_week_count || 0} bills due in 7 days`} icon={Wallet} testId="kpi-payables-due-week" />
+        <Link to="/payables?filter=due7" className="block">
+          <KPI clickable label="Due This Week" value={formatCurrency(data.payables_due_this_week || 0)} hint={`${data.payables_due_this_week_count || 0} bills due in 7 days`} icon={Wallet} testId="kpi-payables-due-week" />
         </Link>
       </div>
 

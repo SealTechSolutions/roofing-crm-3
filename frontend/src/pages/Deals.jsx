@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, formatApiError, formatCurrency } from "@/lib/api";
 import { Plus, Pencil, Trash2, ArrowUpRight, Archive, FileText, Calculator, Camera } from "lucide-react";
 import { toast } from "sonner";
@@ -131,6 +131,14 @@ export default function Deals() {
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("All");
+  // Read `?filter=<status>` from the URL so Dashboard KPI cards can deep-link
+  // into a pre-filtered view (Open Leads → Lead, Won Deals → Won). Runs on
+  // mount and whenever the query string changes.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const q = searchParams.get("filter");
+    if (q) setFilter(q);
+  }, [searchParams]);
   const [stageFilter, setStageFilter] = useState("all");
   const [confirmTarget, setConfirmTarget] = useState(null);
   const [archiveTarget, setArchiveTarget] = useState(null);

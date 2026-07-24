@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API, showGlWarnings } from "@/lib/api";
 import { Wallet, Plus, Search, Upload, Trash2, Eye, FileSpreadsheet, Send, AlertCircle, FileUp, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +20,19 @@ export default function Payables() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Active");
+  // Extra chip filters set via URL query so dashboard KPI cards can link
+  // straight into a slice of the payables list ("Due This Week" → due7,
+  // "Overdue" → overdue). `null` means the chip is off and we fall back
+  // to the regular status filter.
+  const [dateFilter, setDateFilter] = useState(null);
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const q = searchParams.get("filter");
+    if (q === "due7" || q === "overdue") {
+      setDateFilter(q);
+      setStatusFilter("Active"); // due-window filters only make sense on unpaid bills
+    }
+  }, [searchParams]);
   const [editor, setEditor] = useState(null);
   const [report, setReport] = useState(null);
   const [vendors, setVendors] = useState([]);
@@ -63,6 +77,18 @@ export default function Payables() {
     } else if (statusFilter !== "All") {
       out = out.filter((r) => r.status === statusFilter);
     }
+    // Apply the URL-driven date filter on top of the status filter.
+    if (dateFilter === "due7" || dateFilter === "overdue") {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
+      out = out.filter((r) => {
+        if (!r.due_date) return false;
+        const d = new Date(r.due_date);
+        if (Number.isNaN(d.getTime())) return false;
+        if (dateFilter === "overdue") return d < today;
+        return d >= today && d <= in7;   // due7 window
+      });
+    }
     if (q) {
       out = out.filter((r) =>
         (r.vendor_name || "").toLowerCase().includes(q) ||
@@ -71,7 +97,7 @@ export default function Payables() {
       );
     }
     return out;
-  }, [rows, search, statusFilter]);
+  }, [rows, search, statusFilter, dateFilter]);
 
   const totals = useMemo(() => {
     const activeBills = rows.filter((r) => r.status === "Pending" || r.status === "Approved");
@@ -202,10 +228,37 @@ export default function Payables() {
         <>
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <KpiCard label="Active Bills" value={totals.activeCount} hint={`${totals.totalCount} total in history`} testId="kpi-bills-count" />
-            <KpiCard label="Outstanding" value={formatCurrency(totals.totalDue)} accent="text-red-700" testId="kpi-bills-outstanding" />
-            <KpiCard label="Paid (All-Time)" value={formatCurrency(totals.paid)} accent="text-emerald-700" testId="kpi-bills-paid" />
-            <KpiCard label="Overdue + Due 7d" value={report ? (report.overdue_count + report.due_this_week_count) : 0} hint="Click 'Friday Report' tab" accent="text-orange-700" testId="kpi-bills-week" />
+            <KpiCard
+              label="Active Bills"
+              value={totals.activeCount}
+              hint={`${totals.totalCount} total in history · click to filter`}
+              testId="kpi-bills-count"
+              onClick={() => { setStatusFilter("Active"); setDateFilter(null); setSearch(""); }}
+            />
+            <KpiCard
+              label="Outstanding"
+              value={formatCurrency(totals.totalDue)}
+              hint="Click to see unpaid bills"
+              accent="text-red-700"
+              testId="kpi-bills-outstanding"
+              onClick={() => { setStatusFilter("Active"); setDateFilter(null); setSearch(""); }}
+            />
+            <KpiCard
+              label="Paid (All-Time)"
+              value={formatCurrency(totals.paid)}
+              hint="Click to see paid bills"
+              accent="text-emerald-700"
+              testId="kpi-bills-paid"
+              onClick={() => { setStatusFilter("Paid"); setDateFilter(null); setSearch(""); }}
+            />
+            <KpiCard
+              label="Overdue + Due 7d"
+              value={report ? (report.overdue_count + report.due_this_week_count) : 0}
+              hint="Click to open Friday Report"
+              accent="text-orange-700"
+              testId="kpi-bills-week"
+              onClick={() => setTab("report")}
+            />
           </div>
 
           {/* Filters */}
@@ -697,13 +750,17 @@ function BillEditor({ bill, vendors, deals, onClose, onSaved }) {
   );
 }
 
-const KpiCard = ({ label, value, hint, testId, accent }) => (
-  <div className="bg-white border border-zinc-200 p-6 rounded-sm" data-testid={testId}>
-    <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">{label}</div>
-    <div className={`font-heading text-3xl font-black tracking-tighter ${accent || "text-zinc-950"}`}>{value}</div>
-    {hint && <div className="text-xs text-zinc-500 mt-2">{hint}</div>}
-  </div>
-);
+const KpiCard = ({ label, value, hint, testId, accent, onClick }) => {
+  const Tag = onClick ? "button" : "div";
+  const clickableClass = onClick ? "hover:border-zinc-950 hover:shadow-sm cursor-pointer text-left w-full transition-colors" : "";
+  return (
+    <Tag className={`bg-white border border-zinc-200 p-6 rounded-sm ${clickableClass}`} data-testid={testId} onClick={onClick || undefined} type={onClick ? "button" : undefined}>
+      <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">{label}</div>
+      <div className={`font-heading text-3xl font-black tracking-tighter ${accent || "text-zinc-950"}`}>{value}</div>
+      {hint && <div className="text-xs text-zinc-500 mt-2">{hint}</div>}
+    </Tag>
+  );
+};
 
 // ============ Bulk CSV Import Modal ============
 function BulkCsvImportModal({ onClose, onCommitted }) {
