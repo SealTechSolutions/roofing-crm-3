@@ -97,6 +97,22 @@ class PhotoUpdate(BaseModel):
     display_name: Optional[str] = None
     description: Optional[str] = None
     is_cover: Optional[bool] = None
+    # Maintenance-report fields — surface on the STBS-format PDF.
+    # A photo can belong to a maintenance visit via `maintenance_visit_id`,
+    # and its role (`maint_role`) determines the section it renders under.
+    maintenance_visit_id: Optional[str] = None
+    maint_role: Optional[str] = None              # "before" | "after" | None
+    observation: Optional[str] = None             # "Observation:" line on the report
+    maint_notes: Optional[str] = None             # "Notes:" line on the report
+    sort_order: Optional[int] = None              # user-controlled ordering within a section
+
+
+class AiDescribeRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    photo_ids: list[str]                          # explicit photo IDs (safety — no accidental "describe all")
+    # Optional context to help Claude generate more accurate text
+    role: Optional[str] = None                    # "before" | "after"
+    overwrite: bool = False                       # by default, skip photos that already have a description
 
 
 class ShareCreate(BaseModel):
@@ -191,6 +207,12 @@ def create_router(db, get_current_user) -> APIRouter:
         gps_accuracy: Optional[float] = Form(None),
         captured_at: str = Form(""),
         stamped: bool = Form(False),
+        # Maintenance-report linkage — set by the field iOS app when the rep
+        # is capturing photos for an active maintenance visit. Filed by year
+        # via the visit_date on the parent visit, so they never mix with the
+        # deal's regular proposal/damage photos.
+        maintenance_visit_id: str = Form(""),
+        maint_role: str = Form(""),                # "before" | "after"
         current=Depends(get_current_user),
     ):
         await _ensure_deal(deal_id)
@@ -199,6 +221,8 @@ def create_router(db, get_current_user) -> APIRouter:
             raise HTTPException(status_code=400, detail=f"Only image files allowed. Got: {ct}")
         if tag and tag not in PRESET_TAGS:
             raise HTTPException(status_code=400, detail=f"Invalid tag. Allowed: {', '.join(PRESET_TAGS)}")
+        if maint_role and maint_role not in ("before", "after"):
+            raise HTTPException(status_code=400, detail="maint_role must be 'before' or 'after'")
 
         data = await file.read()
         if len(data) > MAX_BYTES:
@@ -249,6 +273,12 @@ def create_router(db, get_current_user) -> APIRouter:
             "gps_accuracy": gps_accuracy,
             "captured_at": resolved_captured_at,
             "stamped": bool(stamped),
+            # Maintenance-report scoping (set only when the iOS app is
+            # capturing during an active visit — normal deal uploads leave
+            # these blank so the photos appear only in the Project Photos
+            # section as before).
+            "maintenance_visit_id": (maintenance_visit_id or "").strip() or None,
+            "maint_role": (maint_role or "").strip() or None,
         }
         await db.project_photos.insert_one(doc.copy())
         doc.pop("_id", None)
@@ -839,6 +869,129 @@ def create_router(db, get_current_user) -> APIRouter:
             "skipped": skipped_count,
             "results": results,
         }
+
+    # ---------- Maintenance Report photos ----------
+    @router.get("/maintenance-photos")
+    async def list_maintenance_photos(deal_id: str, visit_id: str, _=Depends(get_current_user)):
+        """List every photo linked to a specific maintenance visit.
+
+        Returns photos sorted by `sort_order` (rep-controlled) then by
+        capture time. The Maintenance Report editor renders these in two
+        panels (Before / After) using each photo's `maint_role`.
+        """
+        await _ensure_deal(deal_id)
+        cursor = db.project_photos.find(
+            {"deal_id": deal_id, "maintenance_visit_id": visit_id, "is_deleted": {"$ne": True}},
+            {"_id": 0, "storage_path": 0, "uploaded_by": 0},
+        )
+        docs = await cursor.to_list(1000)
+        # Sort: role (before then after), sort_order asc, captured_at asc
+        role_key = {"before": 0, "after": 1, None: 2}
+        docs.sort(key=lambda p: (role_key.get(p.get("maint_role")), int(p.get("sort_order") or 999), p.get("captured_at") or ""))
+        return docs
+
+    @router.post("/photos/ai-describe")
+    async def ai_describe_photos(deal_id: str, body: AiDescribeRequest, _=Depends(get_current_user)):
+        """Use Claude Sonnet 4.6 Vision to draft Observation + Notes text
+        for each supplied photo. Returned strings are suggestions — the
+        rep still edits before finalizing the report.
+
+        Skips photos that already have `observation` set unless
+        `overwrite=true`. Persists the AI draft to the photo doc so a
+        page refresh doesn't lose it.
+        """
+        await _ensure_deal(deal_id)
+        key = os.environ.get("EMERGENT_LLM_KEY")
+        if not key:
+            raise HTTPException(500, "AI describe not configured (missing EMERGENT_LLM_KEY)")
+        if not body.photo_ids:
+            raise HTTPException(400, "photo_ids required")
+        role = (body.role or "").lower()
+
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+        import base64 as _b64
+        from PIL import Image as _PIL
+
+        # Role-aware prompt so BEFORE photos yield "what needs attention"
+        # style prose and AFTER photos yield "here's what we did / current
+        # state" style prose.
+        if role == "before":
+            focus = (
+                "This is a 'BEFORE' maintenance photo. Describe what you see that needs attention "
+                "(debris, damage, wear, ponding water, staining, sealant failure, penetrations, etc.). "
+                "Keep the observation factual and specific to what's visible."
+            )
+        elif role == "after":
+            focus = (
+                "This is an 'AFTER' maintenance photo showing the same area after work was performed. "
+                "Describe the current clean/repaired state and confirm what was done."
+            )
+        else:
+            focus = "Describe the roofing condition or feature visible in the photo."
+
+        system_prompt = (
+            "You are an experienced commercial roofer writing a jobsite maintenance report for a "
+            "property owner. Your prose is direct, non-technical, and honest — no marketing filler.\n\n"
+            f"{focus}\n\n"
+            "Respond in EXACTLY this JSON format with no other text:\n"
+            '{"observation": "1-2 sentence factual observation of what is visible", '
+            '"notes": "1-2 sentence practical note or context for the owner"}\n\n'
+            "Keep each field under 240 characters. Do not invent details you cannot see."
+        )
+
+        results = []
+        for pid in body.photo_ids[:60]:                            # safety cap
+            photo = await db.project_photos.find_one({"id": pid, "deal_id": deal_id, "is_deleted": {"$ne": True}})
+            if not photo:
+                results.append({"id": pid, "error": "not found"})
+                continue
+            if not body.overwrite and (photo.get("observation") or "").strip():
+                results.append({"id": pid, "skipped": "already has observation"})
+                continue
+            outcome = {"id": pid, "observation": None, "notes": None, "error": None}
+            try:
+                content, ct = get_object(photo["storage_path"])
+                # Transcode to JPEG at 1024px so the request is snappy
+                try:
+                    with _PIL.open(io.BytesIO(content)) as img:
+                        img = img.convert("RGB")
+                        img.thumbnail((1024, 1024), _PIL.LANCZOS)
+                        buf = io.BytesIO()
+                        img.save(buf, format="JPEG", quality=82, optimize=True)
+                        content = buf.getvalue()
+                    ct = "image/jpeg"
+                except Exception:
+                    ct = ct or "image/jpeg"
+                b64 = _b64.b64encode(content).decode("ascii")
+                chat = LlmChat(api_key=key, session_id=f"describe-{deal_id}-{pid}", system_message=system_prompt).with_model("anthropic", "claude-sonnet-4-6")
+                msg = UserMessage(text="Describe this photo for the maintenance report.", file_contents=[ImageContent(image_base64=b64)])
+                response_text = await chat.send_message(msg)
+                raw = (response_text or "").strip()
+                # Model sometimes wraps its JSON in a fenced code block — trim
+                if raw.startswith("```"):
+                    raw = raw.split("```", 2)[1] if "```" in raw[3:] else raw.strip("`")
+                    if raw.startswith("json"):
+                        raw = raw[4:].strip()
+                    raw = raw.strip("`").strip()
+                import json as _json
+                try:
+                    parsed = _json.loads(raw)
+                except Exception:
+                    # Fallback — if the model returned prose, put it in observation
+                    parsed = {"observation": raw[:240], "notes": ""}
+                obs = (parsed.get("observation") or "").strip()[:400]
+                notes = (parsed.get("notes") or "").strip()[:400]
+                await db.project_photos.update_one(
+                    {"id": pid, "deal_id": deal_id},
+                    {"$set": {"observation": obs, "maint_notes": notes, "ai_described": True, "updated_at": _now_iso()}},
+                )
+                outcome["observation"] = obs
+                outcome["notes"] = notes
+            except Exception as e:
+                outcome["error"] = str(e)[:200]
+            results.append(outcome)
+
+        return {"processed": len(results), "results": results}
 
     # ---------- Maintenance / Condition Report PDF ----------
     @router.get("/photos/maintenance-report.pdf")

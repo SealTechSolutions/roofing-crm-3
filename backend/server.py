@@ -1680,6 +1680,12 @@ async def delete_deal(deal_id: str, current=Depends(get_current_user)):
 
 
 # ----- Maintenance Plan -----
+# Fixed enum for the "Roof Estimated Service Life" checkbox strip on the
+# Maintenance Report cover. Ordered longest → shortest so the "healthiest"
+# option is on the left (matches the STBS template layout).
+SERVICE_LIFE_OPTIONS = ["15-20 Years", "10-15 Years", "5-10 Years", "3-5 Years", "1-3 Years", "<1 Year"]
+
+
 class MaintenanceVisitIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     visit_date: str
@@ -1687,6 +1693,26 @@ class MaintenanceVisitIn(BaseModel):
     subcontractor_id: Optional[str] = None
     subcontractor_name: str = ""
     notes: str = ""
+
+
+class MaintenanceVisitPatch(BaseModel):
+    """Fields the rep edits on an existing maintenance visit after logging.
+
+    Everything is optional so the UI can PATCH one field at a time
+    (auto-save on blur). `service_life_estimate` must match one of
+    SERVICE_LIFE_OPTIONS if provided.
+    """
+    model_config = ConfigDict(extra="ignore")
+    visit_date: Optional[str] = None
+    amount: Optional[float] = None
+    notes: Optional[str] = None
+    # Report-only fields (surface on the Maintenance Report PDF)
+    summary_text: Optional[str] = None
+    service_life_estimate: Optional[str] = None
+    hero_photo_id: Optional[str] = None
+    building_contact_name: Optional[str] = None
+    building_contact_phone: Optional[str] = None
+    building_contact_email: Optional[str] = None
 
 
 @api_router.post("/deals/{deal_id}/maintenance-visits", response_model=Deal)
@@ -1723,6 +1749,38 @@ async def add_maintenance_visit(deal_id: str, body: MaintenanceVisitIn, current=
     return scrub_deal(doc, current)
 
 
+@api_router.patch("/deals/{deal_id}/maintenance-visits/{visit_id}", response_model=Deal)
+async def update_maintenance_visit(deal_id: str, visit_id: str, body: MaintenanceVisitPatch, current=Depends(get_current_user)):
+    """Update fields on an existing maintenance visit.
+
+    Used by the Maintenance Report editor to save the free-form summary,
+    service-life estimate, hero-photo pick, and building-contact snapshot
+    (auto-filled from the deal but rep-editable per visit).
+    """
+    existing = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if current.get("role") == "sales":
+        owns = existing.get("assigned_to_user_id") == current["id"] or existing.get("created_by_user_id") == current["id"]
+        if not owns:
+            raise HTTPException(status_code=403, detail="Not your project")
+    visits = list(existing.get("maintenance_visits") or [])
+    idx = next((i for i, v in enumerate(visits) if v.get("id") == visit_id), None)
+    if idx is None:
+        raise HTTPException(status_code=404, detail="Visit not found")
+    patch = body.model_dump(exclude_unset=True)
+    if "service_life_estimate" in patch and patch["service_life_estimate"] not in ([None, ""] + SERVICE_LIFE_OPTIONS):
+        raise HTTPException(status_code=400, detail=f"service_life_estimate must be one of {SERVICE_LIFE_OPTIONS}")
+    visits[idx] = {**visits[idx], **patch}
+    merged = {**existing, "maintenance_visits": visits}
+    for k in ("id", "created_at", "_id", "is_deleted", "deleted_at", "deleted_by"):
+        merged.pop(k, None)
+    cleaned = normalize_deal(merged)
+    await db.deals.update_one({"id": deal_id}, {"$set": cleaned})
+    doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    return scrub_deal(doc, current)
+
+
 @api_router.delete("/deals/{deal_id}/maintenance-visits/{visit_id}", response_model=Deal)
 async def delete_maintenance_visit(deal_id: str, visit_id: str, current=Depends(get_current_user)):
     existing = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}})
@@ -1740,6 +1798,92 @@ async def delete_maintenance_visit(deal_id: str, visit_id: str, current=Depends(
     await db.deals.update_one({"id": deal_id}, {"$set": cleaned})
     doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
     return scrub_deal(doc, current)
+
+
+@api_router.get("/deals/{deal_id}/maintenance-visits/{visit_id}/report.pdf")
+async def annual_maintenance_report_pdf(
+    deal_id: str,
+    visit_id: str,
+    token: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    """Generate the SealTech STBS-format Annual Maintenance Report as a PDF.
+
+    Streams back a `application/pdf` attachment named after the property +
+    visit year. Photos are pulled from `project_photos` where
+    `maintenance_visit_id == visit_id` (uploaded from the field during
+    the visit or manually assigned in the editor).
+
+    Auth: bearer header OR `?token=` query param so the browser can open
+    the PDF in a new tab.
+    """
+    # Auth
+    raw = None
+    if authorization and authorization.startswith("Bearer "):
+        raw = authorization[7:]
+    elif token:
+        raw = token
+    if not raw:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(raw, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["sub"]})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    from maintenance_report_pdf import build_annual_maintenance_report_pdf
+
+    deal = await db.deals.find_one({"id": deal_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Project not found")
+    visits = deal.get("maintenance_visits") or []
+    visit = next((v for v in visits if v.get("id") == visit_id), None)
+    if not visit:
+        raise HTTPException(status_code=404, detail="Maintenance visit not found")
+
+    property_doc = None
+    if deal.get("property_id"):
+        property_doc = await db.properties.find_one({"id": deal["property_id"]}, {"_id": 0})
+
+    photos = await db.project_photos.find(
+        {"deal_id": deal_id, "maintenance_visit_id": visit_id, "is_deleted": {"$ne": True}},
+        {"_id": 0},
+    ).to_list(2000)
+    # Order: role (before → after), sort_order, captured_at
+    role_key = {"before": 0, "after": 1, None: 2}
+    photos.sort(key=lambda p: (role_key.get(p.get("maint_role")), int(p.get("sort_order") or 999), p.get("captured_at") or ""))
+
+    hero_photo = None
+    if visit.get("hero_photo_id"):
+        hero_photo = next((p for p in photos if p.get("id") == visit["hero_photo_id"]), None)
+        if hero_photo is None:
+            # hero photo may live outside the visit-scoped set (e.g. the property's cover shot)
+            hero_photo = await db.project_photos.find_one(
+                {"id": visit["hero_photo_id"], "deal_id": deal_id, "is_deleted": {"$ne": True}},
+                {"_id": 0},
+            )
+
+    try:
+        pdf_bytes = build_annual_maintenance_report_pdf(
+            deal=deal,
+            visit=visit,
+            property_doc=property_doc,
+            photos=photos,
+            hero_photo=hero_photo,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+
+    year = (visit.get("visit_date") or "")[:4] or datetime.now(timezone.utc).strftime("%Y")
+    safe_title = (deal.get("title") or "Project").replace("/", "-").replace("\\", "-")[:60]
+    filename = f"{safe_title} - Annual Maintenance {year}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 # ----- Material Take-Off -----

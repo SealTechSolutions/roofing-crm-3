@@ -19,6 +19,10 @@ export default function Maintenance() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [sortBy, setSortBy] = useState("next_maintenance_date");
   const [logModalFor, setLogModalFor] = useState(null);
+  // "Reports" drawer target — clicking opens a small modal listing all
+  // maintenance visits on that deal and links each to its own Annual
+  // Maintenance Report editor.
+  const [reportsFor, setReportsFor] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -213,7 +217,7 @@ export default function Maintenance() {
                     </td>
                     <td className="py-3 px-4 text-right font-mono text-zinc-600">{r.visit_count}</td>
                     <td className="py-3 px-4 text-right">
-                      <div className="inline-flex items-center gap-1">
+                      <div className="inline-flex items-center gap-1 flex-wrap justify-end">
                         <button
                           onClick={() => setLogModalFor(r)}
                           className="inline-flex items-center gap-1 px-2 h-7 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm"
@@ -221,6 +225,16 @@ export default function Maintenance() {
                         >
                           <Plus className="w-3 h-3" /> Log Visit
                         </button>
+                        {(r.visit_count > 0) && (
+                          <button
+                            onClick={() => setReportsFor(r)}
+                            className="inline-flex items-center gap-1 px-2 h-7 text-[10px] font-bold uppercase tracking-wider border border-zinc-950 text-zinc-950 hover:bg-zinc-950 hover:text-white rounded-sm"
+                            data-testid={`open-reports-${r.id}`}
+                            title="Open a past visit's Annual Maintenance Report editor"
+                          >
+                            <FileText className="w-3 h-3" /> Reports ({r.visit_count})
+                          </button>
+                        )}
                         <Link
                           to={`/projects/${r.id}`}
                           className="px-2 h-7 inline-flex items-center text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-zinc-950 rounded-sm"
@@ -245,6 +259,81 @@ export default function Maintenance() {
           onSaved={() => { setLogModalFor(null); load(); }}
         />
       )}
+      {reportsFor && (
+        <ReportsListModal
+          row={reportsFor}
+          onClose={() => setReportsFor(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * ReportsListModal — small drawer listing every maintenance visit on a
+ * deal so the user can jump into any historical visit's Annual
+ * Maintenance Report editor. Fetches the deal fresh so the visit list
+ * reflects any recent PATCH updates.
+ */
+function ReportsListModal({ row, onClose }) {
+  const [visits, setVisits] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await api.get(`/deals/${row.id}`);
+        // Sort descending by visit_date so the most recent is on top
+        const list = [...(r.data.maintenance_visits || [])].sort((a, b) => (b.visit_date || "").localeCompare(a.visit_date || ""));
+        setVisits(list);
+      } catch (e) {
+        toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [row.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-zinc-950/60 flex items-center justify-center p-4" onClick={onClose} data-testid="reports-list-modal">
+      <div className="bg-white w-full max-w-2xl rounded-sm shadow-xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-zinc-200">
+          <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">Annual Maintenance Reports</div>
+          <div className="font-heading text-xl font-black tracking-tight mt-1">{row.contact_name || row.title}</div>
+          <div className="text-xs text-zinc-500 mt-0.5">{row.property_address}</div>
+        </div>
+        <div className="p-5">
+          {loading ? (
+            <div className="text-center text-sm text-zinc-500 py-6">Loading…</div>
+          ) : visits.length === 0 ? (
+            <div className="text-center text-sm text-zinc-500 py-6">No visits yet — log a visit to start a report.</div>
+          ) : (
+            <div className="space-y-2">
+              {visits.map((v) => (
+                <Link
+                  key={v.id}
+                  to={`/maintenance/report/${row.id}/${v.id}`}
+                  onClick={onClose}
+                  data-testid={`reports-list-item-${v.id}`}
+                  className="block border border-zinc-200 rounded-sm p-3 hover:border-zinc-950 hover:bg-blue-50/40 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="font-bold text-sm">{v.visit_date}</div>
+                      <div className="text-[10px] text-zinc-500 uppercase tracking-wider">
+                        {v.service_life_estimate ? `Service Life · ${v.service_life_estimate}` : "No service-life set yet"}
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-zinc-500 uppercase tracking-wider">
+                      {v.summary_text ? "Summary drafted" : "No summary yet"}
+                    </div>
+                    <FileText className="w-3.5 h-3.5 text-zinc-400" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -272,7 +361,15 @@ function LogVisitModal({ row, onClose, onSaved }) {
       // Find the newly-added visit (highest id from response)
       const visits = visitRes.data?.maintenance_visits || [];
       const newest = [...visits].sort((a, b) => (b.visit_date || "").localeCompare(a.visit_date || ""))[0];
-      // Offer to auto-create draft invoice
+      // Offer to jump straight into the Annual Maintenance Report editor.
+      // This is the primary path — the rep captured photos in the field
+      // during the visit, now they want to add descriptions and generate
+      // the client PDF.
+      if (newest && window.confirm(`Open the Annual Maintenance Report editor for this visit? You'll be able to add photo descriptions, service-life estimate, and summary before generating the PDF.`)) {
+        window.location.href = `/maintenance/report/${row.id}/${newest.id}`;
+        return;
+      }
+      // Otherwise fall through to the older "auto-draft invoice" prompt
       if (newest && Number(amount || 0) > 0 && window.confirm(`Create a draft invoice for $${Number(amount).toLocaleString()}? This is enabled because most maintenance customers get billed per visit.`)) {
         try {
           const inv = await api.post("/invoices/from-maintenance-visit", { deal_id: row.id, visit_id: newest.id });

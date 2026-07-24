@@ -14,6 +14,7 @@ import Vendors from "@/pages/Vendors";
 import UsersPage from "@/pages/Users";
 import UserDetailPage from "@/pages/UserDetail";
 import Maintenance from "@/pages/Maintenance";
+import MaintenanceReport from "@/pages/MaintenanceReport";
 import Invoices from "@/pages/Invoices";
 import Payables from "@/pages/Payables";
 import Materials from "@/pages/Materials";
@@ -119,6 +120,7 @@ function App() {
               <Route path="/coi-reminders" element={<CoiReminders />} />
               <Route path="/trash" element={<TrashPage />} />
               <Route path="/maintenance" element={<Maintenance />} />
+              <Route path="/maintenance/report/:dealId/:visitId" element={<MaintenanceReport />} />
               <Route path="/invoices" element={<Invoices />} />
               <Route path="/payables" element={<Payables />} />
               <Route path="/materials" element={<Materials />} />
