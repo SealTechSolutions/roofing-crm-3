@@ -115,15 +115,15 @@ def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
 
     # --- Left block: big score number + category pill ---
     score_para = Paragraph(
-        f'<font color="{cat_hex}" size="44"><b>{score_val or 0}</b></font>'
-        f'<font color="#9CA3AF" size="18">&nbsp;/100</font>',
-        ParagraphStyle("score_num", alignment=TA_CENTER, fontSize=44, leading=48),
+        f'<font color="{cat_hex}" size="30"><b>{score_val or 0}</b></font>'
+        f'<font color="#9CA3AF" size="14">&nbsp;/100</font>',
+        ParagraphStyle("score_num", alignment=TA_CENTER, fontSize=30, leading=34),
     )
     cat_pill = Paragraph(
-        f'<font color="white" size="9"><b>{cat_label}</b></font>',
-        ParagraphStyle("cat_pill", alignment=TA_CENTER, fontSize=9, leading=12),
+        f'<font color="white" size="8"><b>{cat_label}</b></font>',
+        ParagraphStyle("cat_pill", alignment=TA_CENTER, fontSize=8, leading=11),
     )
-    pill_tbl = Table([[cat_pill]], colWidths=[1.6 * inch], rowHeights=[0.28 * inch])
+    pill_tbl = Table([[cat_pill]], colWidths=[1.4 * inch], rowHeights=[0.22 * inch])
     pill_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), cat_color),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -131,14 +131,14 @@ def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
     ]))
     left_block = Table(
         [[score_para], [pill_tbl]],
-        colWidths=[1.9 * inch],
+        colWidths=[1.7 * inch],
     )
     left_block.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("TOPPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (0, 0), 2),
-        ("TOPPADDING", (0, 1), (0, 1), 4),
+        ("BOTTOMPADDING", (0, 0), (0, 0), 1),
+        ("TOPPADDING", (0, 1), (0, 1), 2),
     ]))
 
     # --- Right block: 5-band gauge with arrow marker over active band ---
@@ -155,19 +155,19 @@ def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
         )
         for i, (_, _, lbl, rng, _, _) in enumerate(SCORE_BANDS)
     ]
-    band_w = (CONTENT_W - 1.9 * inch - 0.6 * inch) / 5
+    band_w = (CONTENT_W - 1.7 * inch - 0.6 * inch) / 5
     gauge = Table(
         [arrow_cells, band_label_cells],
         colWidths=[band_w] * 5,
-        rowHeights=[0.32 * inch, 0.5 * inch],
+        rowHeights=[0.24 * inch, 0.38 * inch],
     )
     gauge_style = TableStyle([
         ("VALIGN", (0, 0), (-1, 0), "BOTTOM"),
         ("VALIGN", (0, 1), (-1, 1), "MIDDLE"),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
-        ("TOPPADDING", (0, 1), (-1, 1), 4),
-        ("BOTTOMPADDING", (0, 1), (-1, 1), 4),
+        ("TOPPADDING", (0, 1), (-1, 1), 2),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 2),
     ])
     for i, (_, _, _, _, hexc, _) in enumerate(SCORE_BANDS):
         gauge_style.add("BACKGROUND", (i, 1), (i, 1), colors.HexColor(hexc))
@@ -178,13 +178,13 @@ def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
         '<font color="#A0703A" size="9"><b>OVERALL ROOF ASSET SCORE&trade;</b></font>',
         ParagraphStyle("card_title", alignment=TA_LEFT, fontSize=9, leading=12),
     )
-    score_row = Table([[left_block, gauge]], colWidths=[1.9 * inch, CONTENT_W - 1.9 * inch - 0.6 * inch])
+    score_row = Table([[left_block, gauge]], colWidths=[1.7 * inch, CONTENT_W - 1.7 * inch - 0.6 * inch])
     score_row.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
 
     desc_para = Paragraph(
@@ -195,9 +195,9 @@ def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
 
     reason_text = _esc(reasoning) or '<i>Not yet documented.</i>'
     reason_para = Paragraph(
-        f'<font color="#A0703A" size="10"><b>REASONING</b></font><br/>'
-        f'<font color="#1F2937" size="11">{reason_text}</font>',
-        ParagraphStyle("reason", alignment=TA_LEFT, fontSize=11, leading=15, spaceBefore=2),
+        f'<font color="#A0703A" size="9"><b>REASONING</b></font>&nbsp;&nbsp;'
+        f'<font color="#1F2937" size="9">{reason_text}</font>',
+        ParagraphStyle("reason", alignment=TA_LEFT, fontSize=9, leading=12, spaceBefore=0),
     )
 
     # Outer card binds everything in a single bordered container so the
@@ -212,10 +212,10 @@ def _eval_score_card(s: dict, score_val: int, reasoning: str) -> Table:
     card.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 0.6, BORDER),
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FAFAFA")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 14),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 14),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         # No bronze top stripe — the section header above already provides
         # one. Two bronze lines back-to-back looked over-stacked.
     ]))
@@ -558,7 +558,7 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     ]))
     story.append(note_t)
 
-    story.append(PageBreak())
+    story.append(Spacer(1, 8))
     # Inline section header sized to FRAME_INNER_W so the bronze underline
     # ends at exactly the same x as the rec_box below it. The shared
     # `_section_header` helper uses CONTENT_W (7.3") which renders the
