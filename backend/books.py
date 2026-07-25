@@ -78,9 +78,9 @@ DEFAULT_COA = [
 # Default 4 SealTech entities seeded on first boot.
 DEFAULT_ENTITIES = [
     {
-        "name": "SealTech Holdings",
-        "legal_name": "SealTech Holdings, LLC",
-        "role": "Parent",
+        "name": "SealTech Building Solutions",
+        "legal_name": "SealTech Building Solutions, LLC",
+        "role": "Operating Company",
         "is_parent": True,
         "entity_type": "LLC",
     },
