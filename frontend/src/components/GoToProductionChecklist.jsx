@@ -2,11 +2,10 @@
  * GoToProductionChecklist — the "Phase C" one-card production kickoff view.
  *
  * Aggregates the four things the office must do the moment a deal is Won:
- *   1. Schedule the crew           (existing DealSchedulePanel)
- *   2. Order material              (existing MaterialTakeoff)
- *   3. Assign a subcontractor +
- *      send the Work Order         (existing WorkOrderModal)
- *   4. Order on-site equipment     (NEW — persisted on deal.equipment_ordered)
+ *   1. Assign subcontractor + WO   (existing send-WO flow)
+ *   2. Schedule the crew           (existing DealSchedulePanel)
+ *   3. Order material              (existing MaterialTakeoff)
+ *   4. Order on-site equipment     (persisted on deal.equipment_ordered)
  *
  * Each row shows current status ("done" / "pending"), the primary action
  * button, and a summary of what's already been done. This card is intended
@@ -154,9 +153,18 @@ export default function GoToProductionChecklist({ deal, onScrollToSchedule, onSc
       </div>
       <div className="px-5">
         <Row
+          done={wo_done}
+          icon={HardHat}
+          label="1 · Assign subcontractor + send Work Order"
+          summary={woSummary}
+          action={onSendWorkOrder}
+          actionLabel={wo_done ? "Resend WO" : "Send WO"}
+          testId="production-row-wo"
+        />
+        <Row
           done={schedule_done}
           icon={Calendar}
-          label="1 · Schedule the crew"
+          label="2 · Schedule the crew"
           summary={scheduleSummary}
           action={onScrollToSchedule}
           actionLabel={schedule_done ? "Update" : "Schedule"}
@@ -165,20 +173,11 @@ export default function GoToProductionChecklist({ deal, onScrollToSchedule, onSc
         <Row
           done={materials_done}
           icon={Package}
-          label="2 · Order material"
+          label="3 · Order material"
           summary={materialsSummary}
           action={onScrollToMaterials}
           actionLabel={materials_done ? "Manage" : "Open Take-Off"}
           testId="production-row-materials"
-        />
-        <Row
-          done={wo_done}
-          icon={HardHat}
-          label="3 · Assign subcontractor + send Work Order"
-          summary={woSummary}
-          action={onSendWorkOrder}
-          actionLabel={wo_done ? "Resend WO" : "Send WO"}
-          testId="production-row-wo"
         />
         <Row
           done={equipment_done}
