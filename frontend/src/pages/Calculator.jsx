@@ -788,6 +788,13 @@ export default function Calculator() {
           const kind = classifyContainer(pk.product);
           const kindLabel = kind === "tote" ? "Tote" : kind === "drum" ? "Drum" : kind === "pail" ? "Pail" : (pk.product.unit || "");
           const unitDesc = `${pk.product.package_size} ${pk.product.unit} ${kindLabel}`.trim();
+          // pk.cost is the loaded material cost for the whole packed batch
+          // (qty × per-container price × shipping mark-up applied upstream in
+          // packContainers). Convert to per-container unit_cost + line_total
+          // so the Take-Off table can show real dollars per line and the
+          // per-vendor PO PDF variance report reads the correct estimate.
+          const unitCost = pk.qty > 0 ? Math.round((pk.cost / pk.qty) * 100) / 100 : 0;
+          const lineTotal = Math.round(pk.cost * 100) / 100;
           newTakeoff.push({
             id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
             vendor_id: vendorId,
@@ -796,6 +803,8 @@ export default function Calculator() {
             name: pk.product.name || labelPrefix,
             unit: unitDesc,
             quantity: pk.qty,
+            unit_cost: unitCost,
+            line_total: lineTotal,
             notes: `${labelPrefix} — ${col.system.name}`,
           });
         }
@@ -827,6 +836,21 @@ export default function Calculator() {
         addLines(ln, ln.packed, ln.addon.label);
       }
 
+      // Labor cost — push the rep-entered per-column labor $ so the Live
+      // Project P&L card shows an estimated labor cost alongside materials.
+      // Skipped when the rep hasn't entered a labor number for this warranty.
+      if (Number(col.laborAdd) > 0) {
+        newCostItems.push({
+          category: "Labor",
+          vendor_id: null,
+          vendor_name: "SealTech Crew (in-house)",
+          description: `Labor estimate — ${col.system.name} (${col.system.warranty_years}-yr) — from Calculator`,
+          amount: Math.round(Number(col.laborAdd) * 100) / 100,
+          date: today,
+          status: "Pending",
+        });
+      }
+
       const body = {
         ...deal,
         material_takeoff: [...(deal.material_takeoff || []), ...newTakeoff],
@@ -846,7 +870,7 @@ export default function Calculator() {
       const r = await api.put(`/deals/${deal.id}`, body);
       setDeal(r.data);
 
-      toast.success(`Pushed ${newTakeoff.length} take-off line${newTakeoff.length === 1 ? "" : "s"} + ${newCostItems.length} cost line${newCostItems.length === 1 ? "" : "s"} for ${col.system.name}.`);
+      toast.success(`Pushed ${newTakeoff.length} take-off line${newTakeoff.length === 1 ? "" : "s"} + ${newCostItems.length} cost line${newCostItems.length === 1 ? "" : "s"} (materials${col.laborAdd > 0 ? " + labor" : ""}) for ${col.system.name}.`);
 
       if (andDownloadPo) {
         // Open the existing PO PDF endpoint in a new tab. The endpoint reads
