@@ -265,6 +265,43 @@ EXPECTED_OUTCOMES = [
     "Reduced Future Maintenance Requirements",
 ]
 
+SEALTECH_RECOMMENDATION_PARAGRAPHS = [
+    "Based on the findings of this evaluation, we strongly recommend the installation of a "
+    "fluid-applied reinforced membrane system over the existing roof rather than a full "
+    "tear-off and re-roof. This approach restores and significantly extends the service "
+    "life of the current roof assembly while avoiding the high costs, extended downtime, "
+    "and environmental impact associated with complete removal and replacement. The "
+    "fluid-applied system creates a seamless, fully adhered reinforced monolithic membrane "
+    "that enhances waterproofing, improves resistance to UV degradation, and strengthens "
+    "the overall roof assembly without the need to discard the existing system.",
+
+    "A key advantage of this restoration strategy is the availability of a renewable "
+    "warranty program. Unlike conventional single-term warranties, this program can be "
+    "renewed throughout the functional life of the building, providing long-term "
+    "protection and predictable asset management. An optional hail warranty rider can "
+    "also be included, offering additional security against impact damage in hail-prone "
+    "regions. Combined with a structured annual maintenance program, these warranties "
+    "not only protect the investment but can substantially reduce&mdash;and in many "
+    "cases effectively eliminate&mdash;unplanned repair costs for the duration of the "
+    "coverage.",
+
+    "From a financial perspective, fluid-applied restoration typically delivers meaningful "
+    "cost savings compared with a full re-roof. Capital expenditure is lower, project "
+    "duration is shorter, and building operations experience minimal disruption. The "
+    "annual maintenance program further controls long-term expenses by identifying and "
+    "addressing minor issues before they escalate, preserving both the membrane and the "
+    "underlying substrate. Additional benefits include improved energy performance "
+    "through enhanced reflectivity, reduced landfill waste from avoided tear-off, and a "
+    "fully renewable protective system that aligns with sustainable building practices.",
+
+    "In summary, applying a fluid-applied reinforced membrane over the existing system "
+    "offers a cost-effective, low-disruption path to maximizing roof longevity, securing "
+    "renewable long-term warranty coverage (including optional hail protection), and "
+    "minimizing future repair expenditures through proactive maintenance. We recommend "
+    "proceeding with this restoration strategy as the most practical and economical "
+    "solution for protecting and optimizing the roofing asset.",
+]
+
 CONCLUSION_PARAGRAPHS = [
     "Commercial roofing systems represent significant financial and operational "
     "assets. The primary objective of this evaluation extends beyond simply "
@@ -521,7 +558,7 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
     ]))
     story.append(note_t)
 
-    story.append(Spacer(1, 12))
+    story.append(PageBreak())
     # Inline section header sized to FRAME_INNER_W so the bronze underline
     # ends at exactly the same x as the rec_box below it. The shared
     # `_section_header` helper uses CONTENT_W (7.3") which renders the
@@ -539,29 +576,30 @@ async def build_property_evaluation_pdf(db, a: dict) -> bytes:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]))
     story.append(seal_header)
-    story.append(Spacer(1, 4))
+    story.append(Spacer(1, 6))
 
-    # 7-line blank write-on box for the salesperson. Built inline (rather
-    # than via _text_box) so we can force hAlign="LEFT" on the actual
-    # flowable that gets added to the story.
-    rec_row_h = 0.30 * inch
-    rec_rows = 7
-    rec_placeholder = Paragraph(
-        '<i><font color="#A0A0A0">—</font></i>',
-        ParagraphStyle("rec_box_body", parent=s["body"], fontSize=10,
-                       leading=rec_row_h * 72 / inch, textColor=DARK),
+    # Filled recommendation body — fluid-applied restoration case, replacing
+    # the older 7-line blank write-on box. Kept in a single-cell 7.3" table
+    # so the tinted background + border align exactly with the section
+    # header underline above (matches the Restoration-First Note pattern).
+    rec_body_style = ParagraphStyle(
+        "sealtech_rec_body", parent=s["body"], fontName="Helvetica",
+        fontSize=9.5, leading=13, textColor=DARK, alignment=TA_LEFT,
+        spaceAfter=6,
     )
-    rec_box = Table([[rec_placeholder]], colWidths=[FRAME_INNER_W],
-                    rowHeights=[rec_rows * rec_row_h])
+    rec_body_cells = [
+        [Paragraph(para, rec_body_style)] for para in SEALTECH_RECOMMENDATION_PARAGRAPHS
+    ]
+    rec_box = Table(rec_body_cells, colWidths=[FRAME_INNER_W])
     rec_box.hAlign = "LEFT"
     rec_box.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.white),
-        ("BOX", (0, 0), (-1, -1), 0.75, BOX_BORDER),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("VALIGN",       (0, 0), (-1, -1), "TOP"),
+        ("BACKGROUND",   (0, 0), (-1, -1), colors.HexColor("#EFF6FF")),
+        ("BOX",          (0, 0), (-1, -1), 0.6, BLUE),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING",   (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 6),
     ]))
     story.append(rec_box)
     story.append(PageBreak())
