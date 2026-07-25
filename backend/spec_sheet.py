@@ -1602,23 +1602,11 @@ def build_spec_sheet(
     # header + pricing (matches the original Tile / Shingle restoration layout).
     page1_has_inclusions = bool(template.get("tier_table")) or bool(template.get("inclusions_template"))
     if page1_has_inclusions:
-        story.append(Spacer(1, 0.02 * inch))
-        if cover_photo_bytes:
-            try:
-                img = Image(BytesIO(cover_photo_bytes), width=7.5 * inch, height=2.3 * inch, kind="proportional")
-                img.hAlign = "CENTER"
-                story.append(img)
-            except Exception:
-                story.append(Paragraph("<i>Cover photo could not be embedded.</i>", s["small"]))
-        else:
-            # When no cover photo is uploaded yet, use a slightly shorter
-            # placeholder (1.8" instead of 2.3") so Page 1 has enough vertical
-            # room to fit the Inclusions bullets without overflowing.
-            # Real photos still use the full 2.3" frame above.
-            ph = Table([[" "]], colWidths=[7.5 * inch], rowHeights=[1.8 * inch])
-            ph.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, BORDER), ("BACKGROUND", (0, 0), (-1, -1), LIGHT)]))
-            story.append(ph)
-            story.append(Paragraph("Cover photo placeholder — upload a Photo to this project and mark it as Cover.", s["small"]))
+        # Cover photo removed from Page 1 (Feb-2026 request) so Inclusions
+        # + Base Investment climb back up onto Page 1 instead of spilling.
+        # The photo still lives on the deal for internal/marketing use;
+        # it's just no longer embedded in the customer-facing scope PDF.
+        _ = cover_photo_bytes  # noqa: F841 — kept for API back-compat
         story.append(Spacer(1, 0.04 * inch))
         total_sqft_p1 = data.get("total_sqft", 0) or 0
         sq_p1 = int(round(total_sqft_p1 / 100))

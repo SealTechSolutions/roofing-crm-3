@@ -5632,7 +5632,7 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
                 (25, 0.25, 2500.0),
             ]
         },
-        "total_sqft": float(deal.get("total_sqft") or 0),
+        "total_sqft": float(deal.get("total_sqft") or deal.get("property_sqft") or 0),
         "color": color,
         "roof_type_label": (deal.get("proposed_roof_type") or "silicone").lower(),
         "custom_scope": (deal.get("custom_scope") or "").strip(),
