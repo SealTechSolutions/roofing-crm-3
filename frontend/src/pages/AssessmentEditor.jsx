@@ -490,29 +490,46 @@ export default function AssessmentEditor() {
 // Step 1 — Cover & Property
 // =====================================================================
 function StepCover({ doc, update, updateAndSave, contacts, deals, properties, linkedDeal }) {
-  // Client selection auto-fills prepared_for + contact_name + contact_id from the linked record
-  const onClientPick = (contactId) => {
-    if (!contactId) {
-      update({ contact_id: "", prepared_for: "" });
+  // Deal selection auto-fills client + contact + property from the linked deal record
+  const onDealPick = (dealId) => {
+    if (!dealId) {
+      update({ deal_id: "" });
       return;
     }
-    const c = contacts.find((x) => x.id === contactId);
-    if (!c) return;
-    const clientLabel = c.company_name || c.contact_name || "";
-    const patch = {
-      contact_id: c.id,
-      prepared_for: clientLabel,
-    };
-    if (!doc.contact_name && c.contact_name) patch.contact_name = c.contact_name;
+    const d = deals.find((x) => x.id === dealId);
+    if (!d) return;
+    const patch = { deal_id: d.id };
+    // Chain contact info from the deal's customer contact
+    const dealContactId = d.customer_contact_id || d.contact_id;
+    if (dealContactId) {
+      patch.contact_id = dealContactId;
+      const c = contacts.find((x) => x.id === dealContactId);
+      if (c) {
+        patch.prepared_for = c.company_name || c.contact_name || doc.prepared_for || "";
+        if (!doc.contact_name && c.contact_name) patch.contact_name = c.contact_name;
+      }
+    }
+    // Chain property info from the deal's linked property
+    if (d.property_id) {
+      const p = properties.find((x) => x.id === d.property_id);
+      if (p) {
+        const fullAddr = [p.property_address, p.property_address_line2].filter(Boolean).join(", ");
+        patch.property_id = p.id;
+        patch.property_name = p.property_name || doc.property_name;
+        patch.property_address = fullAddr || doc.property_address;
+        patch.property_city = p.property_city || doc.property_city;
+        patch.property_state = p.property_state || doc.property_state;
+        patch.property_zip = p.property_zip || doc.property_zip;
+      }
+    }
     update(patch);
   };
-  // Sorted contacts for the client dropdown (alphabetical by company then contact name)
-  const sortedClientOptions = useMemo(() => {
-    const labelFor = (c) => c.company_name || c.contact_name || "";
-    return [...contacts]
-      .filter((c) => labelFor(c).trim().length > 0)
-      .sort((a, b) => labelFor(a).localeCompare(labelFor(b), undefined, { sensitivity: "base" }));
-  }, [contacts]);
+  // Sorted active deals for the client/deal dropdown (alphabetical by title)
+  const sortedActiveDeals = useMemo(() => {
+    return [...deals]
+      .filter((d) => !["Won", "Lost", "Archived", "Deleted"].includes(d.status))
+      .sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }));
+  }, [deals]);
   // Property selection auto-fills address + chains contact info from the linked record
   const onPropertyPick = (propertyId) => {
     if (!propertyId) {
@@ -550,24 +567,23 @@ function StepCover({ doc, update, updateAndSave, contacts, deals, properties, li
         <Field label="Prepared For (Client)" eval>
           <div className="flex gap-2">
             <select
-              value={doc.contact_id || ""}
-              onChange={(e) => onClientPick(e.target.value)}
+              value={doc.deal_id || ""}
+              onChange={(e) => onDealPick(e.target.value)}
               className={`${inputCls} flex-1`}
-              data-testid="prepared-for-picker"
+              data-testid="prepared-for-deal-picker"
             >
-              <option value="">— Select an existing client to auto-fill —</option>
-              {sortedClientOptions.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.company_name || c.contact_name}
-                  {c.company_name && c.contact_name ? ` · ${c.contact_name}` : ""}
+              <option value="">— Select an Active Deal to auto-fill —</option>
+              {sortedActiveDeals.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title || d.id.slice(0, 8)}{d.status ? ` — ${d.status}` : ""}
                 </option>
               ))}
             </select>
             <input
               value={doc.prepared_for}
-              onChange={(e) => update({ prepared_for: e.target.value, contact_id: "" })}
+              onChange={(e) => update({ prepared_for: e.target.value })}
               className={`${inputCls} flex-1`}
-              placeholder="…or type a new client name"
+              placeholder="…or type a client name"
               data-testid="prepared-for"
             />
           </div>
