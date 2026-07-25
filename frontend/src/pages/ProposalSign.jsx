@@ -24,6 +24,12 @@ export default function ProposalSign() {
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(null); // sign response
+  // Customer picks a warranty tier from the price picker on the summary card.
+  // Defaults to whatever the rep pre-locked (data.chosen_option_id) or empty.
+  const [selectedOptionId, setSelectedOptionId] = useState("");
+  // Hail Rider opt-in — only shown when the chosen tier has a non-zero rider
+  // price on the deal (Western Colloid 20/25-yr systems).
+  const [addHailRider, setAddHailRider] = useState(false);
 
   // Lazy-load Google Fonts the FIRST time the signing page mounts (and only
   // once — guarded by a stable id on the <link> tag so navigating back and
@@ -107,6 +113,9 @@ export default function ProposalSign() {
         setData(r.data);
         if (r.data.primary_contact_name) setSignerName(r.data.primary_contact_name);
         if (r.data.primary_contact_email) setSignerEmail(r.data.primary_contact_email);
+        // Pre-select the rep's locked-in option (if any), otherwise nothing —
+        // customer must actively pick a tier before the Sign button unlocks.
+        if (r.data.chosen_option_id) setSelectedOptionId(r.data.chosen_option_id);
       })
       .catch((e) => setError(e?.response?.data?.detail || "Unable to load proposal"));
   }, [token]);
@@ -165,6 +174,11 @@ export default function ProposalSign() {
       setError("Please accept the proposal to continue.");
       return;
     }
+    const options = data?.proposal_options || [];
+    if (options.length > 0 && !selectedOptionId) {
+      setError("Please select a warranty tier to proceed.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -177,6 +191,8 @@ export default function ProposalSign() {
         accepted: true,
         signature_data_url,
         signature_font: signFont,   // chosen cursive style (None if customer drew)
+        chosen_option_id: selectedOptionId,
+        add_hail_rider: addHailRider,
       });
       setSuccess(r.data);
     } catch (e) {
@@ -229,7 +245,13 @@ export default function ProposalSign() {
       </div>
 
       <div className="max-w-3xl mx-auto p-6 sm:p-10 space-y-6">
-        {/* Project summary card */}
+        {/* Project summary card + warranty picker */}
+        {(() => {
+          const options = data.proposal_options || [];
+          const selected = options.find((o) => o.id === selectedOptionId);
+          const hailPrice = selected && addHailRider ? (selected.hail_rider_price || 0) : 0;
+          const runningTotal = (selected?.price || 0) + hailPrice;
+          return (
         <div className="bg-white border border-zinc-200 rounded-sm p-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
             <div>
@@ -238,14 +260,81 @@ export default function ProposalSign() {
             </div>
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Project Total</div>
-              <div className="font-mono mt-1 font-bold">${(data.chosen_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+              <div className="font-mono mt-1 font-bold" data-testid="project-total">
+                ${runningTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </div>
             </div>
             <div className="col-span-2 sm:col-span-1">
               <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Client</div>
               <div className="mt-1">{data.client_company || data.client_name || "—"}</div>
             </div>
           </div>
+
+          {/* Warranty tier picker — one radio per non-zero option. Customer
+              must pick one before the Accept button unlocks. */}
+          {options.length > 0 && (
+            <div className="mt-5 pt-5 border-t border-zinc-200" data-testid="proposal-option-picker">
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-700 mb-3">
+                Select Your Warranty Tier
+              </div>
+              <div className="space-y-2">
+                {options.map((opt) => {
+                  const checked = selectedOptionId === opt.id;
+                  return (
+                    <label
+                      key={opt.id}
+                      className={`flex items-center gap-3 px-4 py-3 border rounded-sm cursor-pointer transition-colors ${
+                        checked ? "border-blue-700 bg-blue-50 shadow-sm" : "border-zinc-300 hover:bg-zinc-50"
+                      }`}
+                      data-testid={`proposal-option-${opt.id}`}
+                    >
+                      <input
+                        type="radio"
+                        name="warranty-tier"
+                        checked={checked}
+                        onChange={() => { setSelectedOptionId(opt.id); setAddHailRider(false); }}
+                        className="h-4 w-4"
+                      />
+                      <div className="flex-1 flex items-baseline justify-between gap-2">
+                        <span className="font-bold text-sm">{opt.label}</span>
+                        <span className="font-mono font-black text-base text-zinc-900">
+                          ${opt.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+              {/* Hail Rider opt-in — only if the picked tier has a rider price */}
+              {selected && selected.hail_rider_price > 0 && (
+                <label
+                  className={`mt-3 flex items-center gap-3 px-4 py-3 border-2 rounded-sm cursor-pointer transition-colors ${
+                    addHailRider ? "border-amber-500 bg-amber-50" : "border-dashed border-amber-300 hover:bg-amber-50/40"
+                  }`}
+                  data-testid="proposal-hail-rider"
+                >
+                  <input
+                    type="checkbox"
+                    checked={addHailRider}
+                    onChange={(e) => setAddHailRider(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  <div className="flex-1 flex items-baseline justify-between gap-2 text-sm">
+                    <span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mr-1">Optional</span>
+                      <span className="font-bold">Add Hail Rider — Impact Damage Coverage</span>
+                    </span>
+                    <span className="font-mono font-black text-zinc-900">
+                      +${selected.hail_rider_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </label>
+              )}
+            </div>
+          )}
         </div>
+          );
+        })()}
 
         {/* Scope card */}
         <div className="bg-white border border-zinc-200 rounded-sm p-5">
@@ -256,7 +345,15 @@ export default function ProposalSign() {
               <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-700 mb-2">{data.scope.scope_1_title}</h3>
               <ul className="space-y-1.5 text-xs leading-relaxed text-zinc-800" data-testid="proposal-scope-1">
                 {data.scope.scope_1.map((b, i) => (
-                  <li key={i} className="flex gap-2"><span className="text-blue-700 font-mono">{i + 1}.</span><span>{b}</span></li>
+                  <li key={i} className="flex gap-2">
+                    <span className="text-blue-700 font-mono">{i + 1}.</span>
+                    {/* Scope bullets come from our own server-side templates
+                        (e.g. "<b>Flashing:</b> All penetrations…") and can
+                        include limited inline HTML. Rendering as raw text
+                        showed the tags to customers verbatim. Templates
+                        are trusted — no user-generated markup lands here. */}
+                    <span dangerouslySetInnerHTML={{ __html: b }} />
+                  </li>
                 ))}
               </ul>
             </div>
@@ -266,7 +363,10 @@ export default function ProposalSign() {
               <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-700 mb-2">{data.scope.scope_2_title}</h3>
               <ul className="space-y-1.5 text-xs leading-relaxed text-zinc-800" data-testid="proposal-scope-2">
                 {data.scope.scope_2.map((b, i) => (
-                  <li key={i} className="flex gap-2"><span className="text-blue-700 font-mono">{i + 1}.</span><span>{b}</span></li>
+                  <li key={i} className="flex gap-2">
+                    <span className="text-blue-700 font-mono">{i + 1}.</span>
+                    <span dangerouslySetInnerHTML={{ __html: b }} />
+                  </li>
                 ))}
               </ul>
             </div>
@@ -276,7 +376,10 @@ export default function ProposalSign() {
               <h3 className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-700 mb-2">Key Advantages</h3>
               <ul className="space-y-1.5 text-xs leading-relaxed text-zinc-800" data-testid="proposal-advantages">
                 {data.scope.key_advantages.map((b, i) => (
-                  <li key={i} className="flex gap-2"><span className="text-emerald-700">✓</span><span>{b}</span></li>
+                  <li key={i} className="flex gap-2">
+                    <span className="text-emerald-700">✓</span>
+                    <span dangerouslySetInnerHTML={{ __html: b }} />
+                  </li>
                 ))}
               </ul>
             </div>

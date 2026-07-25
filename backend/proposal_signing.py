@@ -90,6 +90,35 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
         data = await compute_scope_data(deal["id"])
 
         signed_already = bool(deal.get("scope_signed_at"))
+
+        # Build the price picker options — one entry per warranty tier that
+        # has a non-zero price. Customer selects one at sign time; the chosen
+        # option's price populates `chosen_amount` on the deal. Options are
+        # ordered richest → cheapest so the recommended package sits first.
+        opt_25 = float(deal.get("proposal_option_25yr") or 0)
+        opt_20 = float(deal.get("proposal_option_1") or 0)
+        opt_15 = float(deal.get("proposal_option_2") or 0)
+        opt_10 = float(deal.get("proposal_option_3") or 0)
+        hail_25 = float(deal.get("hail_rider_25yr_add") or 0)
+        hail_20 = float(deal.get("hail_rider_20yr_add") or 0)
+        raw_options = [
+            {"id": "opt_25", "warranty_years": 25, "label": "25-Year Standard Warranty", "price": opt_25, "hail_rider_price": hail_25},
+            {"id": "opt_20", "warranty_years": 20, "label": "20-Year Standard Warranty", "price": opt_20, "hail_rider_price": hail_20},
+            {"id": "opt_15", "warranty_years": 15, "label": "15-Year Standard Warranty", "price": opt_15, "hail_rider_price": 0},
+            {"id": "opt_10", "warranty_years": 10, "label": "10-Year Standard Warranty", "price": opt_10, "hail_rider_price": 0},
+        ]
+        proposal_options = [o for o in raw_options if o["price"] > 0]
+        # Already-chosen amount (deal.chosen_amount) doubles as the default
+        # picker selection — if the rep locked one in before sending, the
+        # customer sees that pre-selected but can still change tiers.
+        chosen_id = ""
+        chosen_amount = float(deal.get("chosen_amount") or 0)
+        if chosen_amount > 0:
+            for o in proposal_options:
+                if abs(o["price"] - chosen_amount) < 0.01:
+                    chosen_id = o["id"]
+                    break
+
         return {
             "project_title": deal.get("title") or "Project Proposal",
             "company": data.get("client_company") or "",
@@ -100,7 +129,9 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
             "client_zip": data.get("client_zip") or "",
             "primary_contact_email": deal.get("primary_contact_email") or "",
             "primary_contact_name": deal.get("primary_contact_name") or "",
-            "chosen_amount": float(deal.get("chosen_amount") or 0),
+            "chosen_amount": chosen_amount,
+            "chosen_option_id": chosen_id,
+            "proposal_options": proposal_options,
             "proposed_roof_type": deal.get("proposed_roof_type") or "",
             "deal_type": deal.get("deal_type") or "Scope",
             # Effective bullets (template + overrides applied) — same shape as /scope-bullets GET
@@ -148,11 +179,50 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
         accepted = bool(body.get("accepted"))
         signature_data_url: Optional[str] = body.get("signature_data_url")
         signature_font = (body.get("signature_font") or "").strip()[:40]
+        # Optional Hail Rider opt-in — customer ticked the Hail Rider add-on
+        # on the sign page. Only applies to WC 20/25-yr systems that carry
+        # a non-zero rider price on the deal.
+        add_hail_rider = bool(body.get("add_hail_rider"))
+        # Customer picks a warranty tier from the price picker; the chosen
+        # option locks in `chosen_amount` and `winning_warranty_years` on
+        # the deal so downstream milestones + Books use the right price.
+        chosen_option_id = (body.get("chosen_option_id") or "").strip()
+        chosen_price = None
+        chosen_warranty_years = None
+        OPTION_FIELD_MAP = {
+            "opt_25": ("proposal_option_25yr", 25),
+            "opt_20": ("proposal_option_1", 20),
+            "opt_15": ("proposal_option_2", 15),
+            "opt_10": ("proposal_option_3", 10),
+        }
+        if chosen_option_id in OPTION_FIELD_MAP:
+            field, years = OPTION_FIELD_MAP[chosen_option_id]
+            chosen_price = float(deal.get(field) or 0)
+            chosen_warranty_years = years
+        # Fall back to whatever was already on the deal (a rep locked in a
+        # single option via the Calculator's "Set Option") so old sign links
+        # without a picker still work.
+        if not chosen_price or chosen_price <= 0:
+            fallback = float(deal.get("chosen_amount") or 0)
+            if fallback > 0:
+                chosen_price = fallback
+
+        # Hail Rider add-on price — added to the base only when the customer
+        # ticked the option AND the deal actually has a rider set for the
+        # chosen warranty tier.
+        hail_price = 0.0
+        if add_hail_rider and chosen_warranty_years == 25:
+            hail_price = float(deal.get("hail_rider_25yr_add") or 0)
+        elif add_hail_rider and chosen_warranty_years == 20:
+            hail_price = float(deal.get("hail_rider_20yr_add") or 0)
+        final_chosen_amount = (chosen_price or 0) + hail_price
 
         if not accepted:
             raise HTTPException(400, "Acceptance is required to sign the proposal")
         if not signer_name:
             raise HTTPException(400, "Signer name is required")
+        if final_chosen_amount <= 0:
+            raise HTTPException(400, "Please select a warranty tier before signing.")
 
         # Persist a drawn signature image (if provided) to Object Storage
         signature_file_id = ""
@@ -229,6 +299,15 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
                     "scope_signed_user_agent": ua[:300],
                     "scope_signature_file_id": signature_file_id,
                     "scope_signature_font": signature_font,
+                    # Persist customer's chosen tier + total. The hail-rider
+                    # opt-in is stamped so downstream Books / WO scope know
+                    # to include it in the contract total.
+                    "chosen_amount": float(final_chosen_amount),
+                    "chosen_date": now[:10],
+                    **({"winning_warranty_years": chosen_warranty_years} if chosen_warranty_years else {}),
+                    **({"chosen_option_id": chosen_option_id} if chosen_option_id else {}),
+                    **({"hail_rider_accepted": True, "hail_rider_accepted_amount": hail_price}
+                       if add_hail_rider and hail_price > 0 else {}),
                     "updated_at": now,
                 },
                 "$push": {"status_history": history_entry},
