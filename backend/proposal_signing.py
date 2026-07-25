@@ -99,35 +99,65 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
         opt_20 = float(deal.get("proposal_option_1") or 0)
         opt_15 = float(deal.get("proposal_option_2") or 0)
         opt_10 = float(deal.get("proposal_option_3") or 0)
-        # Hail Rider eligibility — FARM (Western Colloid) 20/25-yr systems
-        # only. On WC systems, "Hail Rider" is bundled INTO an NDL Warranty
-        # upgrade (Standard Material/Labor → NDL w/ Hail Rider). If the rep
-        # never set an explicit rider $ in the Calculator, auto-compute the
-        # customer-facing default (per Feb-2026 confirmed pricing):
-        #   20-yr NDL w/ Hail Rider: $0.20/SF, minimum $2,000
-        #   25-yr NDL w/ Hail Rider: $0.25/SF, minimum $2,500
-        # This keeps the opt-in visible for every WC FARM proposal without
-        # requiring the rep to remember an extra click in the Calculator.
+        # NDL Warranty Upgrade — Western Colloid all-tier opt-in. Standard
+        # base pricing (opt_10/15/20/25) already includes the Material/Labor
+        # warranty. The NDL upgrade replaces that with a No-Dollar-Limit
+        # warranty (and, for 20/25-yr, bundles in impact/hail coverage).
+        # Feb-2026 confirmed pricing:
+        #   10-yr NDL:                     $0.10/SF, min $1,000
+        #   15-yr NDL:                     $0.15/SF, min $1,500
+        #   20-yr NDL w/ Hail Rider:       $0.20/SF, min $2,000
+        #   25-yr NDL w/ Hail Rider:       $0.25/SF, min $2,500
         _roof_type = (deal.get("proposed_roof_type") or "").upper()
         _is_wc_farm = "FARM" in _roof_type or "FLUID APPLIED" in _roof_type
         _sqft = float(deal.get("total_sqft") or deal.get("property_sqft") or 0)
-        _default_rider_20 = round(max(_sqft * 0.20, 2000.0), 2) if _sqft > 0 else 2000.0
-        _default_rider_25 = round(max(_sqft * 0.25, 2500.0), 2) if _sqft > 0 else 2500.0
-        hail_25 = float(deal.get("hail_rider_25yr_add") or 0)
-        hail_20 = float(deal.get("hail_rider_20yr_add") or 0)
-        if _is_wc_farm:
-            # Backfill defaults so the customer always sees the opt-in on
-            # FARM proposals. The rep can still override via the Calculator.
-            if hail_25 <= 0 and opt_25 > 0:
-                hail_25 = _default_rider_25
-            if hail_20 <= 0 and opt_20 > 0:
-                hail_20 = _default_rider_20
+
+        def _ndl_default(years: int) -> float:
+            rates = {10: (0.10, 1000.0), 15: (0.15, 1500.0),
+                     20: (0.20, 2000.0), 25: (0.25, 2500.0)}
+            per_sf, floor = rates.get(years, (0.0, 0.0))
+            if per_sf == 0:
+                return 0.0
+            return round(max(_sqft * per_sf, floor), 2) if _sqft > 0 else floor
+
+        # Field lookup — check both the "ndl_upgrade_*" and legacy
+        # "hail_rider_*" fields (which we shipped first for 20/25-yr). If
+        # the rep never set an explicit $, fall back to the per-tier default.
+        def _ndl_for(years: int, base_price: float) -> float:
+            explicit = float(
+                deal.get(f"ndl_upgrade_{years}yr_add")
+                or (deal.get(f"hail_rider_{years}yr_add") if years in (20, 25) else 0)
+                or 0
+            )
+            if explicit > 0:
+                return explicit
+            if _is_wc_farm and base_price > 0:
+                return _ndl_default(years)
+            return 0.0
+
+        ndl_10 = _ndl_for(10, opt_10)
+        ndl_15 = _ndl_for(15, opt_15)
+        ndl_20 = _ndl_for(20, opt_20)
+        ndl_25 = _ndl_for(25, opt_25)
+
+        def _ndl_label(years: int) -> str:
+            if years in (20, 25):
+                return "Upgrade to NDL Warranty w/ Hail Rider"
+            return "Upgrade to NDL Warranty"
+
         raw_options = [
-            {"id": "opt_25", "warranty_years": 25, "label": "25-Year Standard Warranty", "price": opt_25, "hail_rider_price": hail_25},
-            {"id": "opt_20", "warranty_years": 20, "label": "20-Year Standard Warranty", "price": opt_20, "hail_rider_price": hail_20},
-            {"id": "opt_15", "warranty_years": 15, "label": "15-Year Standard Warranty", "price": opt_15, "hail_rider_price": 0},
-            {"id": "opt_10", "warranty_years": 10, "label": "10-Year Standard Warranty", "price": opt_10, "hail_rider_price": 0},
+            {"id": "opt_25", "warranty_years": 25, "label": "25-Year Standard Warranty",
+             "price": opt_25, "ndl_upgrade_price": ndl_25, "ndl_upgrade_label": _ndl_label(25)},
+            {"id": "opt_20", "warranty_years": 20, "label": "20-Year Standard Warranty",
+             "price": opt_20, "ndl_upgrade_price": ndl_20, "ndl_upgrade_label": _ndl_label(20)},
+            {"id": "opt_15", "warranty_years": 15, "label": "15-Year Standard Warranty",
+             "price": opt_15, "ndl_upgrade_price": ndl_15, "ndl_upgrade_label": _ndl_label(15)},
+            {"id": "opt_10", "warranty_years": 10, "label": "10-Year Standard Warranty",
+             "price": opt_10, "ndl_upgrade_price": ndl_10, "ndl_upgrade_label": _ndl_label(10)},
         ]
+        # Back-compat alias so older frontends that still read `hail_rider_price` continue working.
+        for o in raw_options:
+            o["hail_rider_price"] = o["ndl_upgrade_price"] if o["warranty_years"] in (20, 25) else 0
         proposal_options = [o for o in raw_options if o["price"] > 0]
         # Already-chosen amount (deal.chosen_amount) doubles as the default
         # picker selection — if the rep locked one in before sending, the
@@ -200,10 +230,11 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
         accepted = bool(body.get("accepted"))
         signature_data_url: Optional[str] = body.get("signature_data_url")
         signature_font = (body.get("signature_font") or "").strip()[:40]
-        # Optional Hail Rider opt-in — customer ticked the Hail Rider add-on
-        # on the sign page. Only applies to WC 20/25-yr systems that carry
-        # a non-zero rider price on the deal.
-        add_hail_rider = bool(body.get("add_hail_rider"))
+        # Optional NDL Warranty Upgrade opt-in — customer ticked the upgrade
+        # on the sign page. Applies to WC 10/15/20/25-yr; 20/25-yr bundle in
+        # Hail Rider coverage as part of the NDL upgrade. Accepts the legacy
+        # `add_hail_rider` flag too so older sign links still work.
+        add_ndl_upgrade = bool(body.get("add_ndl_upgrade") or body.get("add_hail_rider"))
         # Customer picks a warranty tier from the price picker; the chosen
         # option locks in `chosen_amount` and `winning_warranty_years` on
         # the deal so downstream milestones + Books use the right price.
@@ -228,26 +259,28 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
             if fallback > 0:
                 chosen_price = fallback
 
-        # Hail Rider add-on price — added to the base only when the customer
-        # ticked the option AND the deal actually has a rider set for the
-        # chosen warranty tier. If the rep never explicitly set a $ in the
-        # Calculator, fall back to the same defaults the public view used
-        # (WC FARM NDL Warranty with Hail Rider — Feb-2026 pricing):
-        #   20-yr: $0.20/SF, minimum $2,000
-        #   25-yr: $0.25/SF, minimum $2,500
-        hail_price = 0.0
-        if add_hail_rider and chosen_warranty_years in (20, 25):
-            field = f"hail_rider_{chosen_warranty_years}yr_add"
-            hail_price = float(deal.get(field) or 0)
-            if hail_price <= 0:
+        # NDL Upgrade price — added to base only when the customer opted in
+        # AND the chosen tier has a non-zero NDL price on the deal. If the
+        # rep never explicitly set a value in the Calculator, fall back to
+        # the Feb-2026 WC defaults (see _ndl_default in public_view).
+        ndl_price = 0.0
+        if add_ndl_upgrade and chosen_warranty_years in (10, 15, 20, 25):
+            explicit = float(
+                deal.get(f"ndl_upgrade_{chosen_warranty_years}yr_add")
+                or (deal.get(f"hail_rider_{chosen_warranty_years}yr_add") if chosen_warranty_years in (20, 25) else 0)
+                or 0
+            )
+            if explicit > 0:
+                ndl_price = explicit
+            else:
                 _rt = (deal.get("proposed_roof_type") or "").upper()
                 if "FARM" in _rt or "FLUID APPLIED" in _rt:
                     _sqft = float(deal.get("total_sqft") or deal.get("property_sqft") or 0)
-                    if chosen_warranty_years == 25:
-                        hail_price = round(max(_sqft * 0.25, 2500.0), 2) if _sqft > 0 else 2500.0
-                    else:  # 20-yr
-                        hail_price = round(max(_sqft * 0.20, 2000.0), 2) if _sqft > 0 else 2000.0
-        final_chosen_amount = (chosen_price or 0) + hail_price
+                    rates = {10: (0.10, 1000.0), 15: (0.15, 1500.0),
+                             20: (0.20, 2000.0), 25: (0.25, 2500.0)}
+                    per_sf, floor = rates[chosen_warranty_years]
+                    ndl_price = round(max(_sqft * per_sf, floor), 2) if _sqft > 0 else floor
+        final_chosen_amount = (chosen_price or 0) + ndl_price
 
         if not accepted:
             raise HTTPException(400, "Acceptance is required to sign the proposal")
@@ -338,8 +371,13 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
                     "chosen_date": now[:10],
                     **({"winning_warranty_years": chosen_warranty_years} if chosen_warranty_years else {}),
                     **({"chosen_option_id": chosen_option_id} if chosen_option_id else {}),
-                    **({"hail_rider_accepted": True, "hail_rider_accepted_amount": hail_price}
-                       if add_hail_rider and hail_price > 0 else {}),
+                    **({"ndl_upgrade_accepted": True,
+                        "ndl_upgrade_accepted_amount": ndl_price,
+                        # Legacy aliases kept in sync so downstream code that
+                        # still reads `hail_rider_accepted_*` continues working.
+                        "hail_rider_accepted": True,
+                        "hail_rider_accepted_amount": ndl_price}
+                       if add_ndl_upgrade and ndl_price > 0 else {}),
                     "updated_at": now,
                 },
                 "$push": {"status_history": history_entry},

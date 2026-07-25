@@ -27,8 +27,10 @@ export default function ProposalSign() {
   // Customer picks a warranty tier from the price picker on the summary card.
   // Defaults to whatever the rep pre-locked (data.chosen_option_id) or empty.
   const [selectedOptionId, setSelectedOptionId] = useState("");
-  // Hail Rider opt-in — only shown when the chosen tier has a non-zero rider
-  // price on the deal (Western Colloid 20/25-yr systems).
+  // NDL Warranty Upgrade opt-in — visible for any WC tier (10/15/20/25) with
+  // a non-zero upgrade price. Backend returns the tier-specific label
+  // ("Upgrade to NDL Warranty" or "…w/ Hail Rider"). Legacy state name
+  // (`addHailRider`) kept to avoid churn — semantics broadened to NDL upgrade.
   const [addHailRider, setAddHailRider] = useState(false);
 
   // Lazy-load Google Fonts the FIRST time the signing page mounts (and only
@@ -192,6 +194,8 @@ export default function ProposalSign() {
         signature_data_url,
         signature_font: signFont,   // chosen cursive style (None if customer drew)
         chosen_option_id: selectedOptionId,
+        add_ndl_upgrade: addHailRider,
+        // Legacy field name kept for back-compat with older backends.
         add_hail_rider: addHailRider,
       });
       setSuccess(r.data);
@@ -249,8 +253,14 @@ export default function ProposalSign() {
         {(() => {
           const options = data.proposal_options || [];
           const selected = options.find((o) => o.id === selectedOptionId);
-          const hailPrice = selected && addHailRider ? (selected.hail_rider_price || 0) : 0;
-          const runningTotal = (selected?.price || 0) + hailPrice;
+          // Prefer new `ndl_upgrade_price` field; fall back to the legacy
+          // `hail_rider_price` field for back-compat with older backends.
+          const ndlPrice = selected ? Number(selected.ndl_upgrade_price ?? selected.hail_rider_price ?? 0) : 0;
+          const ndlLabel = selected?.ndl_upgrade_label || (selected?.warranty_years >= 20
+            ? "Upgrade to NDL Warranty w/ Hail Rider"
+            : "Upgrade to NDL Warranty");
+          const upgradeCost = addHailRider ? ndlPrice : 0;
+          const runningTotal = (selected?.price || 0) + upgradeCost;
           return (
         <div className="bg-white border border-zinc-200 rounded-sm p-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
@@ -305,14 +315,15 @@ export default function ProposalSign() {
                   );
                 })}
               </div>
-              {/* Hail Rider opt-in — WC 20/25-yr NDL upgrade that bundles
-                  the Hail Rider into an NDL Warranty */}
-              {selected && selected.hail_rider_price > 0 && (
+              {/* NDL Warranty Upgrade opt-in — visible for any tier with
+                  a non-zero upgrade price. Label reflects whether Hail
+                  Rider is bundled in (20/25-yr) or not (10/15-yr). */}
+              {selected && ndlPrice > 0 && (
                 <label
                   className={`mt-3 flex items-center gap-3 px-4 py-3 border-2 rounded-sm cursor-pointer transition-colors ${
                     addHailRider ? "border-amber-500 bg-amber-50" : "border-dashed border-amber-300 hover:bg-amber-50/40"
                   }`}
-                  data-testid="proposal-hail-rider"
+                  data-testid="proposal-ndl-upgrade"
                 >
                   <input
                     type="checkbox"
@@ -323,10 +334,10 @@ export default function ProposalSign() {
                   <div className="flex-1 flex items-baseline justify-between gap-2 text-sm">
                     <span>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mr-1">Optional</span>
-                      <span className="font-bold">Upgrade to NDL Warranty w/ Hail Rider</span>
+                      <span className="font-bold">{ndlLabel}</span>
                     </span>
                     <span className="font-mono font-black text-zinc-900">
-                      +${selected.hail_rider_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      +${ndlPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 </label>

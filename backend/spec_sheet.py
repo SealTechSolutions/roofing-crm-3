@@ -1086,32 +1086,35 @@ def _pricing_table(s, doc, template: dict | None = None):
     elems.append(t)
     elems.append(Spacer(1, gap_after))
 
-    # ---- [OPTIONAL] Hail Rider — Western Colloid 20/25-yr systems only ----
-    # Rendered whenever the deal has hail_rider_25 or hail_rider_20 set (the
-    # Calculator writes these when the rep ticks the Hail Rider toggle on a
-    # Western Colloid 20 or 25-yr column). Skipped for non-FARM templates so
-    # non-Western-Colloid quotes stay unaffected.
+    # ---- [OPTIONAL] NDL Warranty Upgrade — Western Colloid all tiers ----
+    # 10/15-yr = pure NDL upgrade; 20/25-yr NDL bundles in the Hail Rider.
+    # Rendered when any tier has a non-zero upgrade price on the deal.
+    # Skipped for non-FARM templates (only WC FARM ships with this option).
     if has_tier_table:
-        hr25 = float(doc.get("hail_rider_25") or 0)
+        hr10 = float(doc.get("hail_rider_10") or 0)
+        hr15 = float(doc.get("hail_rider_15") or 0)
         hr20 = float(doc.get("hail_rider_20") or 0)
-        # Detect Western Colloid FARM template by tier_table headers. Only WC
-        # FARM ships with the four-tier "25-YEAR SYSTEM / …" comparison table.
+        hr25 = float(doc.get("hail_rider_25") or 0)
         _tt_headers = ((doc.get("_tier_table") or {}).get("headers") or [])
         _is_wc_farm = any("25-YEAR SYSTEM" in h.upper() for h in _tt_headers)
-        if _is_wc_farm and (hr25 > 0 or hr20 > 0):
+        if _is_wc_farm and (hr10 > 0 or hr15 > 0 or hr20 > 0 or hr25 > 0):
             hail_rows = [["Warranty Upgrade", "Price"]]
             if hr25 > 0:
                 hail_rows.append(["25-Year NDL Warranty w/ Hail Rider (Upgrade)", _currency(hr25)])
             if hr20 > 0:
                 hail_rows.append(["20-Year NDL Warranty w/ Hail Rider (Upgrade)", _currency(hr20)])
+            if hr15 > 0:
+                hail_rows.append(["15-Year NDL Warranty (Upgrade)", _currency(hr15)])
+            if hr10 > 0:
+                hail_rows.append(["10-Year NDL Warranty (Upgrade)", _currency(hr10)])
             elems.append(Paragraph(
-                '[OPTIONAL] NDL Warranty w/ Hail Rider &mdash; Warranty Upgrade',
+                '[OPTIONAL] NDL Warranty Upgrade',
                 s["h2"],
             ))
             elems.append(Paragraph(
                 '<font size="9" color="#52525B">Upgrades the manufacturer\'s Standard Material &amp; Labor '
-                'warranty to a full No-Dollar-Limit (NDL) warranty that includes impact-damage '
-                '(hail) coverage. Customer may opt in when signing the proposal.</font>',
+                'warranty to a full No-Dollar-Limit (NDL) warranty. 20- and 25-year NDL upgrades also '
+                'include impact-damage (hail) coverage. Customer may opt in when signing the proposal.</font>',
                 s["body"],
             ))
             elems.append(Spacer(1, 0.04 * inch))

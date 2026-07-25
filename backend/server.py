@@ -5599,28 +5599,39 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
         # [OPTIONAL] Hail Rider add-on section under the Base Investment
         # table when either value is > 0 AND the roof type resolves to
         # a Western Colloid FARM template.
-        # Hail Rider — Western Colloid 20/25-yr only. Rendered as an
-        # [OPTIONAL] NDL Warranty w/ Hail Rider add-on section under the
-        # Base Investment table when either value is > 0 AND the roof type
-        # resolves to a Western Colloid FARM template. If the rep never
-        # explicitly set a rider $ in the Calculator, auto-default per the
-        # Feb-2026 WC pricing sheet:
-        #   20-yr NDL w/ Hail Rider: $0.20/SF, minimum $2,000
-        #   25-yr NDL w/ Hail Rider: $0.25/SF, minimum $2,500
-        "hail_rider_20": float(deal.get("hail_rider_20yr_add") or 0) or (
-            round(max(float(deal.get("total_sqft") or deal.get("property_sqft") or 0) * 0.20, 2000.0), 2)
-            if ("FARM" in (deal.get("proposed_roof_type") or "").upper()
-                or "FLUID APPLIED" in (deal.get("proposed_roof_type") or "").upper())
-               and float(deal.get("proposal_option_1") or 0) > 0
-            else 0
-        ),
-        "hail_rider_25": float(deal.get("hail_rider_25yr_add") or 0) or (
-            round(max(float(deal.get("total_sqft") or deal.get("property_sqft") or 0) * 0.25, 2500.0), 2)
-            if ("FARM" in (deal.get("proposed_roof_type") or "").upper()
-                or "FLUID APPLIED" in (deal.get("proposed_roof_type") or "").upper())
-               and float(deal.get("proposal_option_25yr") or 0) > 0
-            else 0
-        ),
+        # NDL Warranty Upgrade — Western Colloid all tiers. 10/15-yr = pure
+        # NDL upgrade; 20/25-yr NDL bundles in the Hail Rider. Rendered as a
+        # single [OPTIONAL] section under the Base Investment table. If the
+        # rep never explicitly set a $ in the Calculator, auto-default per
+        # the Feb-2026 WC pricing sheet:
+        #   10-yr NDL:               $0.10/SF, min $1,000
+        #   15-yr NDL:               $0.15/SF, min $1,500
+        #   20-yr NDL w/ Hail Rider: $0.20/SF, min $2,000
+        #   25-yr NDL w/ Hail Rider: $0.25/SF, min $2,500
+        # Kept as `hail_rider_*` doc keys for spec_sheet.py back-compat.
+        **{
+            f"hail_rider_{years}": (
+                float(deal.get(f"ndl_upgrade_{years}yr_add")
+                      or (deal.get(f"hail_rider_{years}yr_add") if years in (20, 25) else 0)
+                      or 0)
+                or (
+                    round(max(float(deal.get("total_sqft") or deal.get("property_sqft") or 0) * per_sf, floor), 2)
+                    if ("FARM" in (deal.get("proposed_roof_type") or "").upper()
+                        or "FLUID APPLIED" in (deal.get("proposed_roof_type") or "").upper())
+                       and float(deal.get({10: "proposal_option_3",
+                                           15: "proposal_option_2",
+                                           20: "proposal_option_1",
+                                           25: "proposal_option_25yr"}[years]) or 0) > 0
+                    else 0
+                )
+            )
+            for years, per_sf, floor in [
+                (10, 0.10, 1000.0),
+                (15, 0.15, 1500.0),
+                (20, 0.20, 2000.0),
+                (25, 0.25, 2500.0),
+            ]
+        },
         "total_sqft": float(deal.get("total_sqft") or 0),
         "color": color,
         "roof_type_label": (deal.get("proposed_roof_type") or "silicone").lower(),
