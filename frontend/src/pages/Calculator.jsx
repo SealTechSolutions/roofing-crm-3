@@ -588,6 +588,12 @@ export default function Calculator() {
     setSavingToDeal(true);
     try {
       const body = { ...deal, [field]: customerRounded };
+      // Persist the SF the rep typed in the Calculator so the Scope PDF
+      // "Install approximately N SF (S SQ)" bullet reflects reality instead
+      // of falling back to 0. Only overwrites if the rep typed something —
+      // an empty SF box leaves deal.total_sqft untouched.
+      const typedSf = Number(totalSf);
+      if (typedSf > 0) body.total_sqft = typedSf;
       if (laborField) body[laborField] = Math.round((col.laborAdd || 0) * 100) / 100;
       if (ohField) body[ohField] = col.ohPct;
       if (prField) body[prField] = col.prPct;
@@ -668,6 +674,10 @@ export default function Calculator() {
     setSavingToDeal(true);
     try {
       const body = { ...deal, ...updates };
+      // Persist the SF typed in the Calculator so the Scope PDF's
+      // "Install approximately N SF (S SQ)" line reflects the rep's number.
+      const typedSf = Number(totalSf);
+      if (typedSf > 0) body.total_sqft = typedSf;
       // Persist the rep's typed Custom Add-Ons alongside the per-option prices.
       body.calc_custom_addons = (customAddons || [])
         .map((r) => ({ label: (r.label || "").trim(), cost: Number(r.cost || 0) }))
@@ -772,6 +782,10 @@ export default function Calculator() {
         winning_warranty_years: col.system.warranty_years || null,
         winning_system_name: col.system.name || "",
       };
+      // Also persist the rep-typed SF so downstream POs / scope reflect
+      // the same square footage the calc used.
+      const typedSf = Number(totalSf);
+      if (typedSf > 0) body.total_sqft = typedSf;
       ["id","created_at","updated_at","created_by",
        "materials_cost","labor_cost","subcontractor_cost","other_expenses_total",
        "total_costs","profit","margin_pct","is_deleted","deleted_at","deleted_by",
