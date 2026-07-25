@@ -2916,6 +2916,18 @@ async def _bill_gl_warnings(bill: dict) -> list:
 @api_router.post("/invoices", response_model=Invoice)
 async def create_invoice(body: InvoiceIn, current=Depends(get_current_user)):
     data = body.model_dump()
+    # Default the Books entity to the parent operating company (SealTech
+    # Building Solutions) unless the caller explicitly picked another.
+    # Keeps rep-driven invoice creation from ever landing in the wrong
+    # ledger — the dropdown in the invoice form is the escape hatch for
+    # the rare inter-company case.
+    if not data.get("entity_id"):
+        parent = await db.entities.find_one({"is_parent": True, "is_active": True}, {"_id": 0, "id": 1})
+        if not parent:
+            # Fall back to any active entity so we never write a null id
+            parent = await db.entities.find_one({"is_active": True}, {"_id": 0, "id": 1})
+        if parent:
+            data["entity_id"] = parent["id"]
     # Pre-fill bill-to from contact if not provided
     if data.get("customer_contact_id") and not data.get("bill_to_company") and not data.get("bill_to_name"):
         bt = await _build_bill_to_from_contact(data["customer_contact_id"])
