@@ -415,29 +415,52 @@ def _auto_scope_from_deal(deal: dict, db) -> str:
     the template's `wo_scope_2` if present (Work-Order-tailored), otherwise
     scope_2 (customer-facing). FARM templates ship a wo_scope_2 that ends
     with a "Manufacturer Spec:" placeholder so the rep pastes the spec from
-    Library → Western Colloid → Specifications before sending."""
+    Library → Western Colloid → Specifications before sending.
+
+    Emits **plain text with blank-line section breaks** — the Work-Order PDF
+    treats the description as a single Paragraph with `<br/>` line wraps
+    (see `work_orders.py::_build_pdf`), so any HTML tags emitted here would
+    leak into the WO textarea. Section titles are UPPERCASED for emphasis
+    since the PDF can't reliably style inline bold in a plain textarea flow.
+    """
+    import re
+
+    def _strip_html(s: str) -> str:
+        """Strip inline HTML tags the scope templates use (<b>, <i>, <br/>)
+        so the sub sees clean plain text in the WO modal."""
+        s = re.sub(r"</?\s*br\s*/?\s*>", "\n", s or "", flags=re.IGNORECASE)
+        s = re.sub(r"<[^>]+>", "", s)
+        # Collapse any lingering HTML entities the scope authors dropped in.
+        s = s.replace("&mdash;", "—").replace("&nbsp;", " ").replace("&amp;", "&")
+        s = s.replace("&lt;", "<").replace("&gt;", ">").replace("&rsquo;", "'").replace("&quot;", '"')
+        return s.strip()
+
     try:
         from spec_sheet import _resolve_template, _apply_scope_overrides
         base = _resolve_template(deal.get("proposed_roof_type") or "")
         eff = _apply_scope_overrides(base, deal.get("scope_overrides") or {})
-        chunks = []
+        sections: list[str] = []
         if eff.get("scope_1"):
-            chunks.append(f"<b>{eff.get('scope_1_title', 'Inspection and Prep')}</b>")
-            chunks.extend([f"• {b}" for b in eff["scope_1"]])
-        # The template can supply a Work-Order-only override list. When the
-        # template's `wo_scope_2_title` is None, the override bullets are
-        # appended directly to the same list (no section header) — used by
-        # FARM so the sub sees one continuous scope of work.
+            title = eff.get("scope_1_title") or "Inspection and Prep"
+            bullets = "\n".join(f"• {_strip_html(b)}" for b in eff["scope_1"])
+            sections.append(f"{title.upper()}\n{bullets}")
         if "wo_scope_2" in base:
             wo_bullets = base.get("wo_scope_2") or []
             wo_title = base.get("wo_scope_2_title")
+            bullets = "\n".join(f"• {_strip_html(b)}" for b in wo_bullets)
             if wo_title:
-                chunks.append(f"<br/><b>{wo_title}</b>")
-            chunks.extend([f"• {b}" for b in wo_bullets])
+                sections.append(f"{wo_title.upper()}\n{bullets}")
+            else:
+                # No header override — append inline to the last section
+                if sections:
+                    sections[-1] = sections[-1] + "\n" + bullets
+                else:
+                    sections.append(bullets)
         elif eff.get("scope_2"):
-            chunks.append(f"<br/><b>{eff.get('scope_2_title', 'Application')}</b>")
-            chunks.extend([f"• {b}" for b in eff["scope_2"]])
-        return "<br/>".join(chunks)
+            title = eff.get("scope_2_title") or "Application"
+            bullets = "\n".join(f"• {_strip_html(b)}" for b in eff["scope_2"])
+            sections.append(f"{title.upper()}\n{bullets}")
+        return "\n\n".join(sections)
     except Exception:
         return ""
 
