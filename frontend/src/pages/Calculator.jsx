@@ -930,15 +930,50 @@ export default function Calculator() {
       });
   }, [systems, selectedVendor]);
 
-  // Auto-select the deal's "winning system" when entering Materials mode.
-  // (Declared AFTER filteredSystems so its dep-array doesn't hit a TDZ.)
+  // Auto-select the deal's "winning system" so the rep doesn't have to
+  // re-pick the same warranty band they already priced when building the
+  // scope. Signal-priority (best → worst):
+  //   1. `winning_warranty_years` — set the last time materials were pushed
+  //   2. `chosen_option_id` — set once the customer signs the proposal
+  //   3. `chosen_amount` fuzzy-matched against the four `proposal_option_*`
+  //      slots (within 20%, accounts for NDL / hail-rider upgrades)
+  // Only auto-picks when the compare grid is empty AND the deal has a signal
+  // (never overrides the rep's manual pick, never fights their vendor swap).
   useEffect(() => {
-    if (mode !== "materials" || !deal || !deal.winning_warranty_years) return;
-    const sys = filteredSystems.find((s) => s.warranty_years === deal.winning_warranty_years);
-    if (sys && !selectedSystemIds.includes(sys.id)) {
-      if (selectedSystemIds.length === 0) toggleSystem(sys.id);
+    if (!deal || filteredSystems.length === 0 || selectedSystemIds.length > 0) return;
+
+    const OPTION_ID_TO_WY = { opt_25: 25, opt_20: 20, opt_15: 15, opt_10: 10 };
+    const PROPOSAL_FIELDS = [
+      { field: "proposal_option_25yr", wy: 25 },
+      { field: "proposal_option_1",    wy: 20 },
+      { field: "proposal_option_2",    wy: 15 },
+      { field: "proposal_option_3",    wy: 10 },
+    ];
+
+    let targetWy = null;
+
+    if (deal.winning_warranty_years) {
+      targetWy = Number(deal.winning_warranty_years);
+    } else if (deal.chosen_option_id && OPTION_ID_TO_WY[deal.chosen_option_id]) {
+      targetWy = OPTION_ID_TO_WY[deal.chosen_option_id];
+    } else if (Number(deal.chosen_amount) > 0) {
+      const chosen = Number(deal.chosen_amount);
+      let best = null;
+      for (const { field, wy } of PROPOSAL_FIELDS) {
+        const price = Number(deal[field] || 0);
+        if (price <= 0) continue;
+        const diffPct = Math.abs(price - chosen) / chosen;
+        if (best === null || diffPct < best.diffPct) best = { wy, diffPct };
+      }
+      // 20% tolerance covers hail-rider / NDL upgrades that inflate the
+      // signed total above the raw proposal-option row.
+      if (best && best.diffPct <= 0.20) targetWy = best.wy;
     }
-  }, [mode, deal, filteredSystems]);
+
+    if (!targetWy) return;
+    const sys = filteredSystems.find((s) => s.warranty_years === targetWy);
+    if (sys) toggleSystem(sys.id);
+  }, [deal?.id, filteredSystems]);
 
   if (loading) {
     return <div className="p-10 text-center text-zinc-500"><Loader2 className="w-5 h-5 animate-spin inline mr-2" /> Loading catalog…</div>;
