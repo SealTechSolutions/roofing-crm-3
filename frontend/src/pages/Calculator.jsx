@@ -658,14 +658,28 @@ export default function Calculator() {
       if (col.hailRiderEligible && col.system.warranty_years === 20) {
         body.hail_rider_20yr_add = Math.round(col.hailRiderAmount || 0);
       }
+      // 💡 Persist material + subcontractor COST too — so the Live Project
+      // P&L card shows this scope's real numbers the moment the option is
+      // set, no second "Push Materials" click required. rawCost is
+      // pre-markup; multiply by (1 + shipping%) so the P&L matches "material
+      // price the deal actually has to spend to receive the goods".
+      //
+      // NOTE: SealTech's install crews are 1099 subcontractors, not W2 —
+      // so the labor $ typed on the calc column is written to
+      // `subcontractor_cost`. The `labor_cost` field is reserved for
+      // future W2 employees and stays untouched here.
+      const shipMult = 1 + Number(settings.markup_pct || 0) / 100;
+      body.materials_cost = Math.round(col.rawCost * shipMult * 100) / 100;
+      body.subcontractor_cost = Math.round((col.laborAdd || 0) * 100) / 100;
+      // Do NOT strip materials_cost / subcontractor_cost below — we want them persisted.
       ["id","created_at","updated_at","created_by",
-       "materials_cost","labor_cost","subcontractor_cost","other_expenses_total",
+       "labor_cost","other_expenses_total",
        "total_costs","profit","margin_pct","is_deleted","deleted_at","deleted_by",
        "assigned_user_name","primary_contact_name","property_name"
       ].forEach((k) => { delete body[k]; });
       const r = await api.put(`/deals/${deal.id}`, body);
       setDeal(r.data);
-      toast.success(`Set Option ${letter} (${col.system.warranty_years}-yr) = ${formatCurrency(baseForDeal)} on the deal.`);
+      toast.success(`Option ${letter} set: ${formatCurrency(baseForDeal)}. Live P&L updated (Materials ${formatCurrency(body.materials_cost)}${col.laborAdd > 0 ? ` · Subcontractor ${formatCurrency(body.subcontractor_cost)}` : ""}).`);
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message);
     } finally {
@@ -839,15 +853,16 @@ export default function Calculator() {
         addLines(ln, ln.packed, ln.addon.label);
       }
 
-      // Labor cost — push the rep-entered per-column labor $ so the Live
-      // Project P&L card shows an estimated labor cost alongside materials.
-      // Skipped when the rep hasn't entered a labor number for this warranty.
+      // Sub-crew cost — push the rep-entered per-column labor $ as a
+      // Subcontractor cost_item (SealTech's install crews are 1099 subs,
+      // not W2). The `Labor` category on the Live P&L stays available for
+      // future W2 employees.
       if (Number(col.laborAdd) > 0) {
         newCostItems.push({
-          category: "Labor",
+          category: "Subcontractor",
           vendor_id: null,
-          vendor_name: "SealTech Crew (in-house)",
-          description: `Labor estimate — ${col.system.name} (${col.system.warranty_years}-yr) — from Calculator`,
+          vendor_name: "1099 Install Crew",
+          description: `Sub-crew estimate — ${col.system.name} (${col.system.warranty_years}-yr) — from Calculator`,
           amount: Math.round(Number(col.laborAdd) * 100) / 100,
           date: today,
           status: "Pending",
@@ -873,7 +888,7 @@ export default function Calculator() {
       const r = await api.put(`/deals/${deal.id}`, body);
       setDeal(r.data);
 
-      toast.success(`Pushed ${newTakeoff.length} take-off line${newTakeoff.length === 1 ? "" : "s"} + ${newCostItems.length} cost line${newCostItems.length === 1 ? "" : "s"} (materials${col.laborAdd > 0 ? " + labor" : ""}) for ${col.system.name}.`);
+      toast.success(`Pushed ${newTakeoff.length} take-off line${newTakeoff.length === 1 ? "" : "s"} + ${newCostItems.length} cost line${newCostItems.length === 1 ? "" : "s"} (materials${col.laborAdd > 0 ? " + 1099 subcontractor" : ""}) for ${col.system.name}.`);
 
       if (andDownloadPo) {
         // Open the existing PO PDF endpoint in a new tab. The endpoint reads
@@ -1564,9 +1579,9 @@ function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, on
             </div>
           </div>
         )}
-        {/* Labor — per-warranty input, free-form $ (per-SF or flat-project) */}
+        {/* 1099 Subcontractor / Labor — per-warranty free-form $ */}
         <div className="flex items-center justify-between gap-2 font-mono">
-          <label className="text-zinc-600 text-[11px]">+ Labor ($ for this option)</label>
+          <label className="text-zinc-600 text-[11px]">+ 1099 Sub Labor ($ for this option)</label>
           <input
             type="number" min="0" step="50"
             value={laborAdd || ""}
@@ -1574,7 +1589,7 @@ function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, on
             placeholder="0"
             data-testid={`labor-input-${testIdSuffix}`}
             className="w-24 border border-zinc-300 px-2 h-7 text-xs font-mono text-right focus:outline-none focus:border-blue-700"
-            title="Enter total labor $ for this system on this job (per-SF × SF or flat-project). Saved on the deal."
+            title="Total 1099 subcontractor labor $ for this system on this job (per-SF × SF or flat-project). Saved to the deal's Subcontractor cost bucket on Set → Option — W2 Labor bucket stays reserved for future in-house employees."
           />
         </div>
         {(settings.overhead_pct || 0) > 0 && (
