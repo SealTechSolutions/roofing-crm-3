@@ -41,8 +41,8 @@ DEFAULT_SETTINGS = {
     "handling_pct": 12.0,      # 12% handling fee applied to the marked-up total
     "handling_basis": "marked_up",  # "marked_up" or "raw"
     "waste_pct": 0.0,          # optional waste factor added to qty
-    "overhead_pct": 30.0,      # Overhead % applied to (raw + shipping + handling + warranty + labor)
-    "profit_pct": 20.0,        # Profit % applied compounded after Overhead
+    "overhead_pct": 20.0,      # Overhead % applied to (raw + shipping + handling + warranty + labor)
+    "profit_pct": 30.0,        # Profit % applied compounded after Overhead
 }
 
 

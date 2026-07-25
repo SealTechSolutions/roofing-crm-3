@@ -179,7 +179,7 @@ export default function Calculator() {
   const [products, setProducts] = useState([]);
   const [systems, setSystems] = useState([]);
   const [recipes, setRecipes] = useState({}); // {system_id: [recipe_rows]}
-  const [settings, setSettings] = useState({ markup_pct: 20, handling_pct: 12, handling_basis: "marked_up", waste_pct: 0, overhead_pct: 30, profit_pct: 20 });
+  const [settings, setSettings] = useState({ markup_pct: 20, handling_pct: 12, handling_basis: "marked_up", waste_pct: 0, overhead_pct: 20, profit_pct: 30 });
   const [loading, setLoading] = useState(true);
 
   // Persisted prefs (loaded once on mount via the lazy initialiser).
