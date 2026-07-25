@@ -2595,29 +2595,43 @@ async def email_purchase_order(deal_id: str, vendor_id: str, body: dict = Body(d
     po_num = po["po_number"]
     vendor_name = po["vendor"]["name"] or "Vendor"
     project_name = po["project_name"]
-    subject = f"Purchase Order — {po_num}"
 
-    body_text = (
-        f"Hi {po['vendor'].get('contact_name') or vendor_name},\n\n"
-        f"Please find attached Purchase Order {po_num} for project {project_name}.\n\n"
-        f"Could you confirm receipt, lead time, and pricing? Please call Darren Oliver at 720-715-9955 "
-        f"if you have any questions or to discuss volume pricing.\n\n"
-        f"Thank you,\n"
-        f"{po['requested_by'].get('name') or 'SealTech Building Solutions'}\n"
-        f"SealTech Building Solutions  ·  720-715-9955"
-    )
+    # Allow the caller to override the subject and body (compose modal on the
+    # frontend prefills these from the same defaults, lets the rep edit, then
+    # posts them back so nothing is lost between "review" and "send").
+    override_subject = (body.get("subject") or "").strip()
+    override_body_text = body.get("body_text")
+    override_body_html = body.get("body_html")
 
-    body_html = f"""
-    <html><body style="font-family: Arial, Helvetica, sans-serif; color: #0A0A0A; max-width: 620px;">
-      <p style="margin: 0 0 16px;">Hi {po['vendor'].get('contact_name') or vendor_name},</p>
-      <p style="margin: 0 0 16px;">Please find attached <b>Purchase Order {po_num}</b> for project <b>{project_name}</b>.</p>
-      <p style="margin: 16px 0;">Could you confirm receipt, lead time, and pricing? Please call <b>Darren Oliver at 720-715-9955</b> if you have any questions or to discuss volume pricing.</p>
-      <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
-        <b style="color: #0A0A0A;">{po['requested_by'].get('name') or 'SealTech Building Solutions'}</b><br/>
-        SealTech Building Solutions  ·  720-715-9955  ·  projects@sealtechsolutions.co
-      </p>
-    </body></html>
-    """
+    subject = override_subject or f"Purchase Order — {po_num}"
+
+    if override_body_text is not None and override_body_text != "":
+        body_text = override_body_text
+    else:
+        body_text = (
+            f"Hi {po['vendor'].get('contact_name') or vendor_name},\n\n"
+            f"Please find attached Purchase Order {po_num} for project {project_name}.\n\n"
+            f"Could you confirm receipt, lead time, and pricing? Please call Darren Oliver at 720-715-9955 "
+            f"if you have any questions or to discuss volume pricing.\n\n"
+            f"Thank you,\n"
+            f"{po['requested_by'].get('name') or 'SealTech Building Solutions'}\n"
+            f"SealTech Building Solutions  ·  720-715-9955"
+        )
+
+    if override_body_html is not None and override_body_html != "":
+        body_html = override_body_html
+    else:
+        body_html = f"""
+        <html><body style="font-family: Arial, Helvetica, sans-serif; color: #0A0A0A; max-width: 620px;">
+          <p style="margin: 0 0 16px;">Hi {po['vendor'].get('contact_name') or vendor_name},</p>
+          <p style="margin: 0 0 16px;">Please find attached <b>Purchase Order {po_num}</b> for project <b>{project_name}</b>.</p>
+          <p style="margin: 16px 0;">Could you confirm receipt, lead time, and pricing? Please call <b>Darren Oliver at 720-715-9955</b> if you have any questions or to discuss volume pricing.</p>
+          <p style="margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #E4E4E7; color: #52525B; font-size: 12px;">
+            <b style="color: #0A0A0A;">{po['requested_by'].get('name') or 'SealTech Building Solutions'}</b><br/>
+            SealTech Building Solutions  ·  720-715-9955  ·  projects@sealtechsolutions.co
+          </p>
+        </body></html>
+        """
 
     try:
         from email_sender import send_email, EmailNotConfigured
