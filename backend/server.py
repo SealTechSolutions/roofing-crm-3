@@ -7748,7 +7748,34 @@ async def _auto_create_deposit_invoice(deal_id: str, percentage: float = 50.0) -
 
     title = deal.get("title") or "Project"
     pct_label = f"{int(percentage)}%" if float(percentage).is_integer() else f"{percentage:g}%"
-    description = f"{title} — {pct_label} Deposit (signed by customer)"
+    # Enrich the deposit description with the chosen system + warranty tier +
+    # NDL upgrade so the customer sees WHAT they're depositing on — not just
+    # "50% Deposit". Falls back gracefully when the tier or system are missing.
+    _system_bits = []
+    _yrs = deal.get("winning_warranty_years") or 0
+    if _yrs:
+        _system_bits.append(f"{int(_yrs)}-Year")
+    _roof = (deal.get("proposed_roof_type") or "").strip()
+    if _roof:
+        # Trim any parenthetical acronym for a cleaner customer line, e.g.
+        # "FARM (Fluid Applied Reinforced Membrane)" → "Fluid Applied Reinforced Membrane"
+        if "(" in _roof and ")" in _roof:
+            inside = _roof[_roof.find("(") + 1:_roof.rfind(")")].strip()
+            _system_bits.append(inside or _roof)
+        else:
+            _system_bits.append(_roof)
+    _ndl_amount = float(
+        deal.get("ndl_upgrade_accepted_amount") or deal.get("hail_rider_accepted_amount") or 0
+    )
+    if _ndl_amount > 0:
+        if _yrs in (20, 25):
+            _system_bits.append("with Upgraded NDL Warranty w/ Hail Rider")
+        else:
+            _system_bits.append("with Upgraded NDL Warranty")
+    else:
+        _system_bits.append("with Standard Manufacturer's Warranty")
+    system_suffix = f" — {' '.join(_system_bits)}" if _system_bits else ""
+    description = f"{title} — {pct_label} Deposit (signed by customer){system_suffix}"
 
     data = {
         "id": str(uuid.uuid4()),
@@ -8129,7 +8156,31 @@ async def _auto_create_final_invoice(deal_id: str, user_id: str = "manual") -> d
             project_address = "  ·  ".join([p for p in [addr1, line2] if p])
 
     title = deal.get("title") or "Project"
-    description = f"{title} — Final Invoice (project completion)"
+    # Mirror the deposit line description — include system, warranty tier,
+    # and NDL upgrade so the customer sees exactly what they're paying for.
+    _system_bits = []
+    _yrs = deal.get("winning_warranty_years") or 0
+    if _yrs:
+        _system_bits.append(f"{int(_yrs)}-Year")
+    _roof = (deal.get("proposed_roof_type") or "").strip()
+    if _roof:
+        if "(" in _roof and ")" in _roof:
+            inside = _roof[_roof.find("(") + 1:_roof.rfind(")")].strip()
+            _system_bits.append(inside or _roof)
+        else:
+            _system_bits.append(_roof)
+    _ndl_amount = float(
+        deal.get("ndl_upgrade_accepted_amount") or deal.get("hail_rider_accepted_amount") or 0
+    )
+    if _ndl_amount > 0:
+        if _yrs in (20, 25):
+            _system_bits.append("with Upgraded NDL Warranty w/ Hail Rider")
+        else:
+            _system_bits.append("with Upgraded NDL Warranty")
+    else:
+        _system_bits.append("with Standard Manufacturer's Warranty")
+    system_suffix = f" — {' '.join(_system_bits)}" if _system_bits else ""
+    description = f"{title} — Final Invoice (project completion){system_suffix}"
     invoice_today = datetime.now(timezone.utc).date().isoformat()
 
     data = {
