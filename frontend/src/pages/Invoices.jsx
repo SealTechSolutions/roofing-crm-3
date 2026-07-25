@@ -360,14 +360,22 @@ export function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
   }, []);
   useZipAutofill(form.bill_to_zip, fillBillToFromZip);
 
-  // Load Books entities for the entity picker
+  // Load Books entities for the entity picker. If the invoice was created
+  // pre-defaulting era (or from a migration where entity_id ended up null),
+  // stamp it with the parent entity so the dropdown never shows
+  // "— No GL Posting —" as a default. The rep can still switch to any
+  // other entity via the dropdown — this only backfills a truly blank one.
   useEffect(() => {
     api.get("/books/entities").then((r) => {
-      setEntities(r.data || []);
-      if (!form.entity_id) {
-        const parent = (r.data || []).find((e) => e.is_parent);
-        if (parent) setForm((f) => ({ ...f, entity_id: parent.id }));
-      }
+      const list = r.data || [];
+      setEntities(list);
+      setForm((f) => {
+        if (f.entity_id) return f;
+        const parent = list.find((e) => e.is_parent && e.is_active);
+        const fallback = parent || list.find((e) => e.is_active);
+        if (!fallback) return f;
+        return { ...f, entity_id: fallback.id };
+      });
     }).catch(() => setEntities([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
