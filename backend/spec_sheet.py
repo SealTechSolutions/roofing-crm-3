@@ -855,16 +855,123 @@ def _resolve_template(roof_type: str | None, current_roof_type: str | None = Non
     If `current_roof_type` indicates new construction, prefer the
     new-construction variant of the membrane system (when one exists).
     Falls back to the silicone restoration scope when nothing matches.
+
+    Admin overrides stored in the settings collection (see
+    `apply_scope_bullet_overrides`) are automatically layered on top so
+    the boilerplate can be edited without a code deploy.
     """
     key = "".join(ch for ch in str(roof_type or "").lower() if ch.isalnum())
     # Custom-scope path always wins over new-construction mapping
     if key in ("constructionproject", "other", "otherconstructionwork"):
-        return CUSTOM_SCOPE_TEMPLATE
+        return _with_overrides("custom", CUSTOM_SCOPE_TEMPLATE)
     if _is_new_construction(current_roof_type) and key in NEW_CONSTRUCTION_MAP:
-        return NEW_CONSTRUCTION_MAP[key]
+        return _with_overrides(_editable_key_for(NEW_CONSTRUCTION_MAP[key]), NEW_CONSTRUCTION_MAP[key])
     if not roof_type:
-        return SILICONE_TEMPLATE
-    return ROOF_TEMPLATE_MAP.get(key, SILICONE_TEMPLATE)
+        return _with_overrides("silicone", SILICONE_TEMPLATE)
+    resolved = ROOF_TEMPLATE_MAP.get(key, SILICONE_TEMPLATE)
+    return _with_overrides(_editable_key_for(resolved), resolved)
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Admin-editable "Scope Boilerplate" overrides
+# ═════════════════════════════════════════════════════════════════════════
+# Server.py loads admin overrides from Mongo on startup and pushes them into
+# `_SCOPE_BULLET_OVERRIDES` via `set_scope_bullet_overrides()`. Every
+# `_resolve_template()` call then transparently layers those overrides on
+# top of the hardcoded templates below — no callers need to change.
+#
+# Structure: {"<editable_key>": {"scope_1": [...], "wo_scope_2": [...]}}
+# Values omitted or empty lists fall back to the code default.
+
+# Editable-template registry — human-friendly keys → the underlying dict
+# reference + display name. Only templates the admin ever needs to tweak
+# are exposed here; the UI derives its options from this dict.
+EDITABLE_TEMPLATES: "list[dict]" = [
+    {"key": "silicone",              "name": "Silicone (Restoration)",           "ref": SILICONE_TEMPLATE},
+    {"key": "silicone_granules",     "name": "Silicone w/ Granules",             "ref": SILICONE_GRANULES_TEMPLATE},
+    {"key": "farm",                  "name": "FARM (Fluid Applied Reinforced)",  "ref": FARM_TEMPLATE},
+    {"key": "tpo",                   "name": "TPO (Standard)",                   "ref": TPO_TEMPLATE},
+    {"key": "tpo_overlay",           "name": "TPO Overlay",                      "ref": TPO_OVERLAY_TEMPLATE},
+    {"key": "tpo_replacement",       "name": "TPO Replacement",                  "ref": TPO_REPLACEMENT_TEMPLATE},
+    {"key": "epdm",                  "name": "EPDM (Standard)",                  "ref": EPDM_TEMPLATE},
+    {"key": "epdm_overlay",          "name": "EPDM Overlay",                     "ref": EPDM_OVERLAY_TEMPLATE},
+    {"key": "epdm_replacement",      "name": "EPDM Replacement",                 "ref": EPDM_REPLACEMENT_TEMPLATE},
+    {"key": "pvc_overlay",           "name": "PVC Overlay",                      "ref": PVC_OVERLAY_TEMPLATE},
+    {"key": "pvc_replacement",       "name": "PVC Replacement",                  "ref": PVC_REPLACEMENT_TEMPLATE},
+    {"key": "modbit",                "name": "Modified Bitumen",                 "ref": MODBIT_TEMPLATE},
+    {"key": "modbit_overlay",        "name": "Modified Bitumen Overlay",         "ref": MODBIT_OVERLAY_TEMPLATE},
+    {"key": "modbit_replacement",    "name": "Modified Bitumen Replacement",     "ref": MODBIT_REPLACEMENT_TEMPLATE},
+    {"key": "bur",                   "name": "Built-Up Roof (BUR)",              "ref": BUR_TEMPLATE},
+    {"key": "metal",                 "name": "Metal Roof Restoration",           "ref": METAL_TEMPLATE},
+    {"key": "shingle",               "name": "Asphalt Shingle",                  "ref": SHINGLE_TEMPLATE},
+    {"key": "tile",                  "name": "Tile Roof",                        "ref": TILE_TEMPLATE},
+    {"key": "custom",                "name": "Custom / Other Construction",      "ref": CUSTOM_SCOPE_TEMPLATE},
+]
+
+
+def _editable_key_for(template_ref: dict) -> str:
+    """Reverse-lookup the editable key given a template dict reference."""
+    for row in EDITABLE_TEMPLATES:
+        if row["ref"] is template_ref:
+            return row["key"]
+    return ""
+
+
+def editable_templates_for_api() -> list:
+    """JSON-serializable snapshot of EDITABLE_TEMPLATES with per-template
+    defaults so the frontend can render the editor without needing to know
+    which fields are supported per template."""
+    out = []
+    for row in EDITABLE_TEMPLATES:
+        tpl = row["ref"] or {}
+        sections = {}
+        if isinstance(tpl.get("scope_1"), list):
+            sections["scope_1"] = {
+                "label": tpl.get("scope_1_title") or "Inspection and Prep",
+                "defaults": list(tpl.get("scope_1") or []),
+            }
+        if isinstance(tpl.get("wo_scope_2"), list):
+            sections["wo_scope_2"] = {
+                "label": "Work Order — Extra Bullets",
+                "defaults": list(tpl.get("wo_scope_2") or []),
+            }
+        out.append({
+            "key": row["key"],
+            "name": row["name"],
+            "title": tpl.get("title") or row["name"],
+            "sections": sections,
+        })
+    return out
+
+
+_SCOPE_BULLET_OVERRIDES: dict = {}
+
+
+def set_scope_bullet_overrides(overrides: dict) -> None:
+    """Replace the in-memory override map (called from server.py on
+    startup and after every PUT /api/settings/scope-bullets save)."""
+    global _SCOPE_BULLET_OVERRIDES
+    _SCOPE_BULLET_OVERRIDES = overrides or {}
+
+
+def _with_overrides(editable_key: str, template: dict) -> dict:
+    """Return a merged copy of `template` layered with the admin override
+    for `editable_key`, if any. Only `scope_1` and `wo_scope_2` are
+    override-eligible today — everything else in the template (tier tables,
+    warranty labels, key advantages, exclusions) stays hard-coded."""
+    if not editable_key or not _SCOPE_BULLET_OVERRIDES:
+        return template
+    ov = _SCOPE_BULLET_OVERRIDES.get(editable_key)
+    if not isinstance(ov, dict):
+        return template
+    merged = dict(template)
+    for field in ("scope_1", "wo_scope_2"):
+        v = ov.get(field)
+        if isinstance(v, list):
+            cleaned = [str(x).strip() for x in v if str(x).strip()]
+            if cleaned:
+                merged[field] = cleaned
+    return merged
 
 
 def _apply_scope_overrides(template: dict, overrides: dict | None) -> dict:

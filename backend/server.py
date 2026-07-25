@@ -7359,6 +7359,13 @@ async def on_startup():
     except Exception as e:
         logger.warning(f"Storage init failed (uploads will not work): {e}")
 
+    # Prime the scope-bullet override cache so admin edits go live at boot.
+    try:
+        await _load_scope_overrides_into_cache()
+        logger.info("Scope-bullet overrides loaded into spec_sheet cache")
+    except Exception as e:
+        logger.warning(f"Scope-bullet override load failed: {e}")
+
     # Seed Books module — entities + default Chart of Accounts (idempotent)
     try:
         await seed_default_entities(db)
@@ -8393,6 +8400,155 @@ def _is_number(v) -> bool:
         return True
     except (TypeError, ValueError):
         return False
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Scope Boilerplate Editor — admin-editable Inspection & Prep bullets and
+# Work-Order extra bullets, per roof-system template. Overrides are stored
+# in the settings collection under key `scope_bullet_overrides` and pushed
+# into the spec_sheet module cache at startup + after every save.
+# ═════════════════════════════════════════════════════════════════════════
+
+SCOPE_BULLETS_KEY = "scope_bullet_overrides"
+
+
+async def _load_scope_overrides_into_cache() -> dict:
+    """Read overrides from Mongo and prime the spec_sheet cache. Called
+    once at startup and again after every admin save."""
+    from spec_sheet import set_scope_bullet_overrides
+    doc = await db.settings.find_one({"key": SCOPE_BULLETS_KEY})
+    stored = (doc or {}).get("value") or {}
+    if not isinstance(stored, dict):
+        stored = {}
+    set_scope_bullet_overrides(stored)
+    return stored
+
+
+@api_router.get("/settings/scope-bullets")
+async def get_scope_bullets(current=Depends(get_current_user)):
+    """Returns every editable template with its code-defaults, the current
+    admin override (if any), and the effective bullet list the PDF/WO will
+    actually use. Any authenticated user can read; only admins can edit."""
+    from spec_sheet import editable_templates_for_api
+    doc = await db.settings.find_one({"key": SCOPE_BULLETS_KEY})
+    stored = (doc or {}).get("value") or {}
+    if not isinstance(stored, dict):
+        stored = {}
+
+    templates = []
+    for tpl in editable_templates_for_api():
+        key = tpl["key"]
+        override = stored.get(key) or {}
+        sections_out = {}
+        for sec_key, sec in tpl["sections"].items():
+            override_list = override.get(sec_key) if isinstance(override, dict) else None
+            has_override = isinstance(override_list, list) and any(str(x).strip() for x in override_list)
+            effective = [str(x).strip() for x in override_list if str(x).strip()] if has_override else list(sec["defaults"])
+            sections_out[sec_key] = {
+                "label": sec["label"],
+                "defaults": sec["defaults"],
+                "effective": effective,
+                "has_override": has_override,
+            }
+        templates.append({
+            "key": key,
+            "name": tpl["name"],
+            "title": tpl["title"],
+            "sections": sections_out,
+        })
+
+    return {
+        "templates": templates,
+        "updated_at": (doc or {}).get("updated_at"),
+        "updated_by": (doc or {}).get("updated_by"),
+    }
+
+
+@api_router.put("/settings/scope-bullets")
+async def put_scope_bullets(
+    body: dict = Body(...),
+    current=Depends(get_current_user),
+):
+    """Upsert override bullets for one template. Admin-only.
+
+    Body: `{"template_key": "farm", "sections": {"scope_1": [...], "wo_scope_2": [...]}}`
+
+    Passing an empty list for a section removes the override for that
+    section (the template default takes over again). Sections not mentioned
+    in the body are left untouched.
+    """
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    from spec_sheet import EDITABLE_TEMPLATES
+    valid_keys = {r["key"] for r in EDITABLE_TEMPLATES}
+
+    template_key = str(body.get("template_key") or "").strip()
+    if template_key not in valid_keys:
+        raise HTTPException(status_code=400, detail=f"Unknown template_key {template_key!r}")
+
+    sections_in = body.get("sections") or {}
+    if not isinstance(sections_in, dict):
+        raise HTTPException(status_code=400, detail="sections must be an object")
+
+    doc = await db.settings.find_one({"key": SCOPE_BULLETS_KEY})
+    stored = (doc or {}).get("value") or {}
+    if not isinstance(stored, dict):
+        stored = {}
+    current_override = dict(stored.get(template_key) or {})
+
+    for sec_key, bullets in sections_in.items():
+        if sec_key not in ("scope_1", "wo_scope_2"):
+            continue
+        if not isinstance(bullets, list):
+            raise HTTPException(status_code=400, detail=f"{sec_key} must be a list of strings")
+        cleaned = [str(x).strip() for x in bullets if str(x).strip()]
+        if cleaned:
+            current_override[sec_key] = cleaned
+        else:
+            # Empty list → drop the override so the template default wins
+            current_override.pop(sec_key, None)
+
+    if current_override:
+        stored[template_key] = current_override
+    else:
+        stored.pop(template_key, None)
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.settings.update_one(
+        {"key": SCOPE_BULLETS_KEY},
+        {"$set": {"key": SCOPE_BULLETS_KEY, "value": stored, "updated_at": now, "updated_by": current["id"]}},
+        upsert=True,
+    )
+    await _load_scope_overrides_into_cache()
+    return await get_scope_bullets(current=current)
+
+
+@api_router.post("/settings/scope-bullets/reset")
+async def reset_scope_bullets(body: dict = Body(default={}), current=Depends(get_current_user)):
+    """Reset overrides. If `template_key` is provided, reset only that
+    template; otherwise wipe every override. Admin-only."""
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    template_key = str(body.get("template_key") or "").strip()
+    doc = await db.settings.find_one({"key": SCOPE_BULLETS_KEY})
+    stored = (doc or {}).get("value") or {}
+    if not isinstance(stored, dict):
+        stored = {}
+    if template_key:
+        stored.pop(template_key, None)
+    else:
+        stored = {}
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.settings.update_one(
+        {"key": SCOPE_BULLETS_KEY},
+        {"$set": {"key": SCOPE_BULLETS_KEY, "value": stored, "updated_at": now, "updated_by": current["id"]}},
+        upsert=True,
+    )
+    await _load_scope_overrides_into_cache()
+    return await get_scope_bullets(current=current)
 
 
 # ═════════════════════════════════════════════════════════════════════════
