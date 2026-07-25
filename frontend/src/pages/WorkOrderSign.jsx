@@ -262,18 +262,27 @@ export default function WorkOrderSign() {
           </a>
         </div>
 
-        {/* Embedded PDF preview — works on most desktops; mobile Safari shows
-            a blank iframe, which is why the "Open Work Order PDF" button above
-            is provided as the primary affordance. Keep iframe short so the
-            signature form below is always above the fold. */}
-        <div className="hidden md:block bg-white border border-zinc-200 rounded-sm overflow-hidden">
-          <iframe
-            src={`${API_BASE}/work-order/${token}/pdf`}
-            title={docLabel}
-            className="w-full"
-            style={{ height: "60vh" }}
-          />
-        </div>
+        {/* Embedded PDF preview REMOVED — cross-origin iframes for PDFs
+            render as a blank white area on mobile Safari and increasingly on
+            desktop browsers (Chrome hardened cross-origin PDF embedding).
+            The user reported "the page didn't open" because the huge blank
+            iframe visually killed the page and pushed the signature form
+            below the fold. Replaced with an inline plain-text scope-of-work
+            recap so the subcontractor can read everything without leaving
+            this page. Full PDF is still one tap away via the button above. */}
+        {(f.description || "").trim() && (
+          <div className="bg-white border border-zinc-200 rounded-sm p-5 text-sm" data-testid="wo-sign-scope">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">
+              {isCO ? "Change Order Detail" : "Scope of Work"}
+            </div>
+            <div className="whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-zinc-800">
+              {f.description}
+            </div>
+            <div className="mt-3 pt-3 border-t border-zinc-100 text-[11px] text-zinc-500">
+              Full formatted {docLabel.toLowerCase()} is available in the PDF above.
+            </div>
+          </div>
+        )}
 
         {/* Signature form */}
         <form onSubmit={submit} className="bg-white border border-zinc-200 rounded-sm p-5 space-y-4">
