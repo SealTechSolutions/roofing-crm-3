@@ -707,6 +707,12 @@ export default function DealDetail() {
         deal={deal}
         invoices={dealInvoices}
         assessments={dealAssessments}
+        onDepositMarkPaid={async (invoice) => {
+          // One-click flow from the pipeline pill: mark the deposit invoice
+          // Paid (posts journal + fires commission accrual) then refresh
+          // both the deal doc and its invoice list so the pill turns green.
+          await markInvoicePaid(invoice);
+        }}
         onTabChange={(tab) => {
           // Scroll to the area associated with that tab
           const sel = `[data-section="${tab}"]`;

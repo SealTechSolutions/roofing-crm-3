@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   CheckCircle2, Circle, Clock, ChevronRight, Send, FileText, DollarSign,
   Mail, Calendar as CalIcon, Wrench, Camera, Inbox, ArrowRight, Truck, ClipboardCheck,
-  Hammer, ShieldCheck, Lock, AlertCircle, Pencil,
+  Hammer, ShieldCheck, Lock, AlertCircle, Pencil, HardHat, Package,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------------------
@@ -25,15 +25,18 @@ import {
  * --------------------------------------------------------------------------- */
 
 const STAGES = [
-  { key: "assessment",      label: "Assessment",      Icon: ClipboardCheck, tab: "assessments" },
-  { key: "scope",           label: "Scope Sent",      Icon: FileText,       tab: "scope" },
-  { key: "won",             label: "Won / Signed",    Icon: ShieldCheck,    tab: "overview" },
-  { key: "deposit",         label: "Deposit Paid",    Icon: DollarSign,     tab: "milestones" },
-  { key: "materials",       label: "Materials Ordered", Icon: Truck,        tab: "schedule" },
-  { key: "scheduled",       label: "Scheduled",       Icon: CalIcon,        tab: "schedule" },
-  { key: "in_progress",     label: "In Progress",     Icon: Hammer,         tab: "photos" },
-  { key: "final_inspection",label: "Final Inspection",Icon: Camera,         tab: "photos" },
-  { key: "closed",          label: "Closed",          Icon: Lock,           tab: "overview" },
+  { key: "assessment",      label: "Assessment",       Icon: ClipboardCheck, tab: "assessments" },
+  { key: "scope",           label: "Scope Sent",       Icon: FileText,       tab: "scope" },
+  { key: "won",             label: "Won / Signed",     Icon: ShieldCheck,    tab: "overview" },
+  { key: "deposit",         label: "Deposit Paid",     Icon: DollarSign,     tab: "milestones" },
+  // Production Kickoff (mirrors the GoToProductionChecklist order)
+  { key: "wo_sent",         label: "WO Sent",          Icon: HardHat,        tab: "overview" },
+  { key: "scheduled",       label: "Scheduled",        Icon: CalIcon,        tab: "schedule" },
+  { key: "materials",       label: "Materials Ordered",Icon: Truck,          tab: "schedule" },
+  { key: "equipment",       label: "Equipment Ordered",Icon: Package,        tab: "overview" },
+  { key: "in_progress",     label: "In Progress",      Icon: Hammer,         tab: "photos" },
+  { key: "final_inspection",label: "Final Inspection", Icon: Camera,         tab: "photos" },
+  { key: "closed",          label: "Closed",           Icon: Lock,           tab: "overview" },
 ];
 
 function detectStageStates(deal, invoices = [], assessments = []) {
@@ -47,8 +50,13 @@ function detectStageStates(deal, invoices = [], assessments = []) {
   // Deposit paid = first milestone Paid OR at least one paid invoice
   const firstMs = milestones[0];
   stages.deposit = (firstMs && firstMs.status === "Paid") || invoices.some((i) => (i.status || "").toLowerCase() === "paid");
+  // WO Sent — stamped by WorkOrderModal when the sub is emailed
+  stages.wo_sent = !!deal?.last_work_order_sent_at;
   stages.materials = !!deal?.material_order_date;
   stages.scheduled = !!deal?.scheduled_start_date;
+  // Equipment ordered — deal.equipment_ordered is an array of ordered
+  // pieces (see /deals model). Non-empty list ⇒ stage complete.
+  stages.equipment = Array.isArray(deal?.equipment_ordered) && deal.equipment_ordered.length > 0;
   // In Progress when status says so OR start date is in the past
   const today = new Date().toISOString().slice(0, 10);
   stages.in_progress = status === "in progress" || (!!deal?.scheduled_start_date && deal.scheduled_start_date <= today);
@@ -69,12 +77,24 @@ function deriveCurrentStage(stageStates) {
   return { lastTrue, currentIdx };
 }
 
-export function DealStagePipeline({ deal, invoices = [], assessments = [], onTabChange, onAdvance }) {
+export function DealStagePipeline({ deal, invoices = [], assessments = [], onTabChange, onAdvance, onDepositMarkPaid }) {
   const stageStates = useMemo(() => detectStageStates(deal, invoices, assessments), [deal, invoices, assessments]);
   const { lastTrue, currentIdx } = deriveCurrentStage(stageStates);
 
+  // Deposit shortcut — if the pill is clicked while the deposit invoice is
+  // still unpaid, mark it paid inline (one-click UX instead of forcing the
+  // rep to hunt for the "Mark Paid" button on the amber banner). Falls back
+  // to plain tab navigation once the invoice is already Paid.
+  const depositInvoice = invoices.find((i) => (i.invoice_type || "").toLowerCase() === "deposit");
+  const depositUnpaid = depositInvoice && (depositInvoice.status || "").toLowerCase() !== "paid";
+
   const handleClick = (s, idx) => {
-    // Single click = navigate
+    // Deposit pill → if there's an unpaid deposit invoice, prefer the
+    // "record payment" action over the passive tab jump.
+    if (s.key === "deposit" && depositUnpaid && onDepositMarkPaid) {
+      onDepositMarkPaid(depositInvoice);
+      return;
+    }
     if (s.tab && onTabChange) onTabChange(s.tab);
   };
   const handleDouble = async (s, idx) => {
@@ -98,7 +118,15 @@ export function DealStagePipeline({ deal, invoices = [], assessments = [], onTab
                 onClick={() => handleClick(s, i)}
                 onDoubleClick={() => handleDouble(s, i)}
                 className={`flex flex-col items-center gap-1.5 px-2 py-1 min-w-[72px] cursor-pointer rounded-sm transition group ${isCurrent ? "ring-2 ring-blue-500" : ""}`}
-                title={done ? `${s.label} — done` : isCurrent ? `${s.label} — you are here` : `${s.label} — upcoming`}
+                title={
+                  s.key === "deposit" && depositUnpaid
+                    ? "Click to mark the deposit invoice as PAID"
+                    : done
+                    ? `${s.label} — done`
+                    : isCurrent
+                    ? `${s.label} — you are here`
+                    : `${s.label} — upcoming`
+                }
                 data-testid={`stage-${s.key}`}
               >
                 <div
