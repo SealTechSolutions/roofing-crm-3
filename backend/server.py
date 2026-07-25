@@ -4705,37 +4705,13 @@ async def email_spec_sheet(deal_id: str, body: dict = Body(default={}), current=
             except Exception:
                 continue
 
-    # Auto-attach project cover photo(s). The caller can pass an explicit
-    # `cover_photo_ids` list to override; otherwise we look up any project
-    # photo with is_cover=True for this deal. This is SAFE — the Material
-    # Take-Off PDF lives in `material_takeoffs`, not `project_photos`, so it
-    # cannot be picked up here (locked rule: takeoff NEVER goes to customer).
-    photo_ids = body.get("cover_photo_ids")
-    if photo_ids is None:
-        cover_photos = await db.project_photos.find(
-            {"deal_id": deal_id, "is_cover": True, "is_deleted": {"$ne": True}},
-            {"_id": 0},
-        ).to_list(5)
-    elif isinstance(photo_ids, list) and photo_ids:
-        cover_photos = await db.project_photos.find(
-            {"deal_id": deal_id, "id": {"$in": photo_ids}, "is_deleted": {"$ne": True}},
-            {"_id": 0},
-        ).to_list(len(photo_ids))
-    else:
-        cover_photos = []
-    for ph in cover_photos:
-        try:
-            data, ct = get_object(ph["storage_path"])
-            ext = (ph.get("content_type") or "image/jpeg").split("/")[-1].split("+")[0] or "jpg"
-            fname = ph.get("original_filename") or f"{project_label}-cover.{ext}"
-            attachments.append({
-                "filename": fname,
-                "data": data,
-                "mime": ph.get("content_type") or ct or "image/jpeg",
-            })
-        except Exception as e:
-            logger.warning(f"could not attach cover photo {ph.get('id')}: {e}")
-            continue
+    # Cover photo attachments — DISABLED as separate files. The cover photo
+    # is already embedded on Page 1 of the scope PDF (see spec_sheet.py's
+    # `_page1_has_inclusions` block), so attaching it a second time as a
+    # standalone JPG was redundant and confused customers (2026-02 fix).
+    # The `cover_photo_ids` field on the request is now ignored — kept as
+    # a no-op for API back-compat with older frontend builds.
+    _ = body.get("cover_photo_ids")
 
     cust_company = ""
     cid = deal.get("customer_contact_id") or deal.get("contact_id")
