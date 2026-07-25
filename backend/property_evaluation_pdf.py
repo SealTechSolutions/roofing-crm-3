@@ -235,24 +235,24 @@ FRAME_INNER_W = CONTENT_W - 12  # 12pt = 6pt left padding + 6pt right padding
 # threading editor logic.
 PURPOSE_OF_EVALUATION_PARTS = [
     (
-        "The purpose of this Roof Evaluation is to conduct a evaluation of the existing "
-        "roofing system to determine its current condition, remaining service life, and "
-        "suitability for continued performance. Through an inspection, documentation of "
-        "deficiencies, and analysis of key performance factors&mdash;including membrane "
-        "integrity, insulation performance, drainage characteristics, flashing details, "
-        "and structural support&mdash;this evaluation identifies the most appropriate "
-        "course of action among targeted repairs, full restoration, or complete "
-        "replacement."
+        "The purpose of this Roof Evaluation is to assess the existing roofing system "
+        "to determine its current condition, remaining service life, and suitability "
+        "for continued performance. Through a detailed inspection, documentation of "
+        "deficiencies, and analysis of key performance factors&mdash;including "
+        "membrane integrity, insulation performance, drainage characteristics, "
+        "flashing details, and structural support&mdash;this evaluation identifies "
+        "the most appropriate course of action among targeted repairs, full "
+        "restoration, or complete replacement."
     ),
     (
-        "The objective is to provide data-driven recommendations that maximize asset "
+        "The objective is to deliver data-driven recommendations that maximize asset "
         "longevity, minimize long-term costs, ensure compliance with applicable codes "
-        "and standards, and support informed decision-making aligned with the property "
-        "owner&rsquo;s operational and budgetary requirements. This process follows a "
-        "structured methodology that prioritizes sustainable solutions, such as "
-        "fluid-applied reinforced membrane systems, to extend roof service life while "
-        "mitigating risks associated with water intrusion, energy inefficiency, and "
-        "premature failure."
+        "and standards, and support informed decision-making aligned with the "
+        "property owner&rsquo;s operational and budgetary requirements. This process "
+        "follows a structured methodology that prioritizes sustainable solutions, "
+        "such as fluid-applied reinforced membrane systems, to extend roof service "
+        "life while mitigating risks associated with water intrusion, energy "
+        "inefficiency, and premature failure."
     ),
 ]
 
@@ -267,15 +267,17 @@ EXPECTED_OUTCOMES = [
 
 CONCLUSION_PARAGRAPHS = [
     "Commercial roofing systems represent significant financial and operational "
-    "assets. The primary objective of this evaluation extends beyond the "
-    "identification of current deficiencies to deliver an understanding of the "
-    "roof&rsquo;s present condition, intrinsic value, remaining service life, "
-    "potential risks, and long-term performance capabilities. By providing "
-    "objective, data-driven insights, this evaluation equips property owners and "
-    "others responsible with the critical information necessary to make strategic, "
-    "cost-effective decisions regarding repair, restoration, or replacement.",
+    "assets. The primary objective of this evaluation extends beyond simply "
+    "identifying current deficiencies. It delivers a comprehensive understanding "
+    "of the roof&rsquo;s present condition, intrinsic value, remaining service "
+    "life, potential risks, and long-term performance capabilities.",
 
-    "SealTech Solutions stands ready to support your asset management objectives. "
+    "By providing objective, data-driven insights, this evaluation equips property "
+    "owners and other stakeholders with the critical information needed to make "
+    "strategic, cost-effective decisions regarding repair, restoration, or "
+    "replacement.",
+
+    "SealTech Solutions stands ready to support your asset-management objectives. "
     "We would be pleased to conduct a full Commercial Roof Assessment Report&trade; "
     "at your convenience, offering detailed scoring, lifecycle analysis, and "
     "tailored recommendations&mdash;including the proven benefits of fluid-applied "
