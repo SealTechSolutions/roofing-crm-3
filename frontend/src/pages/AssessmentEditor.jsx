@@ -490,6 +490,29 @@ export default function AssessmentEditor() {
 // Step 1 — Cover & Property
 // =====================================================================
 function StepCover({ doc, update, updateAndSave, contacts, deals, properties, linkedDeal }) {
+  // Client selection auto-fills prepared_for + contact_name + contact_id from the linked record
+  const onClientPick = (contactId) => {
+    if (!contactId) {
+      update({ contact_id: "", prepared_for: "" });
+      return;
+    }
+    const c = contacts.find((x) => x.id === contactId);
+    if (!c) return;
+    const clientLabel = c.company_name || c.contact_name || "";
+    const patch = {
+      contact_id: c.id,
+      prepared_for: clientLabel,
+    };
+    if (!doc.contact_name && c.contact_name) patch.contact_name = c.contact_name;
+    update(patch);
+  };
+  // Sorted contacts for the client dropdown (alphabetical by company then contact name)
+  const sortedClientOptions = useMemo(() => {
+    const labelFor = (c) => c.company_name || c.contact_name || "";
+    return [...contacts]
+      .filter((c) => labelFor(c).trim().length > 0)
+      .sort((a, b) => labelFor(a).localeCompare(labelFor(b), undefined, { sensitivity: "base" }));
+  }, [contacts]);
   // Property selection auto-fills address + chains contact info from the linked record
   const onPropertyPick = (propertyId) => {
     if (!propertyId) {
@@ -525,7 +548,29 @@ function StepCover({ doc, update, updateAndSave, contacts, deals, properties, li
       <SectionTitle>Cover Block</SectionTitle>
       <div className="grid grid-cols-2 gap-4">
         <Field label="Prepared For (Client)" eval>
-          <input value={doc.prepared_for} onChange={(e) => update({ prepared_for: e.target.value })} className={inputCls} data-testid="prepared-for" />
+          <div className="flex gap-2">
+            <select
+              value={doc.contact_id || ""}
+              onChange={(e) => onClientPick(e.target.value)}
+              className={`${inputCls} flex-1`}
+              data-testid="prepared-for-picker"
+            >
+              <option value="">— Select an existing client to auto-fill —</option>
+              {sortedClientOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.company_name || c.contact_name}
+                  {c.company_name && c.contact_name ? ` · ${c.contact_name}` : ""}
+                </option>
+              ))}
+            </select>
+            <input
+              value={doc.prepared_for}
+              onChange={(e) => update({ prepared_for: e.target.value, contact_id: "" })}
+              className={`${inputCls} flex-1`}
+              placeholder="…or type a new client name"
+              data-testid="prepared-for"
+            />
+          </div>
         </Field>
         <Field label="Assessment Date" eval>
           <input type="date" value={doc.assessment_date || ""} onChange={(e) => update({ assessment_date: e.target.value })} className={inputCls} data-testid="assessment-date" />
@@ -570,7 +615,25 @@ function StepCover({ doc, update, updateAndSave, contacts, deals, properties, li
         <Field label="Linked Deal / Project (optional — enables photo attachments)" eval>
           <select value={doc.deal_id || ""} onChange={(e) => update({ deal_id: e.target.value })} className={inputCls} data-testid="link-deal">
             <option value="">— No project —</option>
-            {deals.map((d) => <option key={d.id} value={d.id}>{d.title || d.id.slice(0, 8)}</option>)}
+            {/* Active deals only (nothing in Won / Lost / Archived), sorted A→Z.
+                A "Show All Deals" fallback appears at the bottom so a closed
+                deal can still be linked in the rare case a rep needs it. */}
+            {deals
+              .filter((d) => !["Won", "Lost", "Archived", "Deleted"].includes(d.status))
+              .sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }))
+              .map((d) => (
+                <option key={d.id} value={d.id}>{d.title || d.id.slice(0, 8)}{d.status ? ` — ${d.status}` : ""}</option>
+              ))}
+            {deals.some((d) => ["Won", "Lost", "Archived"].includes(d.status)) && (
+              <optgroup label="── Closed / Archived ──">
+                {deals
+                  .filter((d) => ["Won", "Lost", "Archived"].includes(d.status))
+                  .sort((a, b) => (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }))
+                  .map((d) => (
+                    <option key={d.id} value={d.id}>{d.title || d.id.slice(0, 8)} — {d.status}</option>
+                  ))}
+              </optgroup>
+            )}
           </select>
         </Field>
         <Field label="Linked Contact (optional)">
