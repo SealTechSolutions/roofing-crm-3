@@ -1224,11 +1224,29 @@ def normalize_deal(data: dict) -> dict:
             cat = "Other"
             it["category"] = cat
         buckets[cat] += amt
-    data["cost_items"] = items
-    data["materials_cost"] = round(buckets["Materials"], 2)
-    data["labor_cost"] = round(buckets["Labor"], 2)
-    data["subcontractor_cost"] = round(buckets["Subcontractor"], 2)
-    data["other_expenses"] = round(buckets["Other"], 2)
+    # If the payload has NO cost_items, preserve any explicit `_cost` values
+    # already on the incoming deal (or previously stored). Callers such as
+    # the Calculator "Set → Option" flow and the P&L card's inline
+    # pencil-editor persist material / labor / sub estimates directly onto
+    # the deal without ever creating a cost_item row.
+    #
+    # When cost_items DO exist we recompute buckets from them so the numbers
+    # never drift out of sync — cost_items are the source of truth once the
+    # rep is tracking line-by-line.
+    if items:
+        data["cost_items"] = items
+        data["materials_cost"] = round(buckets["Materials"], 2)
+        data["labor_cost"] = round(buckets["Labor"], 2)
+        data["subcontractor_cost"] = round(buckets["Subcontractor"], 2)
+        data["other_expenses"] = round(buckets["Other"], 2)
+    else:
+        data["cost_items"] = []
+        # Preserve caller-supplied estimates; fall back to 0 only if truly unset.
+        for k in ("materials_cost", "labor_cost", "subcontractor_cost", "other_expenses"):
+            try:
+                data[k] = round(float(data.get(k) or 0), 2)
+            except (TypeError, ValueError):
+                data[k] = 0.0
 
     # Maintenance: derive next_maintenance_date / last_maintenance_date from visits + start date
     visits = data.get("maintenance_visits") or []

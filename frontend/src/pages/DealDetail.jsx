@@ -291,7 +291,7 @@ export default function DealDetail() {
       Number(deal.materials_cost || 0) +
       Number(deal.labor_cost || 0) +
       Number(deal.subcontractor_cost || 0) +
-      Number(deal.other_expenses_total || 0);
+      Number(deal.other_expenses || 0);
 
     // Client-side back-solve — same math the Live P&L card uses so the two
     // sections agree. Runs only when neither cost_items nor rolled-up
@@ -377,10 +377,10 @@ export default function DealDetail() {
     setSaving(true);
     try {
       const body = { ...deal, ...patch };
-      // Strip server-managed + server-computed fields. Backend recomputes these
-      // from cost_items / payment_milestones / proposal_options on PUT.
+      // Strip server-managed + server-computed fields ONLY. The `*_cost`
+      // fields are user-owned estimates — the backend preserves them when
+      // no cost_items exist (see `normalize_deal` in server.py).
       ["id", "created_at", "updated_at", "created_by",
-       "materials_cost", "labor_cost", "subcontractor_cost", "other_expenses_total",
        "total_costs", "profit", "margin_pct",
        "is_deleted", "deleted_at", "deleted_by",
        "assigned_user_name", "primary_contact_name", "property_name"
@@ -1011,7 +1011,7 @@ export default function DealDetail() {
         </div>
       </div>
       {/* Live Project P&L — top of the Money section, answers "what did we make?" at a glance */}
-      <ProjectLivePnL deal={deal} dealInvoices={dealInvoices} vendorBills={vendorBills} />
+      <ProjectLivePnL deal={deal} dealInvoices={dealInvoices} vendorBills={vendorBills} onSave={persist} />
 
       {/* Financials KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

@@ -24,6 +24,8 @@
  */
 import React, { useEffect, useState } from "react";
 import { api, formatCurrency } from "@/lib/api";
+import { Pencil, Check, X } from "lucide-react";
+import { toast } from "sonner";
 
 const CATEGORIES = [
   { key: "Materials",     label: "Materials",     dealField: "materials_cost",       accent: "text-blue-700" },
@@ -44,19 +46,81 @@ const FALLBACK_EQUIPMENT_RATES = {
   "Scaffolding":       800,
 };
 
-const Bar = ({ label, amount, total, accent, right }) => {
+const Bar = ({ label, amount, total, accent, right, dealField, onEdit }) => {
   const pct = total > 0 ? Math.min(100, (amount / total) * 100) : 0;
   return (
     <div className="mb-2 last:mb-0">
       <div className="flex items-center justify-between text-xs mb-1">
         <span className="font-bold uppercase tracking-wider text-zinc-700">{label}</span>
-        <span className={`font-mono font-bold ${accent}`}>{formatCurrency(amount)} {right && <span className="text-[10px] font-normal text-zinc-500">· {right}</span>}</span>
+        <span className="flex items-center gap-1.5">
+          <span className={`font-mono font-bold ${accent}`}>{formatCurrency(amount)}</span>
+          {right && <span className="text-[10px] font-normal text-zinc-500">· {right}</span>}
+          {dealField && onEdit && (
+            <button
+              onClick={onEdit}
+              data-testid={`pnl-edit-${label.toLowerCase()}`}
+              className="p-0.5 rounded-sm text-zinc-400 hover:text-blue-700 hover:bg-blue-50"
+              title={`Edit ${label} estimate`}
+            >
+              <Pencil className="w-3 h-3" />
+            </button>
+          )}
+        </span>
       </div>
       <div className="h-1.5 bg-zinc-100 rounded-sm overflow-hidden">
         <div
           className={`h-full ${accent.replace("text-", "bg-")}`}
           style={{ width: `${pct}%` }}
         />
+      </div>
+    </div>
+  );
+};
+
+const EditableRow = ({ label, initialValue, accent, dealField, onCancel, onSave }) => {
+  const [val, setVal] = useState(String(initialValue || ""));
+  const [saving, setSaving] = useState(false);
+  const submit = async () => {
+    setSaving(true);
+    try {
+      await onSave(dealField, Number(val) || 0);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="mb-2 last:mb-0" data-testid={`pnl-editor-${label.toLowerCase()}`}>
+      <div className="flex items-center justify-between gap-2 text-xs mb-1">
+        <span className={`font-bold uppercase tracking-wider ${accent}`}>{label}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-zinc-500 font-mono text-[11px]">$</span>
+          <input
+            type="number"
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") onCancel(); }}
+            data-testid={`pnl-input-${label.toLowerCase()}`}
+            autoFocus
+            className="w-28 border border-blue-500 px-2 h-7 text-xs font-mono text-right rounded-sm focus:outline-none"
+          />
+          <button
+            onClick={submit}
+            disabled={saving}
+            data-testid={`pnl-save-${label.toLowerCase()}`}
+            className="p-1 rounded-sm text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+            title="Save"
+          >
+            <Check className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onCancel}
+            data-testid={`pnl-cancel-${label.toLowerCase()}`}
+            className="p-1 rounded-sm text-zinc-500 hover:bg-zinc-100"
+            title="Cancel"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -70,9 +134,10 @@ const StatBox = ({ label, value, hint, accent, testId }) => (
   </div>
 );
 
-export default function ProjectLivePnL({ deal, dealInvoices, vendorBills }) {
+export default function ProjectLivePnL({ deal, dealInvoices, vendorBills, onSave }) {
   // --- Fetch admin-editable equipment rates once on mount ---
   const [equipmentRates, setEquipmentRates] = useState(FALLBACK_EQUIPMENT_RATES);
+  const [editingField, setEditingField] = useState(null); // 'materials_cost' | 'labor_cost' | ...
   useEffect(() => {
     let cancelled = false;
     api.get("/settings/equipment-rates")
@@ -233,25 +298,53 @@ export default function ProjectLivePnL({ deal, dealInvoices, vendorBills }) {
 
       {/* Category breakdown bars */}
       <div className="border-t border-zinc-100 pt-4">
-        <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3">Cost Breakdown by Category</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">Cost Breakdown by Category</div>
+          {onSave && (
+            <div className="text-[10px] text-zinc-400 italic">Click <Pencil className="inline w-3 h-3" /> to type an estimate directly</div>
+          )}
+        </div>
         {CATEGORIES.map((cat) => {
           const amount = estByCategory[cat.key] || 0;
           const pctOfCost = estTotal > 0 ? (amount / estTotal) * 100 : 0;
+          const isEditing = editingField === cat.dealField && cat.dealField;
+          const saveHandler = async (field, val) => {
+            try {
+              await onSave({ [field]: Math.round(val * 100) / 100 });
+              toast.success(`${cat.label} estimate saved`);
+              setEditingField(null);
+            } catch (e) {
+              toast.error(e?.response?.data?.detail || "Save failed");
+            }
+          };
           return (
             <div key={cat.key} data-testid={`pnl-category-${cat.key.toLowerCase()}`}>
-              <Bar
-                label={cat.label}
-                amount={amount}
-                total={maxCategoryValue}
-                accent={cat.accent}
-                right={estTotal > 0 ? `${pctOfCost.toFixed(0)}% of cost` : ""}
-              />
+              {isEditing ? (
+                <EditableRow
+                  label={cat.label}
+                  initialValue={Number(deal[cat.dealField] || 0)}
+                  accent={cat.accent}
+                  dealField={cat.dealField}
+                  onCancel={() => setEditingField(null)}
+                  onSave={saveHandler}
+                />
+              ) : (
+                <Bar
+                  label={cat.label}
+                  amount={amount}
+                  total={maxCategoryValue}
+                  accent={cat.accent}
+                  right={estTotal > 0 ? `${pctOfCost.toFixed(0)}% of cost` : ""}
+                  dealField={onSave ? cat.dealField : null}
+                  onEdit={() => setEditingField(cat.dealField)}
+                />
+              )}
             </div>
           );
         })}
         {estTotal === 0 && (
           <div className="text-xs text-zinc-500 py-3 text-center italic">
-            No cost estimates yet. Add materials, labor, or subcontractor costs on the &quot;Vendor Cost Line Items&quot; table below — or pull from the Calculator.
+            No cost estimates yet. Click any pencil above to type an estimate, add items on the &quot;Vendor Cost Line Items&quot; table below, or push materials from the Calculator.
           </div>
         )}
       </div>
