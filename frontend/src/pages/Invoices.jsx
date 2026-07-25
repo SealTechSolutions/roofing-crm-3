@@ -308,7 +308,7 @@ function IcQuickPicker({ entities, defaultFromId, onApply, onCancel }) {
 }
 
 
-export function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
+export function InvoiceEditor({ invoice, deals, onClose, onSaved, onSendEmail }) {
   const isNew = !invoice?.id;
   const [existingInvoices, setExistingInvoices] = useState([]); // for the linked deal
   const [changeOrders, setChangeOrders] = useState([]); // approved change orders on the linked deal
@@ -471,6 +471,21 @@ export function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
           bill_to_zip: billing.zip || "",
           bill_to_email: cust.email || "",
         };
+        // Auto-fill Counter Entity (Inter-Co) when the customer being billed
+        // is itself a SealTech entity — e.g., "Darren Oliver, LLC" as a
+        // customer maps to the entity of the same name. Matches on
+        // company_name first (strict), then contact_name (falls back to
+        // stripping "LLC/Inc/Corp/Co" suffixes for fuzzy matches).
+        const norm = (s) => (s || "").toLowerCase().replace(/[,.]/g, "").replace(/\b(llc|l\.l\.c|inc|incorporated|corp|corporation|co)\b/g, "").replace(/\s+/g, " ").trim();
+        const custNames = [cust.company_name, cust.contact_name].map(norm).filter(Boolean);
+        const match = entities.find((ent) => {
+          if (ent.id === form.entity_id) return false;  // can't invoice yourself
+          const en = norm(ent.name);
+          return en && custNames.some((cn) => cn === en);
+        });
+        if (match) {
+          patch.counter_entity_id = match.id;
+        }
       }
       if (d.property_id) {
         const p = await api.get(`/properties/${d.property_id}`);
@@ -578,6 +593,37 @@ export function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
         showGlWarnings(toast, r.data);
       }
       onSaved();
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save-then-email: persist any edits first (so the emailed PDF reflects
+  // whatever the rep just tweaked), then hand off to the parent's email
+  // modal. Parent (Invoices list OR DealDetail) supplies onSendEmail.
+  const saveAndEmail = async () => {
+    if (!onSendEmail) return;
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        amount_paid: Number(form.amount_paid || 0),
+        line_items: form.line_items.map((li) => ({ ...li, quantity: Number(li.quantity || 0), unit_price: Number(li.unit_price || 0) })),
+      };
+      let saved;
+      if (isNew) {
+        const r = await api.post("/invoices", payload);
+        saved = r.data;
+        toast.success(`Created ${saved.invoice_number}`);
+        showGlWarnings(toast, saved);
+      } else {
+        const r = await api.put(`/invoices/${invoice.id}`, payload);
+        saved = r.data;
+        showGlWarnings(toast, saved);
+      }
+      onSendEmail(saved);
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message);
     } finally {
@@ -878,6 +924,19 @@ export function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
             <button disabled={saving} onClick={save} className="px-4 h-9 text-xs font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 rounded-sm disabled:opacity-50" data-testid="save-invoice">
               {saving ? "Saving..." : (isNew ? "Create Invoice" : "Save Changes")}
             </button>
+            {/* Save & Email — only exposed by parents that pass onSendEmail
+                (currently Deal Detail's Review & Send flow). Persists edits
+                first so the outbound PDF matches what the rep saw. */}
+            {onSendEmail && (
+              <button
+                disabled={saving}
+                onClick={saveAndEmail}
+                className="px-4 h-9 text-xs font-bold uppercase tracking-wider bg-amber-700 text-white hover:bg-amber-800 rounded-sm disabled:opacity-50 inline-flex items-center gap-1.5"
+                data-testid="save-and-email-invoice"
+              >
+                {saving ? "Saving..." : "Save & Email →"}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -886,7 +945,7 @@ export function InvoiceEditor({ invoice, deals, onClose, onSaved }) {
 }
 
 // ---------- Email modal ----------
-function EmailInvoiceModal({ invoice, onClose, onSent }) {
+export function EmailInvoiceModal({ invoice, onClose, onSent }) {
   const [to, setTo] = useState(invoice.bill_to_email || "");
   const [cc, setCc] = useState(invoice.cc_email || "");
   const [aliases, setAliases] = useState([]);

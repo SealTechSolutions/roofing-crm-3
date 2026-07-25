@@ -11,7 +11,7 @@ import { formatPhoneDisplay } from "@/lib/format";
 import ProjectPhotos from "@/components/ProjectPhotos";
 import GrammarCheck from "@/components/GrammarCheck";
 import { DealStagePipeline, NextStepCard, DealActivityTimeline } from "@/components/DealWorkflow";
-import { InvoiceEditor } from "@/pages/Invoices";
+import { InvoiceEditor, EmailInvoiceModal } from "@/pages/Invoices";
 import ScopeEditorModal from "@/components/ScopeEditorModal";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 import DealSchedulePanel from "@/components/DealSchedulePanel";
@@ -44,6 +44,9 @@ export default function DealDetail() {
   const [dealAssessments, setDealAssessments] = useState([]);
   // One-click + Invoice / Record Payment quick-action modals (live on the Deal page itself)
   const [invoiceEditor, setInvoiceEditor] = useState(null); // null | invoice object (new or existing)
+  // Email modal for the "Save & Email" flow off the invoice editor. Kept
+  // separate so the editor can close before the email dialog opens.
+  const [invoiceEmailTarget, setInvoiceEmailTarget] = useState(null);
   const [scopeEditorOpen, setScopeEditorOpen] = useState(false);
   const [sendToFieldOpen, setSendToFieldOpen] = useState(false);
   const [workOrderOpen, setWorkOrderOpen] = useState(false);
@@ -1613,6 +1616,27 @@ export default function DealDetail() {
               .then((r) => setDealInvoices(r.data || []))
               .catch(() => {});
             toast.success("Invoice saved");
+          }}
+          onSendEmail={(saved) => {
+            // Close the editor first, then open the email dialog so the
+            // customer can be mailed without a second "Save" step.
+            setInvoiceEditor(null);
+            setInvoiceEmailTarget(saved);
+          }}
+        />
+      )}
+
+      {invoiceEmailTarget && (
+        <EmailInvoiceModal
+          invoice={invoiceEmailTarget}
+          onClose={() => setInvoiceEmailTarget(null)}
+          onSent={() => {
+            setInvoiceEmailTarget(null);
+            api
+              .get(`/invoices?deal_id=${id}`)
+              .then((r) => setDealInvoices(r.data || []))
+              .catch(() => {});
+            toast.success("Invoice emailed");
           }}
         />
       )}
