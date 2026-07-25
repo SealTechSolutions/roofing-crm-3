@@ -515,6 +515,12 @@ class DealIn(BaseModel):
     warranty_15yr_ndl: bool = False
     warranty_20yr_ndl: bool = False
     warranty_25yr_ndl: bool = False
+    # Hail Rider add-on — Western Colloid 20/25-yr systems only. Rep sets a
+    # customer-facing $ amount that's rendered on the scope as an
+    # "[OPTIONAL] Hail Rider — $X,XXX" line under the warranty option.
+    # Default suggested by the Calculator = max($0.12 × SF, $750).
+    hail_rider_20yr_add: float = 0.0
+    hail_rider_25yr_add: float = 0.0
     warranty_color: str = "white"
     cover_photo_file_id: Optional[str] = None
     # Change orders — approved scope additions/deductions that affect the contract total
@@ -5613,6 +5619,12 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
         "w15": float(deal.get("warranty_15yr_add") or 0),
         "w10": float(deal.get("warranty_10yr_add") or 0),
         "w25": float(deal.get("warranty_25yr_add") or 0),
+        # Hail Rider — Western Colloid 20/25-yr only. Rendered as an
+        # [OPTIONAL] Hail Rider add-on section under the Base Investment
+        # table when either value is > 0 AND the roof type resolves to
+        # a Western Colloid FARM template.
+        "hail_rider_20": float(deal.get("hail_rider_20yr_add") or 0),
+        "hail_rider_25": float(deal.get("hail_rider_25yr_add") or 0),
         "total_sqft": float(deal.get("total_sqft") or 0),
         "color": color,
         "roof_type_label": (deal.get("proposed_roof_type") or "silicone").lower(),

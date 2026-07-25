@@ -729,10 +729,19 @@ FARM_TEMPLATE = {
             ],
         ],
         "warranty_row": [
-            "25-Yr Warranty with Hail Rider Included",
-            "20-Yr Warranty with Hail Rider Included",
+            "25-Yr Standard Warranty Included",
+            "20-Yr Standard Warranty Included",
             "15-Yr Standard Warranty Included",
             "10-Yr Standard Warranty Included",
+        ],
+        # Base Investment labels — Hail Rider used to be silently baked in;
+        # it's now a separate [OPTIONAL] add-on rendered below the Base
+        # Investment table so the customer can opt in explicitly.
+        "base_warranty_labels": [
+            "25-Year Standard Warranty",
+            "20-Year Standard Warranty",
+            "15-Year Standard Warranty",
+            "10-Year Standard Warranty",
         ],
     },
 }
@@ -1077,7 +1086,50 @@ def _pricing_table(s, doc, template: dict | None = None):
     elems.append(t)
     elems.append(Spacer(1, gap_after))
 
-    # Templates with a tier_table normally enumerate warranties in-body and
+    # ---- [OPTIONAL] Hail Rider — Western Colloid 20/25-yr systems only ----
+    # Rendered whenever the deal has hail_rider_25 or hail_rider_20 set (the
+    # Calculator writes these when the rep ticks the Hail Rider toggle on a
+    # Western Colloid 20 or 25-yr column). Skipped for non-FARM templates so
+    # non-Western-Colloid quotes stay unaffected.
+    if has_tier_table:
+        hr25 = float(doc.get("hail_rider_25") or 0)
+        hr20 = float(doc.get("hail_rider_20") or 0)
+        # Detect Western Colloid FARM template by tier_table headers. Only WC
+        # FARM ships with the four-tier "25-YEAR SYSTEM / …" comparison table.
+        _tt_headers = ((doc.get("_tier_table") or {}).get("headers") or [])
+        _is_wc_farm = any("25-YEAR SYSTEM" in h.upper() for h in _tt_headers)
+        if _is_wc_farm and (hr25 > 0 or hr20 > 0):
+            hail_rows = [["Warranty Tier", "Hail Rider Add-On"]]
+            if hr25 > 0:
+                hail_rows.append(["25-Year Warranty — Hail Rider Add-On", _currency(hr25)])
+            if hr20 > 0:
+                hail_rows.append(["20-Year Warranty — Hail Rider Add-On", _currency(hr20)])
+            elems.append(Paragraph(
+                '[OPTIONAL] Hail Rider &mdash; Impact Damage Coverage',
+                s["h2"],
+            ))
+            elems.append(Paragraph(
+                '<font size="9" color="#52525B">Adds impact-damage coverage to the manufacturer\'s '
+                'warranty at the tier below. Customer may opt-in when signing the proposal.</font>',
+                s["body"],
+            ))
+            elems.append(Spacer(1, 0.04 * inch))
+            th = Table(hail_rows, colWidths=[4.5 * inch, 3.0 * inch])
+            th.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), BLUE),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 0), (-1, -1), table_font),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
+                ("TOPPADDING", (0, 0), (-1, -1), cell_pad),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), cell_pad),
+            ]))
+            elems.append(th)
+            elems.append(Spacer(1, gap_after))
+
     # skip the optional add-on section — unless they explicitly opt in via a
     # `warranty_upgrade` config (used by SILICONE for the NDL upgrade table).
     upgrade_cfg = (template or {}).get("warranty_upgrade") if template else None

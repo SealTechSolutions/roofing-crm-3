@@ -210,6 +210,10 @@ export default function Calculator() {
   // Everest warranty = $1,000 flat, NDL = $3,500 flat, both regardless of roof
   // size. Persisted to the deal as warranty_*_ndl booleans.
   const [ndlByWarranty, setNdlByWarranty] = useState({});
+  // Per-warranty Hail Rider $ — Western Colloid 20/25-yr systems only.
+  // Default suggestion = max($0.12 × SF, $750). 0 = do not include on the
+  // customer scope. Persisted to deal.hail_rider_{20,25}yr_add on Set Option.
+  const [hailRiderByWarranty, setHailRiderByWarranty] = useState({});
 
   const [deals, setDeals] = useState([]);
   const [selectedDealId, setSelectedDealId] = useState(initialDealId || "");
@@ -313,6 +317,15 @@ export default function Calculator() {
         20: !!r.data.warranty_20yr_ndl,
         15: !!r.data.warranty_15yr_ndl,
         10: !!r.data.warranty_10yr_ndl,
+      });
+      // Rehydrate Hail Rider $ (WC 20/25-yr only). `undefined` means "never
+      // set on this deal" — the calc column will show the default suggestion.
+      // Any concrete number (including 0) means "user set it".
+      setHailRiderByWarranty({
+        25: r.data.hail_rider_25yr_add !== undefined && r.data.hail_rider_25yr_add !== null
+          ? Number(r.data.hail_rider_25yr_add) : undefined,
+        20: r.data.hail_rider_20yr_add !== undefined && r.data.hail_rider_20yr_add !== null
+          ? Number(r.data.hail_rider_20yr_add) : undefined,
       });
       // Re-hydrate the rep's typed Custom Add-Ons (rows that have a label
       // and a cost). Always keep 2 visible rows — pad with empties if the
@@ -476,6 +489,21 @@ export default function Calculator() {
     const ndlAvailable = isEverest && (system.warranty_years in NDL_PER_SF);
     const isNdl = ndlAvailable && !!ndlByWarranty[system.warranty_years];
 
+    // ---- Hail Rider (Western Colloid 20/25-yr only) ----
+    // Default suggestion: max($0.12 × SF, $750). Rep can override to any $
+    // amount, or clear to 0 to omit the optional line from the customer scope.
+    const isWesternColloid = (system.vendor || "").toLowerCase().includes("western colloid");
+    const hailRiderEligible = isWesternColloid && [20, 25].includes(system.warranty_years);
+    const HAIL_RIDER_PER_SF = 0.12;
+    const HAIL_RIDER_MIN = 750;
+    const hailRiderDefault = hailRiderEligible
+      ? Math.max(sf * HAIL_RIDER_PER_SF, HAIL_RIDER_MIN)
+      : 0;
+    const savedHailRider = hailRiderByWarranty[system.warranty_years];
+    const hailRiderAmount = hailRiderEligible
+      ? (savedHailRider !== undefined ? Number(savedHailRider) : Math.round(hailRiderDefault))
+      : 0;
+
     // Standard warranty $ — what's baked into the base customer price.
     const standardWarranty = isEverest ? 1000 : (
       (deal && WARRANTY_ADD_FIELD[system.warranty_years])
@@ -517,7 +545,7 @@ export default function Calculator() {
     const customer = customerBase + (isNdl ? ndlUpgradeDelta : 0) + customAddonTotal;
     const pricePerSf = sf > 0 ? customer / sf : 0;
 
-    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, ndlUpgradeDelta, customerBase, customAddonTotal, laborAdd, subtotal, overhead, profit, ohPct, prPct, customer, pricePerSf };
+    return { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, ndlUpgradeDelta, customerBase, customAddonTotal, laborAdd, subtotal, overhead, profit, ohPct, prPct, customer, pricePerSf, hailRiderEligible, hailRiderAmount, hailRiderDefault };
   };
 
   const columns = useMemo(() => {
@@ -613,6 +641,15 @@ export default function Calculator() {
       // state in warranty_*_ndl so the calculator restores the same view.
       if (col.isEverest && warField) body[warField] = Math.round((col.ndlUpgradeDelta || 0) * 100) / 100;
       if (col.isEverest && ndlField) body[ndlField] = !!col.isNdl;
+      // Hail Rider — Western Colloid 20/25-yr only. Round to dollars.
+      // Always write (even 0) so a rep who explicitly cleared it removes
+      // the line from the customer scope.
+      if (col.hailRiderEligible && col.system.warranty_years === 25) {
+        body.hail_rider_25yr_add = Math.round(col.hailRiderAmount || 0);
+      }
+      if (col.hailRiderEligible && col.system.warranty_years === 20) {
+        body.hail_rider_20yr_add = Math.round(col.hailRiderAmount || 0);
+      }
       ["id","created_at","updated_at","created_by",
        "materials_cost","labor_cost","subcontractor_cost","other_expenses_total",
        "total_costs","profit","margin_pct","is_deleted","deleted_at","deleted_by",
@@ -658,6 +695,13 @@ export default function Calculator() {
       if (pf) updates[pf] = col.prPct;
       if (col.isEverest && wf) updates[wf] = Math.round((col.ndlUpgradeDelta || 0) * 100) / 100;
       if (col.isEverest && nf) updates[nf] = !!col.isNdl;
+      // Hail Rider — WC 20/25-yr only. Always writes so cleared values stick.
+      if (col.hailRiderEligible && col.system.warranty_years === 25) {
+        updates.hail_rider_25yr_add = Math.round(col.hailRiderAmount || 0);
+      }
+      if (col.hailRiderEligible && col.system.warranty_years === 20) {
+        updates.hail_rider_20yr_add = Math.round(col.hailRiderAmount || 0);
+      }
       summary.push(`Option ${letter} = ${formatCurrency(baseForDeal)}`);
     }
     if (!Object.keys(updates).length) {
@@ -1255,6 +1299,7 @@ export default function Calculator() {
                   onOverheadChange={(v) => setOverheadByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
                   onProfitChange={(v) => setProfitByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
                   onNdlChange={(v) => setNdlByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
+                  onHailRiderChange={(v) => setHailRiderByWarranty((prev) => ({ ...prev, [col.system.warranty_years]: v }))}
                   savingToDeal={savingToDeal}
                   testIdSuffix={idx}
                 />
@@ -1293,8 +1338,8 @@ export default function Calculator() {
   );
 }
 
-function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, onPushMaterials, onPushAndPo, savingToDeal, testIdSuffix, onLaborChange, onOverheadChange, onProfitChange, onNdlChange }) {
-  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, laborAdd, overhead, profit, ohPct, prPct, customer, pricePerSf, customAddonTotal } = col;
+function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, onPushMaterials, onPushAndPo, savingToDeal, testIdSuffix, onLaborChange, onOverheadChange, onProfitChange, onNdlChange, onHailRiderChange }) {
+  const { system, lines, addonLines, rawCost, markedUp, handling, warrantyAdd, isEverest, ndlAvailable, isNdl, laborAdd, overhead, profit, ohPct, prPct, customer, pricePerSf, customAddonTotal, hailRiderEligible, hailRiderAmount, hailRiderDefault } = col;
   const hasRecipe = lines.length > 0;
   const optionLetter = { 25: "A", 20: "B", 15: "C", 10: "D" }[system.warranty_years];
   return (
@@ -1419,6 +1464,35 @@ function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, on
               className="h-4 w-4"
             />
           </label>
+        )}
+        {/* Hail Rider $ — Western Colloid 20/25-yr only. Default suggestion
+            is max($0.12 × SF, $750). Rep can override or clear to omit the
+            optional line from the customer scope. Not folded into the base
+            customer price — the scope PDF shows it as a separate optional
+            row so the customer opts in explicitly. */}
+        {hailRiderEligible && (
+          <div
+            className="flex items-center justify-between gap-2 text-[11px]"
+            data-testid={`hail-rider-row-${testIdSuffix}`}
+            title="Optional Hail Rider add-on shown on the customer's scope. Default = max($0.12/SF, $750). Set to 0 to omit."
+          >
+            <span className="text-zinc-600">
+              Hail Rider <span className="text-zinc-400 font-mono">(opt.)</span>
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-zinc-400 text-[10px] font-mono">$</span>
+              <input
+                type="number"
+                min="0"
+                step="10"
+                value={hailRiderAmount === 0 ? "" : hailRiderAmount}
+                placeholder={Math.round(hailRiderDefault).toString()}
+                onChange={(e) => onHailRiderChange?.(e.target.value === "" ? 0 : Number(e.target.value))}
+                data-testid={`hail-rider-input-${testIdSuffix}`}
+                className="w-24 border border-zinc-300 px-2 h-7 text-xs font-mono text-right focus:outline-none focus:border-blue-700"
+              />
+            </div>
+          </div>
         )}
         {/* Labor — per-warranty input, free-form $ (per-SF or flat-project) */}
         <div className="flex items-center justify-between gap-2 font-mono">
