@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
-import { Plus, Search, X, Trash2, FileText, Mail, Package, Boxes, CheckCircle2, Circle, Truck, PackageCheck, Link2, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { Plus, Search, X, Trash2, FileText, Mail, Package, Boxes, CheckCircle2, Circle, Truck, PackageCheck, Link2, TrendingDown, TrendingUp, Minus, Calculator as CalcIcon } from "lucide-react";
 import { toast } from "sonner";
 
 /**
@@ -172,9 +172,20 @@ export default function MaterialTakeoff({ deal, reload }) {
         <div className="py-10 text-center">
           <Boxes className="w-8 h-8 text-zinc-300 mx-auto mb-3" />
           <div className="text-sm font-bold text-zinc-700 mb-1">No materials added yet.</div>
-          <div className="text-xs text-zinc-500">
+          <div className="text-xs text-zinc-500 mb-4">
             Click <span className="font-bold text-blue-700">+ Add Materials</span> to pull items from the catalog,
             set quantities by size, and generate a Purchase Order PDF.
+          </div>
+          <a
+            href={`/calculator?deal=${deal.id}`}
+            data-testid="takeoff-open-calculator"
+            className="inline-flex items-center gap-2 h-9 px-3 text-[11px] font-bold uppercase tracking-wider rounded-sm border border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
+            title="Open the Calculator and click 'Push to Take-Off' to auto-populate this section from the Bill of Materials."
+          >
+            <CalcIcon className="w-3.5 h-3.5" /> Auto-fill from Calculator →
+          </a>
+          <div className="text-[10px] text-zinc-400 mt-2">
+            The Calculator already knows the coverage rates and SF — one click pushes the BoM into this table.
           </div>
         </div>
       ) : (

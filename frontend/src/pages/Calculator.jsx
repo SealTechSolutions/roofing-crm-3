@@ -30,7 +30,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { Calculator as CalcIcon, Plus, X, Save, ChevronLeft, Layers, AlertCircle, Loader2, FileText, Download, PenLine } from "lucide-react";
+import { Calculator as CalcIcon, Plus, X, Save, ChevronLeft, Layers, AlertCircle, Loader2, FileText, Download, PenLine, Package } from "lucide-react";
 
 const ADDON_TEMPLATES = [
   // Walk-pads
@@ -1558,20 +1558,48 @@ function CompareColumn({ col, settings, totalSf, mode, onRemove, onSetOption, on
 
         {/* Mode-specific action button(s) */}
         {mode === "estimate" && onSetOption && optionLetter && (
-          <button
-            onClick={onSetOption}
-            disabled={savingToDeal || !hasRecipe}
-            className="mt-3 w-full inline-flex items-center justify-center gap-1 px-3 h-9 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-sm"
-            data-testid={`set-option-${testIdSuffix}`}
-            title={`Writes ${formatCurrency(customer)} into Option ${optionLetter} on the deal (price only — no cost lines, no PO).`}
-          >
-            <Save className="w-3 h-3" />
-            {savingToDeal ? "Saving…" : `Set → Option ${optionLetter}`}
-          </button>
+          <div className="mt-3 grid grid-cols-2 gap-1.5">
+            <button
+              onClick={onSetOption}
+              disabled={savingToDeal || !hasRecipe}
+              className="inline-flex items-center justify-center gap-1 px-2 h-9 text-[10px] font-bold uppercase tracking-wider bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-sm"
+              data-testid={`set-option-${testIdSuffix}`}
+              title={`Writes ${formatCurrency(customer)} into Option ${optionLetter} on the deal (price only — no cost lines, no PO).`}
+            >
+              <Save className="w-3 h-3" />
+              {savingToDeal ? "Saving…" : `Set → Option ${optionLetter}`}
+            </button>
+            {onPushMaterials && (
+              <button
+                onClick={onPushMaterials}
+                disabled={savingToDeal || !hasRecipe}
+                className="inline-flex items-center justify-center gap-1 px-2 h-9 text-[10px] font-bold uppercase tracking-wider bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-sm"
+                data-testid={`push-materials-est-${testIdSuffix}`}
+                title="Adds BoM lines to the deal's Material Take-Off AND Vendor Cost Line Items — ready for a Purchase Order."
+              >
+                <Package className="w-3 h-3" />
+                {savingToDeal ? "Saving…" : "Push to Take-Off"}
+              </button>
+            )}
+          </div>
         )}
         {mode === "estimate" && onSetOption && !optionLetter && (
-          <div className="mt-3 px-2 py-2 bg-amber-50 border border-amber-200 text-[10px] text-amber-800 rounded-sm text-center">
-            {system.warranty_years || "?"}-yr warranty has no Option slot — A/B/C/D map to 25/20/15/10-yr. The price is calculated for reference only.
+          <div className="mt-3 space-y-2">
+            <div className="px-2 py-2 bg-amber-50 border border-amber-200 text-[10px] text-amber-800 rounded-sm text-center">
+              {system.warranty_years || "?"}-yr warranty has no Option slot — A/B/C/D map to 25/20/15/10-yr. The price is calculated for reference only.
+            </div>
+            {onPushMaterials && (
+              <button
+                onClick={onPushMaterials}
+                disabled={savingToDeal || !hasRecipe}
+                className="w-full inline-flex items-center justify-center gap-1 px-2 h-9 text-[10px] font-bold uppercase tracking-wider bg-indigo-700 text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-sm"
+                data-testid={`push-materials-est-alt-${testIdSuffix}`}
+                title="Adds BoM lines to the deal's Material Take-Off AND Vendor Cost Line Items."
+              >
+                <Package className="w-3 h-3" />
+                {savingToDeal ? "Saving…" : "Push to Take-Off"}
+              </button>
+            )}
           </div>
         )}
         {mode === "materials" && onPushMaterials && (
