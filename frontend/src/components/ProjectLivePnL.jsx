@@ -48,24 +48,29 @@ const FALLBACK_EQUIPMENT_RATES = {
 
 const Bar = ({ label, amount, total, accent, right, dealField, onEdit }) => {
   const pct = total > 0 ? Math.min(100, (amount / total) * 100) : 0;
+  const editable = !!(dealField && onEdit);
   return (
     <div className="mb-2 last:mb-0">
       <div className="flex items-center justify-between text-xs mb-1">
         <span className="font-bold uppercase tracking-wider text-zinc-700">{label}</span>
-        <span className="flex items-center gap-1.5">
-          <span className={`font-mono font-bold ${accent}`}>{formatCurrency(amount)}</span>
-          {right && <span className="text-[10px] font-normal text-zinc-500">· {right}</span>}
-          {dealField && onEdit && (
-            <button
-              onClick={onEdit}
-              data-testid={`pnl-edit-${label.toLowerCase()}`}
-              className="p-0.5 rounded-sm text-zinc-400 hover:text-blue-700 hover:bg-blue-50"
-              title={`Edit ${label} estimate`}
-            >
-              <Pencil className="w-3 h-3" />
-            </button>
-          )}
-        </span>
+        {editable ? (
+          <button
+            onClick={onEdit}
+            data-testid={`pnl-edit-${label.toLowerCase()}`}
+            className="group inline-flex items-center gap-1.5 px-2 h-7 rounded-sm border border-transparent hover:border-blue-300 hover:bg-blue-50 transition-colors cursor-text"
+            title={`Click to type a ${label} estimate`}
+          >
+            <span className={`font-mono font-bold ${accent} group-hover:text-blue-800`}>{formatCurrency(amount)}</span>
+            {right && <span className="text-[10px] font-normal text-zinc-500">· {right}</span>}
+            <Pencil className="w-3.5 h-3.5 text-blue-600 group-hover:text-blue-800" />
+            <span className="text-[9px] font-bold uppercase tracking-wider text-blue-600 group-hover:text-blue-800 hidden sm:inline">Edit</span>
+          </button>
+        ) : (
+          <span className="inline-flex items-center gap-1.5">
+            <span className={`font-mono font-bold ${accent}`}>{formatCurrency(amount)}</span>
+            {right && <span className="text-[10px] font-normal text-zinc-500">· {right}</span>}
+          </span>
+        )}
       </div>
       <div className="h-1.5 bg-zinc-100 rounded-sm overflow-hidden">
         <div
@@ -301,7 +306,9 @@ export default function ProjectLivePnL({ deal, dealInvoices, vendorBills, onSave
         <div className="flex items-center justify-between mb-3">
           <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">Cost Breakdown by Category</div>
           {onSave && (
-            <div className="text-[10px] text-zinc-400 italic">Click <Pencil className="inline w-3 h-3" /> to type an estimate directly</div>
+            <div className="text-[11px] text-blue-700 font-bold flex items-center gap-1">
+              <Pencil className="w-3.5 h-3.5" /> Click any row&apos;s <span className="font-mono">$ amount</span> to type an estimate
+            </div>
           )}
         </div>
         {CATEGORIES.map((cat) => {
