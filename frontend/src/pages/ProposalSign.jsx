@@ -305,7 +305,8 @@ export default function ProposalSign() {
                   );
                 })}
               </div>
-              {/* Hail Rider opt-in — only if the picked tier has a rider price */}
+              {/* Hail Rider opt-in — WC 20/25-yr NDL upgrade that bundles
+                  the Hail Rider into an NDL Warranty */}
               {selected && selected.hail_rider_price > 0 && (
                 <label
                   className={`mt-3 flex items-center gap-3 px-4 py-3 border-2 rounded-sm cursor-pointer transition-colors ${
@@ -322,7 +323,7 @@ export default function ProposalSign() {
                   <div className="flex-1 flex items-baseline justify-between gap-2 text-sm">
                     <span>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mr-1">Optional</span>
-                      <span className="font-bold">Add Hail Rider — Impact Damage Coverage</span>
+                      <span className="font-bold">Upgrade to NDL Warranty w/ Hail Rider</span>
                     </span>
                     <span className="font-mono font-black text-zinc-900">
                       +${selected.hail_rider_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}

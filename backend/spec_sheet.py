@@ -1099,18 +1099,19 @@ def _pricing_table(s, doc, template: dict | None = None):
         _tt_headers = ((doc.get("_tier_table") or {}).get("headers") or [])
         _is_wc_farm = any("25-YEAR SYSTEM" in h.upper() for h in _tt_headers)
         if _is_wc_farm and (hr25 > 0 or hr20 > 0):
-            hail_rows = [["Warranty Tier", "Hail Rider Add-On"]]
+            hail_rows = [["Warranty Upgrade", "Price"]]
             if hr25 > 0:
-                hail_rows.append(["25-Year Warranty — Hail Rider Add-On", _currency(hr25)])
+                hail_rows.append(["25-Year NDL Warranty w/ Hail Rider (Upgrade)", _currency(hr25)])
             if hr20 > 0:
-                hail_rows.append(["20-Year Warranty — Hail Rider Add-On", _currency(hr20)])
+                hail_rows.append(["20-Year NDL Warranty w/ Hail Rider (Upgrade)", _currency(hr20)])
             elems.append(Paragraph(
-                '[OPTIONAL] Hail Rider &mdash; Impact Damage Coverage',
+                '[OPTIONAL] NDL Warranty w/ Hail Rider &mdash; Warranty Upgrade',
                 s["h2"],
             ))
             elems.append(Paragraph(
-                '<font size="9" color="#52525B">Adds impact-damage coverage to the manufacturer\'s '
-                'warranty at the tier below. Customer may opt-in when signing the proposal.</font>',
+                '<font size="9" color="#52525B">Upgrades the manufacturer\'s Standard Material &amp; Labor '
+                'warranty to a full No-Dollar-Limit (NDL) warranty that includes impact-damage '
+                '(hail) coverage. Customer may opt in when signing the proposal.</font>',
                 s["body"],
             ))
             elems.append(Spacer(1, 0.04 * inch))

@@ -490,14 +490,22 @@ export default function Calculator() {
     const isNdl = ndlAvailable && !!ndlByWarranty[system.warranty_years];
 
     // ---- Hail Rider (Western Colloid 20/25-yr only) ----
-    // Default suggestion: max($0.12 × SF, $750). Rep can override to any $
-    // amount, or clear to 0 to omit the optional line from the customer scope.
+    // On WC systems, the Hail Rider is bundled INTO an NDL Warranty upgrade
+    // (Standard Material/Labor → NDL w/ Hail Rider). Per the Feb-2026 WC
+    // pricing sheet:
+    //   20-yr NDL w/ Hail Rider: $0.20/SF, minimum $2,000
+    //   25-yr NDL w/ Hail Rider: $0.25/SF, minimum $2,500
+    // Rep can override to any $ amount, or clear to 0 to omit the optional
+    // line from the customer scope.
     const isWesternColloid = (system.vendor || "").toLowerCase().includes("western colloid");
     const hailRiderEligible = isWesternColloid && [20, 25].includes(system.warranty_years);
-    const HAIL_RIDER_PER_SF = 0.12;
-    const HAIL_RIDER_MIN = 750;
+    const HAIL_RIDER_RATES = {
+      20: { perSf: 0.20, min: 2000 },
+      25: { perSf: 0.25, min: 2500 },
+    };
+    const hailCfg = HAIL_RIDER_RATES[system.warranty_years] || { perSf: 0, min: 0 };
     const hailRiderDefault = hailRiderEligible
-      ? Math.max(sf * HAIL_RIDER_PER_SF, HAIL_RIDER_MIN)
+      ? Math.max(sf * hailCfg.perSf, hailCfg.min)
       : 0;
     const savedHailRider = hailRiderByWarranty[system.warranty_years];
     const hailRiderAmount = hailRiderEligible
