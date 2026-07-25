@@ -920,25 +920,11 @@ export default function Calculator() {
                 <PenLine className="w-3 h-3" /> Get Signed →
               </button>
             </div>
-            {/* Mode toggle — controls which action buttons appear in each compare column. */}
-            <div className="inline-flex items-stretch border border-zinc-300 rounded-sm overflow-hidden" data-testid="mode-toggle">
-              <button
-                onClick={() => setMode("estimate")}
-                className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${mode === "estimate" ? "bg-blue-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
-                data-testid="mode-estimate"
-                title="Pre-signature: per-column buttons WRITE prices into Proposal Options A/B/C/D. Use the orange ‘Open Scope →’ button when you’re ready to take the proposal to the customer."
-              >
-                Estimate / Quote
-              </button>
-              <button
-                onClick={() => setMode("materials")}
-                className={`px-3 h-8 text-[10px] font-bold uppercase tracking-wider transition-colors ${mode === "materials" ? "bg-emerald-700 text-white" : "bg-white text-zinc-700 hover:bg-zinc-50"}`}
-                data-testid="mode-materials"
-                title="Post-signature: per-column buttons push the BoM to the deal's Material Take-off and generate a Purchase Order PDF."
-              >
-                Materials &amp; PO
-              </button>
-            </div>
+            {/* Mode toggle removed — mode auto-switches based on
+                deal.scope_signed_at (see the effect at ~line 333). Pre-signature
+                the app is in Estimate mode; once the customer signs it flips
+                to Materials & PO. Buttons on the deal header (Edit Scope, Get
+                Signed, Download Scope) cover the pre-sign flow. */}
             {deal.scope_signed_at && (
               <div className="text-[10px] text-emerald-700 font-mono">Scope signed {String(deal.scope_signed_at).slice(0, 10)}</div>
             )}
