@@ -5599,8 +5599,26 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
         # [OPTIONAL] Hail Rider add-on section under the Base Investment
         # table when either value is > 0 AND the roof type resolves to
         # a Western Colloid FARM template.
-        "hail_rider_20": float(deal.get("hail_rider_20yr_add") or 0),
-        "hail_rider_25": float(deal.get("hail_rider_25yr_add") or 0),
+        # Hail Rider — Western Colloid 20/25-yr only. Rendered as an
+        # [OPTIONAL] Hail Rider add-on section under the Base Investment
+        # table when either value is > 0 AND the roof type resolves to
+        # a Western Colloid FARM template. If the rep never explicitly set
+        # a rider $ in the Calculator, auto-default to max($0.12 × SF, $750)
+        # so every FARM proposal shows the opt-in without extra rep clicks.
+        "hail_rider_20": float(deal.get("hail_rider_20yr_add") or 0) or (
+            round(max(float(deal.get("total_sqft") or deal.get("property_sqft") or 0) * 0.12, 750.0), 2)
+            if ("FARM" in (deal.get("proposed_roof_type") or "").upper()
+                or "FLUID APPLIED" in (deal.get("proposed_roof_type") or "").upper())
+               and float(deal.get("proposal_option_1") or 0) > 0
+            else 0
+        ),
+        "hail_rider_25": float(deal.get("hail_rider_25yr_add") or 0) or (
+            round(max(float(deal.get("total_sqft") or deal.get("property_sqft") or 0) * 0.12, 750.0), 2)
+            if ("FARM" in (deal.get("proposed_roof_type") or "").upper()
+                or "FLUID APPLIED" in (deal.get("proposed_roof_type") or "").upper())
+               and float(deal.get("proposal_option_25yr") or 0) > 0
+            else 0
+        ),
         "total_sqft": float(deal.get("total_sqft") or 0),
         "color": color,
         "roof_type_label": (deal.get("proposed_roof_type") or "silicone").lower(),

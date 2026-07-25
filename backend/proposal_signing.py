@@ -99,8 +99,24 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
         opt_20 = float(deal.get("proposal_option_1") or 0)
         opt_15 = float(deal.get("proposal_option_2") or 0)
         opt_10 = float(deal.get("proposal_option_3") or 0)
+        # Hail Rider eligibility — FARM (Western Colloid) 20/25-yr systems
+        # only. If the rep never set an explicit rider $ in the Calculator,
+        # auto-compute the customer-facing default: max($0.12 × SF, $750).
+        # This keeps the opt-in visible for every WC FARM proposal without
+        # requiring the rep to remember an extra click in the Calculator.
+        _roof_type = (deal.get("proposed_roof_type") or "").upper()
+        _is_wc_farm = "FARM" in _roof_type or "FLUID APPLIED" in _roof_type
+        _sqft = float(deal.get("total_sqft") or deal.get("property_sqft") or 0)
+        _default_rider = max(_sqft * 0.12, 750.0) if _sqft > 0 else 750.0
         hail_25 = float(deal.get("hail_rider_25yr_add") or 0)
         hail_20 = float(deal.get("hail_rider_20yr_add") or 0)
+        if _is_wc_farm:
+            # Backfill defaults so the customer always sees the opt-in on
+            # FARM proposals. The rep can still override via the Calculator.
+            if hail_25 <= 0 and opt_25 > 0:
+                hail_25 = round(_default_rider, 2)
+            if hail_20 <= 0 and opt_20 > 0:
+                hail_20 = round(_default_rider, 2)
         raw_options = [
             {"id": "opt_25", "warranty_years": 25, "label": "25-Year Standard Warranty", "price": opt_25, "hail_rider_price": hail_25},
             {"id": "opt_20", "warranty_years": 20, "label": "20-Year Standard Warranty", "price": opt_20, "hail_rider_price": hail_20},
@@ -209,12 +225,18 @@ def create_public_router(db, get_current_user, compute_scope_data, auto_create_d
 
         # Hail Rider add-on price — added to the base only when the customer
         # ticked the option AND the deal actually has a rider set for the
-        # chosen warranty tier.
+        # chosen warranty tier. If the rep never explicitly set a $ in the
+        # Calculator, fall back to the same default the public view used:
+        # max($0.12 × SF, $750) for FARM (Western Colloid) deals.
         hail_price = 0.0
-        if add_hail_rider and chosen_warranty_years == 25:
-            hail_price = float(deal.get("hail_rider_25yr_add") or 0)
-        elif add_hail_rider and chosen_warranty_years == 20:
-            hail_price = float(deal.get("hail_rider_20yr_add") or 0)
+        if add_hail_rider and chosen_warranty_years in (20, 25):
+            field = f"hail_rider_{chosen_warranty_years}yr_add"
+            hail_price = float(deal.get(field) or 0)
+            if hail_price <= 0:
+                _rt = (deal.get("proposed_roof_type") or "").upper()
+                if "FARM" in _rt or "FLUID APPLIED" in _rt:
+                    _sqft = float(deal.get("total_sqft") or deal.get("property_sqft") or 0)
+                    hail_price = round(max(_sqft * 0.12, 750.0), 2) if _sqft > 0 else 750.0
         final_chosen_amount = (chosen_price or 0) + hail_price
 
         if not accepted:
