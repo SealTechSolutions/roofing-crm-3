@@ -33,7 +33,10 @@ const empty = {
   billing_state: DEFAULT_STATE,
   billing_zip: "",
   website: "",
-  late_fee_rate_pct: null,
+  // Default: 1.5% per month on balances > 30 days past due. Overridable
+  // per-customer via the "Late Fee Rate Override" field in the modal —
+  // clear it to fall back to the entity default.
+  late_fee_rate_pct: 1.5,
   assigned_to_user_id: "",
 };
 

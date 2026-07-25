@@ -371,7 +371,7 @@ class ContactIn(BaseModel):
     billing_state: str = ""
     billing_zip: str = ""
     website: str = ""
-    late_fee_rate_pct: Optional[float] = None  # Per-customer override (None = inherit entity default)
+    late_fee_rate_pct: Optional[float] = 1.5  # Per-customer late-fee rate. 1.5%/mo is the shop default; set None to fall back to entity default.
 
 
 class Contact(ContactIn):
