@@ -497,24 +497,26 @@ def _service_life_chart(selected: Optional[str], styles: dict):
     """Vertical list of 6 rows — one per service-life range — matching the
     STBS template exactly:
 
-        [X]  ██████████████████████████  15-20 Years
-        [ ]  ████████████████████░░░░░░  10-15 Years
-        [ ]  ████████████████░░░░░░░░░░  5-10 Years
+        [X]  ██████████████████████████     15-20 Years
+        [ ]  ████████████████████           10-15 Years
+        [ ]  ████████████░░░░░░░░░░░░░░░░   5-10 Years
         ...
 
-    The row whose text matches `selected` gets a filled/checked box
-    ([X]) so the property owner immediately sees the assessed range.
+    All labels align to a single left edge (fixed column X) with a
+    consistent gap between the end of each bar and the label, so the
+    reader's eye can scan the labels vertically.
     """
-    checkbox_col_w = 0.35 * inch
-    bar_max_w = CONTENT_W - checkbox_col_w - 1.6 * inch          # leave room for label
-    label_col_w = 1.4 * inch
+    checkbox_col_w = 0.40 * inch
+    label_col_w = 1.50 * inch                                   # fixed X for labels — every row lines up
+    gap_after_bar = 0.30 * inch                                 # breathing room between bar and label
+    bar_track_w = CONTENT_W - checkbox_col_w - label_col_w - gap_after_bar
     row_h = 0.32 * inch
 
     rows_data = []
     row_styles = []
     for idx, opt in enumerate(SERVICE_LIFE_OPTIONS_PDF):
         is_selected = (opt == selected)
-        # Checkbox — filled square + white X when selected, empty outlined square otherwise.
+        # Checkbox — filled square + white X when selected, empty otherwise
         cbox_para = Paragraph(
             "<b>X</b>" if is_selected else "&nbsp;",
             ParagraphStyle("cbox", fontName="Helvetica-Bold", fontSize=11,
@@ -529,13 +531,26 @@ def _service_life_chart(selected: Optional[str], styles: dict):
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ]))
 
-        # Horizontal colored bar — width scales with service-life expectation.
+        # The bar itself — width scales with service-life expectation. Placed
+        # inside a fixed-width "track" cell so the label column always
+        # begins at the same X across every row.
         bar_color = colors.HexColor(SERVICE_LIFE_BAR_COLORS[idx])
-        bar_w = bar_max_w * SERVICE_LIFE_BAR_WIDTHS[idx]
+        bar_w = bar_track_w * SERVICE_LIFE_BAR_WIDTHS[idx]
         bar = Table([[""]], colWidths=[bar_w], rowHeights=[0.18 * inch])
         bar.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), bar_color),
             ("BOX", (0, 0), (-1, -1), 0.5, bar_color),
+        ]))
+        # Wrap the bar in a full-track-width cell so the middle column stays
+        # exactly `bar_track_w` wide regardless of the bar's own length.
+        bar_track = Table([[bar]], colWidths=[bar_track_w], rowHeights=[row_h])
+        bar_track.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
         ]))
 
         label = Paragraph(
@@ -544,16 +559,16 @@ def _service_life_chart(selected: Optional[str], styles: dict):
                            textColor=colors.HexColor("#0f172a" if is_selected else "#334155"),
                            alignment=TA_LEFT, leading=13),
         )
-        rows_data.append([cbox, bar, label])
+        rows_data.append([cbox, bar_track, "", label])            # empty middle column = gap
         if is_selected:
             row_styles.append(("BACKGROUND", (0, len(rows_data) - 1), (-1, len(rows_data) - 1), colors.HexColor("#f1f5f9")))
 
-    tbl = Table(rows_data, colWidths=[checkbox_col_w, bar_max_w, label_col_w], rowHeights=[row_h] * len(rows_data))
+    tbl = Table(rows_data, colWidths=[checkbox_col_w, bar_track_w, gap_after_bar, label_col_w], rowHeights=[row_h] * len(rows_data))
     base_style = [
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (0, 0), (0, -1), "LEFT"),
-        ("ALIGN", (1, 0), (1, -1), "LEFT"),      # bars align left so length is meaningful
-        ("ALIGN", (2, 0), (2, -1), "LEFT"),
+        ("ALIGN", (1, 0), (1, -1), "LEFT"),
+        ("ALIGN", (3, 0), (3, -1), "LEFT"),
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
