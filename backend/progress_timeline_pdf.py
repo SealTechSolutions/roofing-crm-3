@@ -131,6 +131,11 @@ def _photo_cell(photo: dict, styles) -> Table:
     img_flow = None
     try:
         data, _ct = get_object(photo["storage_path"])
+        # Strip the burned-in proof-of-presence banner from stamped
+        # field-capture photos so reports stay clean.
+        if photo.get("stamped"):
+            from photo_utils import strip_stamp_banner
+            data = strip_stamp_banner(data, True)
         # Decode eagerly with PIL so a corrupt JPEG fails here (and falls
         # through to the placeholder) instead of crashing the entire
         # SimpleDocTemplate.build() pass at render time.

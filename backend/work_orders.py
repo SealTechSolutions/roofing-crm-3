@@ -471,11 +471,14 @@ async def _build_deal_spec_pdf(db, deal: dict) -> Optional[bytes]:
         if not cover_id:
             ph = await db.project_photos.find_one(
                 {"deal_id": deal["id"], "is_cover": True, "is_deleted": {"$ne": True}},
-                {"_id": 0, "id": 1, "storage_path": 1},
+                {"_id": 0, "id": 1, "storage_path": 1, "stamped": 1},
             )
             if ph and ph.get("storage_path"):
                 try:
                     cover_bytes, _ct = get_object(ph["storage_path"])
+                    if ph.get("stamped"):
+                        from photo_utils import strip_stamp_banner
+                        cover_bytes = strip_stamp_banner(cover_bytes, True)
                 except Exception:
                     cover_bytes = None
         else:

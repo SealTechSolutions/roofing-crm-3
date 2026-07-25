@@ -91,7 +91,12 @@ def _make_footer(page_total: int):
 # ---------- Helpers ----------
 
 async def _load_photo(db, photo_id: str) -> bytes | None:
-    """Pull a photo's bytes from object storage via project_photos doc."""
+    """Pull a photo's bytes from object storage via project_photos doc.
+
+    If the photo has the `stamped` flag (burned-in proof-of-presence banner
+    from FieldCapture), the bottom banner is cropped off so client-facing
+    reports stay clean. See photo_utils.strip_stamp_banner.
+    """
     if not photo_id:
         return None
     p = await db.project_photos.find_one({"id": photo_id, "is_deleted": {"$ne": True}}, {"_id": 0})
@@ -100,11 +105,11 @@ async def _load_photo(db, photo_id: str) -> bytes | None:
     try:
         result = get_object(p["storage_path"])
         # storage.get_object() returns (bytes, content_type) tuple
-        if isinstance(result, tuple):
-            return result[0]
-        return result
+        raw = result[0] if isinstance(result, tuple) else result
     except Exception:
         return None
+    from photo_utils import strip_stamp_banner
+    return strip_stamp_banner(raw, bool(p.get("stamped")))
 
 
 def _photo_flowable(img_bytes: bytes | None, w: float, h: float, placeholder: str = "Image placeholder",

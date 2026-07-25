@@ -194,6 +194,13 @@ def _photo_cell(photo: dict, styles) -> Table:
     if path:
         try:
             data, _ct = get_object(path)
+            # Strip the burned-in proof-of-presence banner from stamped
+            # field-capture photos so client reports stay clean. Only
+            # applies to the raw source — annotated overlays are already
+            # user-curated and left untouched.
+            if not annotated_path and photo.get("stamped"):
+                from photo_utils import strip_stamp_banner
+                data = strip_stamp_banner(data, True)
             from PIL import Image as PILImage  # type: ignore
             with PILImage.open(io.BytesIO(data)) as probe:
                 probe.load()
@@ -368,6 +375,12 @@ def _stbs_photo_bytes(photo: dict, max_px: int = 900) -> Optional[bytes]:
         if not path:
             return None
         content, _ct = get_object(path)
+        # Strip the burned-in proof-of-presence banner from stamped
+        # field-capture photos (raw source only; annotated overlays are
+        # already user-curated).
+        if not photo.get("annotated_storage_path") and photo.get("stamped"):
+            from photo_utils import strip_stamp_banner
+            content = strip_stamp_banner(content, True)
         with _PIL.open(io.BytesIO(content)) as img:
             img = img.convert("RGB")
             img.thumbnail((max_px, max_px), _PIL.LANCZOS)
