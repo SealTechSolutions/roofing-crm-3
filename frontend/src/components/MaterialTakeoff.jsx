@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, formatCurrency, formatApiError, API } from "@/lib/api";
 import { Plus, Search, X, Trash2, FileText, Mail, Package, Boxes, CheckCircle2, Circle, Truck, PackageCheck, Link2, TrendingDown, TrendingUp, Minus, Calculator as CalcIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -15,6 +16,7 @@ export default function MaterialTakeoff({ deal, reload }) {
   const [varianceData, setVarianceData] = useState(null);
   const [linkerLine, setLinkerLine] = useState(null); // takeoff line currently being linked
   const dealId = deal.id;
+  const navigate = useNavigate();
 
   // Pull variance whenever the take-off changes (so Actual stays current with linked bills)
   useEffect(() => {
@@ -176,14 +178,15 @@ export default function MaterialTakeoff({ deal, reload }) {
             Click <span className="font-bold text-blue-700">+ Add Materials</span> to pull items from the catalog,
             set quantities by size, and generate a Purchase Order PDF.
           </div>
-          <a
-            href={`/calculator?deal=${deal.id}`}
+          <button
+            type="button"
+            onClick={() => navigate(`/calculator?deal=${deal.id}`)}
             data-testid="takeoff-open-calculator"
             className="inline-flex items-center gap-2 h-9 px-3 text-[11px] font-bold uppercase tracking-wider rounded-sm border border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
             title="Open the Calculator and click 'Push to Take-Off' to auto-populate this section from the Bill of Materials."
           >
             <CalcIcon className="w-3.5 h-3.5" /> Auto-fill from Calculator →
-          </a>
+          </button>
           <div className="text-[10px] text-zinc-400 mt-2">
             The Calculator already knows the coverage rates and SF — one click pushes the BoM into this table.
           </div>
