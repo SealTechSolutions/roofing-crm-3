@@ -541,7 +541,7 @@ function PurchaseOrderComposeModal({ deal, vendor, onClose, onPreview, onSent })
     `if you have any questions or to discuss volume pricing.\n\n` +
     `Thank you,\nSealTech Building Solutions  ·  720-715-9955`;
 
-  const [toEmail, setToEmail] = useState(vendor.vendor_email || "");
+  const [toEmail, setToEmail] = useState("");
   const [ccEmail, setCcEmail] = useState("");
   const [subject, setSubject] = useState(defaultSubject);
   const [bodyText, setBodyText] = useState(defaultBody);
