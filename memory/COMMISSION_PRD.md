@@ -1,7 +1,28 @@
 # Commission Module — Product Requirements Document
 **SealTech Building Solutions CRM**
-**Status: Draft for Darren's review — not yet implemented**
-**Last updated:** June 24, 2026
+**Status: Approved — build in progress (Phase 1)**
+**Last updated:** February 2026 (locked with Darren's answers)
+
+---
+
+## 0. Locked decisions (source of truth)
+
+| # | Decision | Answer |
+|---|----------|--------|
+| 1 | Default commission rate | **5% flat** for every rep; admin-editable per rep |
+| 2 | Commission base | **Net Profit** = `Total Contract Amount − 20% base overhead − (Job Costs × 1.20)` where Job Costs = materials + labor + equipment. The ×1.20 covers taxes/shipping on job costs. |
+| 3 | Statement period | **Bi-weekly — every other Friday, 1 week behind** (statement generated Friday of week N covers the 14 days ending the Friday of week N−1) |
+| 4 | E-signature before payout | **Yes**, rep must sign before Payable is released |
+| 5 | Deposits + finals | Both accrue at collection, **but deposit accruals are held until admin toggles "Job Started ✓" on the deal** |
+| 6 | Refunds | Auto-clawback via reversing accrual |
+| 7 | Reps W2 / 1099 | **Mixed** — user has a `payroll_type` field; 1099 flows to Payables, W2 flows to CSV export for payroll |
+| 8 | Referral sources / finder's fees | No (Phase 1). Phase 2 if needed. |
+| A | Splits between 2 reps | **Configurable per deal.** Deal has `primary_rep_id` (default 100%) + optional `secondary_rep_id` with `secondary_rep_pct` (defaults to 0). |
+| B | Net Profit formula | See row #2 above |
+| C | Bi-weekly cadence | Every other Friday, 1 week lag |
+| D | Job-started marker | **Manual admin toggle** — new `job_started_at` field on deal; setting it releases held deposit accruals |
+| E | Backfill | **No** — start fresh from launch date |
+| G | **NEW: Subcontractor bonus** | 5% default of Work Order total, admin can override % or $ per WO. Tracked as a separate accrual type. |
 
 ---
 

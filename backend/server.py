@@ -2990,6 +2990,15 @@ async def create_invoice(body: InvoiceIn, current=Depends(get_current_user)):
         await gl.post_invoice_payment(db, data, posted_by_user_id=current["id"])
     except Exception as e:
         logger.warning(f"GL post (invoice create) failed: {type(e).__name__}: {e}")
+    # Commissions — accrue on the initial amount_paid (invoice was created with
+    # a payment already applied, e.g. a deposit recorded at the same time).
+    try:
+        paid = float(data.get("amount_paid") or 0)
+        if paid > 0:
+            import commissions as _com
+            await _com.accrue_on_invoice_payment(db, data, paid, payment_date=data.get("payment_date"))
+    except Exception as e:
+        logger.warning(f"Commission accrual (invoice create) failed: {type(e).__name__}: {e}")
     out = strip_id(data)
     if gl_warnings:
         out["gl_warnings"] = gl_warnings
@@ -3032,6 +3041,18 @@ async def update_invoice(invoice_id: str, body: InvoiceIn, current=Depends(get_c
         await gl.post_invoice_payment(db, data, posted_by_user_id=current["id"])
     except Exception as e:
         logger.warning(f"GL post (invoice update) failed: {type(e).__name__}: {e}")
+    # Commissions — accrue on the DELTA between the previous amount_paid and
+    # the new amount_paid. Negative deltas (refunds) currently skip; refund
+    # clawback is Phase 1B (see PRD row #6).
+    try:
+        prior_paid = float(existing.get("amount_paid") or 0)
+        new_paid = float(data.get("amount_paid") or 0)
+        delta = new_paid - prior_paid
+        if delta > 0:
+            import commissions as _com
+            await _com.accrue_on_invoice_payment(db, data, delta, payment_date=data.get("payment_date"))
+    except Exception as e:
+        logger.warning(f"Commission accrual (invoice update) failed: {type(e).__name__}: {e}")
     out = strip_id(data)
     if gl_warnings:
         out["gl_warnings"] = gl_warnings
@@ -7549,6 +7570,12 @@ if not PUBLIC_BASE_URL:
         PUBLIC_BASE_URL = ""
 api_router.include_router(_work_orders.create_router(db, get_current_user, PUBLIC_BASE_URL))
 api_router.include_router(_work_orders.create_public_router(db, PUBLIC_BASE_URL))
+
+# Commission tracking (Phase 1A — foundation: rates, splits, job-started
+# toggle, net-profit preview). Accrual hooks fire from _recalc_invoice's
+# post-write path (see server.py invoice endpoints).
+import commissions as _commissions
+api_router.include_router(_commissions.create_router(db, get_current_user, require_admin))
 
 
 # ----- Public Proposal Signing (Sign Off link) ----------------------------
