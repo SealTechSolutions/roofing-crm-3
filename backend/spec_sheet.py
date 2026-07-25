@@ -1709,11 +1709,16 @@ def build_spec_sheet(
     # Optional tier comparison table (used by FARM and similar multi-warranty systems)
     if template.get("tier_table"):
         tt = template["tier_table"]
-        story.append(Spacer(1, 0.10 * inch))
-        cell_style = ParagraphStyle("tier_cell", fontName="Helvetica", fontSize=10, textColor=DARK, leading=13, alignment=1)
-        head_style = ParagraphStyle("tier_head", fontName="Helvetica-Bold", fontSize=10, textColor=colors.white, leading=13, alignment=1)
-        warr_style = ParagraphStyle("tier_warr", fontName="Helvetica-Bold", fontSize=10, textColor=DARK, leading=13, alignment=1)
-        alt_style = ParagraphStyle("tier_alt", fontName="Helvetica-Bold", fontSize=9, textColor=BRONZE, leading=11, alignment=1)
+        # Tighter spacer above (was 0.10") — table is dense enough already.
+        story.append(Spacer(1, 0.06 * inch))
+        # Shrink the entire tier table by ~15% (font 10 → 8.5, leading 13 → 10)
+        # so the FARM/Silicone flow keeps the acceptance block on Page 2
+        # instead of pushing it onto Page 3. Aligns with the body font size
+        # used elsewhere in the doc (s["body"] ≈ 9pt).
+        cell_style = ParagraphStyle("tier_cell", fontName="Helvetica", fontSize=8.5, textColor=DARK, leading=10, alignment=1)
+        head_style = ParagraphStyle("tier_head", fontName="Helvetica-Bold", fontSize=8.5, textColor=colors.white, leading=10, alignment=1)
+        warr_style = ParagraphStyle("tier_warr", fontName="Helvetica-Bold", fontSize=8.5, textColor=DARK, leading=10, alignment=1)
+        alt_style = ParagraphStyle("tier_alt", fontName="Helvetica-Bold", fontSize=8, textColor=BRONZE, leading=10, alignment=1)
 
         data_rows = [[Paragraph(h, head_style) for h in tt["headers"]]]
         for row in tt.get("rows", []):
@@ -1739,10 +1744,11 @@ def build_spec_sheet(
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
             ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
-            ("LEFTPADDING", (0, 0), (-1, -1), 5),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            # Trim row padding 6 → 3 to reclaim ~40pt across the table.
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ]
         if alt_start_idx is not None:
             style_cmds.append(("BACKGROUND", (0, alt_start_idx), (-1, alt_start_idx), LIGHT))
@@ -1753,9 +1759,10 @@ def build_spec_sheet(
         ttable.setStyle(TableStyle(style_cmds))
         story.append(ttable)
 
-    # Larger breathing room after the tier table only (FARM has room to spare on page 2)
+    # Tighter breathing room after the tier table (was 0.10") — combined
+    # with the shrunken table this keeps the acceptance block on Page 2.
     if template.get("tier_table"):
-        story.append(Spacer(1, 0.10 * inch))
+        story.append(Spacer(1, 0.06 * inch))
     elif spread:
         story.append(Spacer(1, 0.12 * inch))
     else:
