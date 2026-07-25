@@ -270,7 +270,12 @@ export default function MaintenanceReport() {
           </Field>
           <Field label="Building Address (from Property record)">
             <div className="h-9 px-2 border border-dashed border-zinc-300 rounded-sm text-sm flex items-center text-zinc-600 bg-zinc-50">
-              {property ? [property.address_line_1, property.city, property.state, property.zip_code].filter(Boolean).join(", ") : "(No property linked to this deal)"}
+              {property
+                ? [
+                    [property.property_address || property.address_line_1, property.property_address_line2 || property.address_line_2].filter(Boolean).join(", "),
+                    [property.property_city || property.city, [property.property_state || property.state, property.property_zip || property.zip_code].filter(Boolean).join(" ")].filter(Boolean).join(", "),
+                  ].filter(Boolean).join(", ")
+                : "(No property linked to this deal)"}
             </div>
           </Field>
         </div>

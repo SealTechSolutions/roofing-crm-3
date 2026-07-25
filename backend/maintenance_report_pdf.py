@@ -586,15 +586,24 @@ def build_annual_maintenance_report_pdf(
     """
     styles = _annual_styles()
 
-    # Build project title / address strings once
+    # Build project title / address strings once. Property records use the
+    # `property_*` field prefix; older imports may use un-prefixed keys, so
+    # we fall back through both. Assembled as: "<street>, <unit>, <city>, <state> <zip>"
+    # matching the way a customer would read the address on an envelope.
     project_title = (deal.get("title") or "Project").strip()
-    addr_parts = []
+    address_str = project_title
     if property_doc:
-        for k in ("address_line_1", "city", "state", "zip_code"):
-            v = property_doc.get(k)
-            if v:
-                addr_parts.append(str(v))
-    address_str = ", ".join(addr_parts) if addr_parts else project_title
+        street = (property_doc.get("property_address") or property_doc.get("address_line_1") or "").strip()
+        unit   = (property_doc.get("property_address_line2") or property_doc.get("address_line_2") or "").strip()
+        city   = (property_doc.get("property_city") or property_doc.get("city") or "").strip()
+        state  = (property_doc.get("property_state") or property_doc.get("state") or "").strip()
+        zipc   = (property_doc.get("property_zip") or property_doc.get("zip_code") or "").strip()
+        line1 = ", ".join([p for p in [street, unit] if p])
+        state_zip = " ".join([p for p in [state, zipc] if p])
+        line2 = ", ".join([p for p in [city, state_zip] if p])
+        combined = ", ".join([p for p in [line1, line2] if p])
+        if combined:
+            address_str = combined
     visit_year_str = (visit.get("visit_date") or "").strip()[:4] or datetime.now().strftime("%Y")
 
     buf = io.BytesIO()
