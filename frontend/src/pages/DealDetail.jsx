@@ -281,9 +281,58 @@ export default function DealDetail() {
     if (!deal) return { revenue: 0, costs: 0, profit: 0, margin: 0, scheduled: 0, received: 0, outstanding: 0, paidCosts: 0, pendingCosts: 0, actualCosts: 0, actualPaid: 0, actualUnpaid: 0, actualProfit: 0, actualMargin: 0 };
     const revenue = Number(deal.chosen_amount || 0);
     const items = deal.cost_items || [];
-    const costs = items.reduce((s, i) => s + Number(i.amount || 0), 0);
+    const itemsCostsSum = items.reduce((s, i) => s + Number(i.amount || 0), 0);
     const paidCosts = items.filter((i) => i.status === "Paid").reduce((s, i) => s + Number(i.amount || 0), 0);
-    const pendingCosts = costs - paidCosts;
+
+    // Rolled-up estimate on the deal itself (fallback for deals that don't
+    // have granular cost_items yet — mirrors the Live P&L card's
+    // Materials / Subcontractor / Labor / Other buckets).
+    const rolledUp =
+      Number(deal.materials_cost || 0) +
+      Number(deal.labor_cost || 0) +
+      Number(deal.subcontractor_cost || 0) +
+      Number(deal.other_expenses_total || 0);
+
+    // Client-side back-solve — same math the Live P&L card uses so the two
+    // sections agree. Runs only when neither cost_items nor rolled-up
+    // estimates exist, i.e. legacy deals priced before we started persisting
+    // materials_cost / subcontractor_cost on Set-Option.
+    let backSolvedEstimate = 0;
+    if (itemsCostsSum <= 0 && rolledUp <= 0 && revenue > 0) {
+      const WARRANTY_FIELDS = [
+        { yr: 25, opt: "proposal_option_25yr", labor: "labor_25yr_add", oh: "overhead_25yr_pct", pr: "profit_25yr_pct", war: "warranty_25yr_add", hail: "hail_rider_25yr_add" },
+        { yr: 20, opt: "proposal_option_1",    labor: "labor_20yr_add", oh: "overhead_20yr_pct", pr: "profit_20yr_pct", war: "warranty_20yr_add", hail: "hail_rider_20yr_add" },
+        { yr: 15, opt: "proposal_option_2",    labor: "labor_15yr_add", oh: "overhead_15yr_pct", pr: "profit_15yr_pct", war: "warranty_15yr_add", hail: "" },
+        { yr: 10, opt: "proposal_option_3",    labor: "labor_10yr_add", oh: "overhead_10yr_pct", pr: "profit_10yr_pct", war: "warranty_10yr_add", hail: "" },
+      ];
+      let best = null;
+      for (const w of WARRANTY_FIELDS) {
+        const price = Number(deal[w.opt] || 0);
+        if (price <= 0) continue;
+        const diffPct = Math.abs(price - revenue) / revenue;
+        if (best === null || diffPct < best.diffPct) best = { w, diffPct };
+      }
+      if (best && best.diffPct <= 0.20) {
+        const w = best.w;
+        const ohPct = Number(deal[w.oh] ?? 20);
+        const prPct = Number(deal[w.pr] ?? 30);
+        const laborAdd = Number(deal[w.labor] || 0);
+        const warAdd = Number(deal[w.war] || 0);
+        const hailAdd = w.hail ? Number(deal[w.hail] || 0) : 0;
+        const base = Math.max(0, revenue - hailAdd - warAdd);
+        const mult = (1 + ohPct / 100) * (1 + prPct / 100);
+        const subtotal = mult > 0 ? base / mult : 0;
+        const matPlusHandling = Math.max(0, subtotal - laborAdd);
+        const matEst = matPlusHandling / 1.12;
+        backSolvedEstimate = Math.round(matEst + laborAdd);
+      }
+    }
+
+    // Use the LARGEST of (cost_items sum, rolled-up estimate, back-solved
+    // estimate) so we never under-count profit exposure — matches the
+    // "safer view" logic in ProjectLivePnL.
+    const costs = Math.max(itemsCostsSum, rolledUp, backSolvedEstimate);
+    const pendingCosts = Math.max(0, costs - paidCosts);
     const milestones = deal.payment_milestones || [];
     const scheduled = milestones.reduce((s, m) => s + Number(m.amount || 0), 0);
     const received = milestones.filter((m) => m.status === "Paid").reduce((s, m) => s + Number(m.amount || 0), 0);

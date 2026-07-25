@@ -111,6 +111,59 @@ export default function ProjectLivePnL({ deal, dealInvoices, vendorBills }) {
     // but the rolled-up field survives on legacy deals with no cost_items)
     estByCategory[cat.key] = Math.max(itemsSum, rolledUp);
   }
+
+  // --- CLIENT-SIDE BACK-SOLVE for legacy deals ---
+  // If the deal was priced BEFORE we started persisting materials_cost /
+  // subcontractor_cost on Set-Option, both stay $0 forever. Back-solve them
+  // from the scope math the Calculator already ran so the P&L reflects real
+  // numbers without forcing the rep to open the Calculator again.
+  //
+  // Working backward from the customer price:
+  //     customer = (materials + handling + labor) × (1 + oh/100) × (1 + profit/100)
+  //     where handling ≈ 12% of materials, so materials × 1.12 + labor = customer / [oh · profit]
+  //
+  // We only back-solve when BOTH Materials and Subcontractor slots are still
+  // $0 (no other data present) — never overrides real numbers already
+  // pushed from the Calculator or a linked vendor bill.
+  const WARRANTY_FIELDS = [
+    { yr: 25, opt: "proposal_option_25yr", labor: "labor_25yr_add", oh: "overhead_25yr_pct", pr: "profit_25yr_pct", war: "warranty_25yr_add", hail: "hail_rider_25yr_add" },
+    { yr: 20, opt: "proposal_option_1",    labor: "labor_20yr_add", oh: "overhead_20yr_pct", pr: "profit_20yr_pct", war: "warranty_20yr_add", hail: "hail_rider_20yr_add" },
+    { yr: 15, opt: "proposal_option_2",    labor: "labor_15yr_add", oh: "overhead_15yr_pct", pr: "profit_15yr_pct", war: "warranty_15yr_add", hail: "" },
+    { yr: 10, opt: "proposal_option_3",    labor: "labor_10yr_add", oh: "overhead_10yr_pct", pr: "profit_10yr_pct", war: "warranty_10yr_add", hail: "" },
+  ];
+  const noMatEst = (estByCategory.Materials || 0) <= 0;
+  const noSubEst = (estByCategory.Subcontractor || 0) <= 0;
+  if (contractTotal > 0 && (noMatEst || noSubEst)) {
+    // Fuzzy-match chosen_amount to the closest proposal option (20% tolerance,
+    // covers hail-rider / NDL upgrades that inflate the signed total).
+    let best = null;
+    for (const w of WARRANTY_FIELDS) {
+      const price = Number(deal[w.opt] || 0);
+      if (price <= 0) continue;
+      const diffPct = Math.abs(price - contractTotal) / contractTotal;
+      if (best === null || diffPct < best.diffPct) best = { w, diffPct, price };
+    }
+    if (best && best.diffPct <= 0.20) {
+      const w = best.w;
+      const ohPct = Number(deal[w.oh] ?? 20);
+      const prPct = Number(deal[w.pr] ?? 30);
+      const laborAdd = Number(deal[w.labor] || 0);
+      const warAdd = Number(deal[w.war] || 0);
+      const hailAdd = w.hail ? Number(deal[w.hail] || 0) : 0;
+      // Strip any add-ons (hail-rider / NDL upgrade) — Set-Option writes them
+      // ABOVE the base proposal price, so back-solving without stripping them
+      // over-estimates cost.
+      const base = Math.max(0, contractTotal - hailAdd - warAdd);
+      const mult = (1 + ohPct / 100) * (1 + prPct / 100);
+      const subtotal = mult > 0 ? base / mult : 0;
+      // subtotal ≈ (materials × 1.12) + laborAdd  →  materials ≈ (subtotal − labor) / 1.12
+      const matPlusHandling = Math.max(0, subtotal - laborAdd);
+      const matEst = Math.round(matPlusHandling / 1.12);
+      if (noMatEst && matEst > 0) estByCategory.Materials = matEst;
+      if (noSubEst && laborAdd > 0) estByCategory.Subcontractor = Math.round(laborAdd);
+    }
+  }
+
   // Equipment estimate: sum of standard rates for each ordered item
   const equipmentOrdered = deal.equipment_ordered || [];
   const equipmentEst = equipmentOrdered.reduce(
