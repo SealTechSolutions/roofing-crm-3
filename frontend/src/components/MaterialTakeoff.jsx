@@ -12,7 +12,7 @@ import { toast } from "sonner";
  */
 export default function MaterialTakeoff({ deal, reload }) {
   const [showPicker, setShowPicker] = useState(false);
-  const [showVariance, setShowVariance] = useState(false);
+  const [showVariance, setShowVariance] = useState(true);
   const [varianceData, setVarianceData] = useState(null);
   const [linkerLine, setLinkerLine] = useState(null); // takeoff line currently being linked
   const dealId = deal.id;
@@ -155,9 +155,9 @@ export default function MaterialTakeoff({ deal, reload }) {
                 showVariance ? "bg-zinc-950 text-white" : "border border-zinc-300 text-zinc-700 hover:border-zinc-950"
               }`}
               data-testid="toggle-variance-view"
-              title="Show Estimated vs Actual per line"
+              title="Show/hide the Actual (from vendor bills) + variance columns"
             >
-              <TrendingUp className="w-3.5 h-3.5" /> {showVariance ? "Hide Variance" : "Show Variance"}
+              <TrendingUp className="w-3.5 h-3.5" /> {showVariance ? "Hide Actuals" : "Show Actuals"}
             </button>
           )}
           <button

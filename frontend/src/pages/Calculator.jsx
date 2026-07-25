@@ -788,13 +788,16 @@ export default function Calculator() {
           const kind = classifyContainer(pk.product);
           const kindLabel = kind === "tote" ? "Tote" : kind === "drum" ? "Drum" : kind === "pail" ? "Pail" : (pk.product.unit || "");
           const unitDesc = `${pk.product.package_size} ${pk.product.unit} ${kindLabel}`.trim();
-          // pk.cost is the loaded material cost for the whole packed batch
-          // (qty × per-container price × shipping mark-up applied upstream in
-          // packContainers). Convert to per-container unit_cost + line_total
-          // so the Take-Off table can show real dollars per line and the
-          // per-vendor PO PDF variance report reads the correct estimate.
-          const unitCost = pk.qty > 0 ? Math.round((pk.cost / pk.qty) * 100) / 100 : 0;
-          const lineTotal = Math.round(pk.cost * 100) / 100;
+          // pk.cost is the RAW packed cost (catalog price × package × count).
+          // Layer the shipping/tax markup on top so the Take-Off "Estimated"
+          // reflects what the deal actually needs to spend to receive the
+          // material — matches the standard "add 20% for shipping and taxes"
+          // convention. Handling (~12%) is a separate later-stage line and
+          // isn't baked in here.
+          const shipMult = 1 + Number(settings.markup_pct || 0) / 100;
+          const rawUnit = pk.qty > 0 ? pk.cost / pk.qty : 0;
+          const unitCost = Math.round(rawUnit * shipMult * 100) / 100;
+          const lineTotal = Math.round(pk.cost * shipMult * 100) / 100;
           newTakeoff.push({
             id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
             vendor_id: vendorId,
