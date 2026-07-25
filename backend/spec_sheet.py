@@ -5,6 +5,7 @@ Public API:
     build_silicone_spec(data, cover_photo_bytes=None)  # back-compat alias
 """
 import os
+from datetime import datetime
 from io import BytesIO
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -1548,6 +1549,18 @@ def build_spec_sheet(
     current_roof_type: str | None = None,
     signer_name: str | None = None,
     signer_credentials: str | None = None,
+    # --- Post-sign stamping (fills the Acceptance-of-Scope block when the
+    # customer has signed via the public /sign/{token} flow). All optional —
+    # when unset the block renders as blank underscores like a preview PDF.
+    customer_signer_name: str | None = None,
+    customer_signed_at: str | None = None,
+    customer_signature_bytes: bytes | None = None,
+    customer_signature_text: str | None = None,   # typed fallback if drawn image missing
+    customer_signature_font: str | None = None,   # e.g. "Dancing Script" / "Caveat"
+    customer_chosen_option_label: str | None = None,  # e.g. "25-Year Standard Warranty"
+    customer_ndl_upgrade_label: str | None = None,     # e.g. "NDL Warranty w/ Hail Rider"
+    customer_ndl_upgrade_amount: float = 0.0,
+    customer_final_amount: float = 0.0,               # base + NDL upgrade if opted-in
 ) -> bytes:
     """Build a SealTech-branded scope/spec sheet for the given roof type.
 
@@ -1833,10 +1846,64 @@ def build_spec_sheet(
     ))
     story.append(Spacer(1, 0.10 * inch if spread else 0.06 * inch))
 
-    accept_rows = [
-        ["By:", "________________________________", "Title:", "________________________________"],
-        ["Signature:", "________________________________", "Date:", "________________________________"],
-    ]
+    # ---- Acceptance-of-Scope block. If the customer has signed via the
+    #      public /sign/{token} flow, stamp their signature + tier choice.
+    _is_signed = bool(customer_signer_name and customer_signed_at)
+    if _is_signed:
+        # Selection line — sits above the sig table so the customer's
+        # confirmed tier + optional NDL upgrade are visible at a glance.
+        selection_bits = []
+        if customer_chosen_option_label:
+            selection_bits.append(f"<b>Selected Warranty:</b> {customer_chosen_option_label}")
+        if customer_ndl_upgrade_amount and customer_ndl_upgrade_amount > 0:
+            up_lbl = customer_ndl_upgrade_label or "NDL Warranty Upgrade"
+            selection_bits.append(
+                f"<b>Upgrade Accepted:</b> {up_lbl} (+${customer_ndl_upgrade_amount:,.2f})"
+            )
+        if customer_final_amount and customer_final_amount > 0:
+            selection_bits.append(f"<b>Accepted Total:</b> ${customer_final_amount:,.2f}")
+        if selection_bits:
+            story.append(Paragraph(
+                " &nbsp;·&nbsp; ".join(selection_bits),
+                ParagraphStyle("selection_line", parent=s["body"], fontSize=10,
+                               leading=13, textColor=DARK, spaceAfter=6),
+            ))
+
+        # Signature block — image if drawn, styled text if typed
+        sig_cell = None
+        if customer_signature_bytes:
+            try:
+                sig_cell = Image(
+                    BytesIO(customer_signature_bytes),
+                    width=2.6 * inch, height=0.5 * inch, kind="proportional",
+                )
+            except Exception:
+                sig_cell = None
+        if sig_cell is None:
+            _font_for_typed = (customer_signature_font or "").strip() or "Helvetica"
+            # ReportLab can't safely embed arbitrary Google fonts at runtime —
+            # fall back to italic Helvetica which still reads as cursive.
+            sig_cell = Paragraph(
+                f'<i><font size="14">{customer_signature_text or customer_signer_name}</font></i>',
+                ParagraphStyle("typed_sig", parent=s["body"], fontSize=14,
+                               leading=18, textColor=DARK),
+            )
+        try:
+            _dt = datetime.fromisoformat(customer_signed_at.replace("Z", "+00:00"))
+            _dt_str = _dt.strftime("%b %-d, %Y")
+        except Exception:
+            _dt_str = (customer_signed_at or "")[:10]
+        accept_rows = [
+            ["By:",         Paragraph(f"<b>{customer_signer_name}</b>", s["body"]),
+             "Title:",      Paragraph("<i>Owner / Authorized Representative</i>", s["body"])],
+            ["Signature:",  sig_cell,
+             "Date:",       Paragraph(f"<b>{_dt_str}</b>", s["body"])],
+        ]
+    else:
+        accept_rows = [
+            ["By:", "________________________________", "Title:", "________________________________"],
+            ["Signature:", "________________________________", "Date:", "________________________________"],
+        ]
     at = Table(accept_rows, colWidths=[0.7 * inch, 3.0 * inch, 0.6 * inch, 3.0 * inch])
     at.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
@@ -1844,6 +1911,7 @@ def build_spec_sheet(
         ("TEXTCOLOR", (0, 0), (-1, -1), DARK),
         ("TOPPADDING", (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     story.append(at)
     story.append(PageBreak())

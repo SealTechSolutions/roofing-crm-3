@@ -5502,9 +5502,24 @@ async def deal_spec_sheet(
     )
 
 
-async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
+async def _build_spec_pdf_for_deal(
+    deal: dict, user: dict,
+    *,
+    customer_signer_name: str | None = None,
+    customer_signed_at: str | None = None,
+    customer_signature_bytes: bytes | None = None,
+    customer_signature_text: str | None = None,
+    customer_signature_font: str | None = None,
+    customer_chosen_option_label: str | None = None,
+    customer_ndl_upgrade_label: str | None = None,
+    customer_ndl_upgrade_amount: float = 0.0,
+    customer_final_amount: float = 0.0,
+) -> bytes:
     """Shared PDF builder used by /spec-sheet.pdf (download) and
-    /spec-sheet/email (send-with-attachments)."""
+    /spec-sheet/email (send-with-attachments).
+
+    Post-sign stamping (customer_* kwargs) is optional — supplied only by
+    the public /public/proposal/{token}/pdf downloader after signing."""
 
     # Build address from linked property
     project_address = "—"
@@ -5682,6 +5697,15 @@ async def _build_spec_pdf_for_deal(deal: dict, user: dict) -> bytes:
         current_roof_type=deal.get("current_roof_type"),
         signer_name=(user.get("name") or "").strip(),
         signer_credentials=(user.get("credentials") or "").strip(),
+        customer_signer_name=customer_signer_name,
+        customer_signed_at=customer_signed_at,
+        customer_signature_bytes=customer_signature_bytes,
+        customer_signature_text=customer_signature_text,
+        customer_signature_font=customer_signature_font,
+        customer_chosen_option_label=customer_chosen_option_label,
+        customer_ndl_upgrade_label=customer_ndl_upgrade_label,
+        customer_ndl_upgrade_amount=customer_ndl_upgrade_amount,
+        customer_final_amount=customer_final_amount,
     )
     return pdf_bytes
 
@@ -7761,12 +7785,60 @@ async def _auto_create_deposit_invoice(deal_id: str, percentage: float = 50.0) -
 async def _build_signed_scope_pdf_public(deal: dict) -> bytes:
     """Public-side spec sheet builder for /public/proposal/{token}/pdf.
     Resolves the deal owner so the "presented by" cover info matches what
-    the customer originally received over email."""
+    the customer originally received over email. Loads the customer's
+    signature blob (if any) and stamps it into the Acceptance-of-Scope
+    block along with the chosen warranty tier + NDL upgrade acceptance."""
     owner_id = deal.get("assigned_to_id") or deal.get("created_by_id")
     user_doc = None
     if owner_id:
         user_doc = await db.users.find_one({"id": owner_id}, {"_id": 0})
-    return await _build_spec_pdf_for_deal(deal, user_doc or {})
+
+    # Load customer signature bytes (drawn or typed) — falls back gracefully
+    # to the typed name if the file's gone missing.
+    sig_bytes = None
+    sig_file_id = deal.get("scope_signature_file_id")
+    if sig_file_id:
+        try:
+            rec = await db.files.find_one(
+                {"id": sig_file_id, "is_deleted": {"$ne": True}}, {"_id": 0, "storage_path": 1},
+            )
+            if rec and rec.get("storage_path"):
+                sig_bytes, _ct = get_object(rec["storage_path"])
+        except Exception:
+            sig_bytes = None
+
+    # Resolve the chosen-option's human label so the acceptance line reads
+    # naturally (e.g. "25-Year Standard Warranty" instead of "opt_25").
+    _CHOSEN_LABELS = {
+        "opt_25": "25-Year Standard Warranty",
+        "opt_20": "20-Year Standard Warranty",
+        "opt_15": "15-Year Standard Warranty",
+        "opt_10": "10-Year Standard Warranty",
+    }
+    chosen_label = _CHOSEN_LABELS.get(deal.get("chosen_option_id") or "")
+    if not chosen_label and deal.get("winning_warranty_years"):
+        chosen_label = f"{deal['winning_warranty_years']}-Year Standard Warranty"
+
+    ndl_amount = float(deal.get("ndl_upgrade_accepted_amount")
+                       or deal.get("hail_rider_accepted_amount") or 0)
+    ndl_label = None
+    if ndl_amount > 0:
+        yrs = deal.get("winning_warranty_years")
+        ndl_label = ("NDL Warranty w/ Hail Rider" if yrs in (20, 25)
+                     else "NDL Warranty Upgrade")
+
+    return await _build_spec_pdf_for_deal(
+        deal, user_doc or {},
+        customer_signer_name=deal.get("scope_signed_by_name"),
+        customer_signed_at=deal.get("scope_signed_at"),
+        customer_signature_bytes=sig_bytes,
+        customer_signature_text=deal.get("scope_signed_by_name"),
+        customer_signature_font=deal.get("scope_signature_font"),
+        customer_chosen_option_label=chosen_label,
+        customer_ndl_upgrade_label=ndl_label,
+        customer_ndl_upgrade_amount=ndl_amount,
+        customer_final_amount=float(deal.get("chosen_amount") or 0),
+    )
 
 
 api_router.include_router(_proposal_signing.create_public_router(
