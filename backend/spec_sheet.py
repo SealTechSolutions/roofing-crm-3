@@ -75,9 +75,9 @@ SILICONE_TEMPLATE = {
     "title": "SILICONE ROOF SCOPE",
     "scope_1_title": "Inspection and Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, slope, and drainage.",
-        "Identify wet insulation by infrared and/or core cuts; quantify replacement/ventilation areas.",
-        "Remove all roof debris, power wash existing membrane (if required), and allow to dry.",
+        "Survey existing roof assembly and verify its condition is suitable for proposed system as to the deck condition, slope, and drainage.",
+        "Identify wet insulation and repair and/or install 10\" one-way vents for proper ventilation.",
+        "Remove all roof debris, power wash existing membrane (if required use approved cleaner), and allow to dry.",
         "Re-seal seams, flashings, and penetrations to provide a sound substrate for coating.",
         "Verify drains, scuppers, and edge metal are functional and watertight.",
     ],
@@ -152,7 +152,7 @@ TPO_OVERLAY_TEMPLATE = {
     "title": "TPO OVER-LAY ROOF SYSTEM SCOPE",
     "scope_1_title": "Inspection and Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Survey existing roof assembly and verify its condition is suitable for proposed system as to the deck condition, slope, and drainage.",
         "Remove loose debris, clean the existing TPO surface thoroughly.",
         "Remove and replace deteriorated flashings, pitch pans, vents, and penetrations as needed.",
         "Secure loose existing membrane.",
@@ -174,8 +174,8 @@ TPO_REPLACEMENT_TEMPLATE = {
     "title": "TPO ROOF SYSTEM SCOPE",
     "scope_1_title": "Inspection and Tear-Off / Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, slope, and drainage.",
-        "Identify wet insulation by infrared and/or core cuts; quantify replacement areas.",
+        "Survey existing roof assembly and verify its condition is suitable for proposed system as to the deck condition, slope, and drainage.",
+        "Identify wet insulation and repair and/or install 10\" one-way vents for proper ventilation.",
         "Remove existing membrane, insulation, flashings, base sheets, edge metal, copings, penetrations, and accessories down to the structural deck.",
         "Remove fasteners and clean the deck of debris, adhesives, or contaminants.",
         "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
@@ -198,7 +198,7 @@ EPDM_OVERLAY_TEMPLATE = {
     "title": "EPDM OVER-LAY ROOF SYSTEM SCOPE",
     "scope_1_title": "Inspection and Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Survey existing roof assembly and verify its condition is suitable for proposed system as to the deck condition, slope, and drainage.",
         "Remove loose debris, clean the existing membrane thoroughly.",
         "Remove and replace deteriorated flashings, pitch pans, vents, and penetrations as needed.",
         "Cut, patch, and repair open seams, splits, and damaged areas of the existing membrane.",
@@ -222,8 +222,8 @@ EPDM_REPLACEMENT_TEMPLATE = {
     "title": "EPDM ROOF SYSTEM SCOPE",
     "scope_1_title": "Inspection and Tear-Off / Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, slope, and drainage.",
-        "Identify wet insulation by infrared and/or core cuts; quantify replacement areas.",
+        "Survey existing roof assembly and verify its condition is suitable for proposed system as to the deck condition, slope, and drainage.",
+        "Identify wet insulation and repair and/or install 10\" one-way vents for proper ventilation.",
         "Remove existing membrane, insulation, flashings, base sheets, edge metal, copings, penetrations, and accessories down to the structural deck.",
         "Remove fasteners and clean the deck of debris, adhesives, or contaminants.",
         "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
@@ -247,7 +247,7 @@ MODBIT_OVERLAY_TEMPLATE = {
     "title": "MODIFIED BITUMEN OVER-LAY ROOF SYSTEM SCOPE",
     "scope_1_title": "Inspection and Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Survey existing roof assembly and verify its condition is suitable for proposed system as to the deck condition, slope, and drainage.",
         "Power-clean existing surface; remove loose granules, debris, and contamination.",
         "Cut, patch, and repair blisters, splits, and damaged areas of the existing membrane.",
         "Remove and replace deteriorated flashings, pitch pans, vents, and penetrations as needed.",
@@ -270,8 +270,8 @@ MODBIT_REPLACEMENT_TEMPLATE = {
     "title": "MODIFIED BITUMEN ROOF SYSTEM SCOPE",
     "scope_1_title": "Inspection and Tear-Off / Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, slope, and drainage.",
-        "Identify wet insulation by infrared and/or core cuts; quantify replacement areas.",
+        "Survey existing roof assembly and verify its condition is suitable for proposed system as to the deck condition, slope, and drainage.",
+        "Identify wet insulation and repair and/or install 10\" one-way vents for proper ventilation.",
         "Remove existing cap sheet, ply membrane, insulation, flashings, base sheets, edge metal, copings, penetrations, and accessories down to the structural deck.",
         "Remove fasteners and clean the deck of debris, adhesives, or contaminants.",
         "Inspect and repair/replace damaged decking, wood blocking, or nailers with new like-for-like material; secure loose deck panels.",
@@ -294,7 +294,7 @@ PVC_OVERLAY_TEMPLATE = {
     "title": "PVC OVER-LAY ROOF SYSTEM SCOPE",
     "scope_1_title": "Inspection and Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, slope, and drainage.",
+        "Survey existing roof assembly and verify its condition is suitable for proposed system as to the deck condition, slope, and drainage.",
         "Remove loose debris, clean the existing single-ply surface thoroughly.",
         "Remove and replace deteriorated flashings, pitch pans, vents, and penetrations as needed.",
         "Secure loose existing membrane.",
@@ -316,8 +316,8 @@ PVC_REPLACEMENT_TEMPLATE = {
     "title": "PVC ROOF SYSTEM SCOPE",
     "scope_1_title": "Inspection and Tear-Off / Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, slope, and drainage.",
-        "Identify wet insulation by infrared and/or core cuts; quantify replacement areas.",
+        "Survey existing roof assembly and verify its condition is suitable for proposed system as to the deck condition, slope, and drainage.",
+        "Identify wet insulation and repair and/or install 10\" one-way vents for proper ventilation.",
         "Remove existing membrane, insulation, flashings, base sheets, edge metal, copings, penetrations, and accessories down to the structural deck.",
         "Remove fasteners and clean the deck of debris, adhesives, or contaminants.",
         "Inspect and repair/replace damaged decking, wood blocking, or nailers; secure loose deck panels.",
@@ -674,9 +674,9 @@ FARM_TEMPLATE = {
     "title": "FLUID APPLIED REINFORCED MEMBRANE SCOPE",
     "scope_1_title": "Inspection and Prep",
     "scope_1": [
-        "Survey existing roof assembly and document deck condition, slope, and drainage.",
-        "Identify wet insulation by infrared and/or core cuts; quantify replacement/ventilation areas.",
-        "Remove all roof debris, power wash existing membrane (if required), and allow to dry.",
+        "Survey existing roof assembly and verify its condition is suitable for proposed system as to the deck condition, slope, and drainage.",
+        "Identify wet insulation and repair and/or install 10\" one-way vents for proper ventilation.",
+        "Remove all roof debris, power wash existing membrane (if required use approved cleaner), and allow to dry.",
     ],
     "scope_2_title": "FARM Application",
     "scope_2": [
@@ -689,8 +689,9 @@ FARM_TEMPLATE = {
     # continuous scope of work.
     "wo_scope_2_title": None,
     "wo_scope_2": [
-        "All penetrations will be flashed with a 5-course system of mastic and fabric before and during application.",
+        "All penetrations and drains will be flashed with a 5-course system of mastic and fabric according to Manufacturer's Specifications before and during application.",
         "Apply the following Manufacturer Spec if provided, or the written spec noted below.",
+        "Install grey walkway according to manufacturer specifications.",
     ],
     "tier_table": {
         "headers": ["25-YEAR SYSTEM", "20-YEAR SYSTEM", "15-YEAR SYSTEM", "10-YEAR SYSTEM"],
