@@ -491,18 +491,32 @@ function PhotoRow({ photo, num, role, isHero, onPatch, onDelete, onAiDescribe, o
 
 // ─── Email Report Preview Modal ─────────────────────────────────────
 function EmailReportModal({ dealId, visitId, visit, deal, onClose, onSent }) {
-  const defaultSubject = `Annual Maintenance Report — ${deal?.title || "your property"} — ${(visit?.visit_date || "").slice(0, 4)}`;
-  const defaultMessage = `Attached is your Annual Maintenance Report for ${deal?.title || "your property"}, documenting the site visit on ${visit?.visit_date}. The report walks through the before/after condition of the roof, includes our observations and notes for each area serviced, and closes with our estimated service life for the current system.`;
+  const year = (visit?.visit_date || "").slice(0, 4);
+  const defaultSubject = `Annual Maintenance Report — ${deal?.title || "your property"} — ${year}`;
+  const buildDefaultMessage = (withInvoice) => {
+    const base = `Attached is your Annual Maintenance Report for ${deal?.title || "your property"}, documenting the site visit on ${visit?.visit_date}. The report walks through the before/after condition of the roof, includes our observations and notes for each area serviced, and closes with our estimated service life for the current system.`;
+    if (!withInvoice) return base;
+    return base + ` Your invoice for this year's maintenance service is also attached ($${Number(visit?.amount || 0).toLocaleString()}).`;
+  };
   const [to, setTo] = useState(visit?.building_contact_email || "");
   const [cc, setCc] = useState("");
   const [bcc, setBcc] = useState("maintenance@sealtechsolutions.co");
   const [subject, setSubject] = useState(defaultSubject);
-  const [message, setMessage] = useState(defaultMessage);
+  const [includeInvoice, setIncludeInvoice] = useState(false);
+  const [message, setMessage] = useState(buildDefaultMessage(false));
+  const [messageEdited, setMessageEdited] = useState(false);   // Once the rep types their own body, we stop auto-rewriting it
   const [sending, setSending] = useState(false);
 
   const previewPdf = () => {
     const url = `${API}/deals/${dealId}/maintenance-visits/${visitId}/report.pdf?token=${encodeURIComponent(localStorage.getItem("crm_token") || "")}`;
     window.open(url, "_blank");
+  };
+
+  // When "Attach invoice" toggle flips, rewrite the default body — but ONLY
+  // if the rep hasn't typed a custom body yet (respect manual edits).
+  const toggleInvoice = (checked) => {
+    setIncludeInvoice(checked);
+    if (!messageEdited) setMessage(buildDefaultMessage(checked));
   };
 
   const send = async () => {
@@ -512,8 +526,9 @@ function EmailReportModal({ dealId, visitId, visit, deal, onClose, onSent }) {
       const r = await api.post(`/deals/${dealId}/maintenance-visits/${visitId}/email`, {
         to_email: to.trim(), cc_email: cc.trim(), bcc_email: bcc.trim(),
         subject: subject.trim(), message: message.trim(),
+        include_invoice: includeInvoice,
       });
-      toast.success(`Report emailed to ${r.data.to}${r.data.bcc ? ` (BCC ${r.data.bcc})` : ""}`);
+      toast.success(`Report ${includeInvoice ? "+ invoice " : ""}emailed to ${r.data.to}${r.data.bcc ? ` (BCC ${r.data.bcc})` : ""}`);
       onSent({ to: r.data.to });
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message);
@@ -543,8 +558,23 @@ function EmailReportModal({ dealId, visitId, visit, deal, onClose, onSent }) {
           <Field label="Subject">
             <input type="text" data-testid="email-subject" value={subject} onChange={(e) => setSubject(e.target.value)} className="w-full h-9 px-2 border border-zinc-300 rounded-sm text-sm" />
           </Field>
+          {/* Attach maintenance invoice checkbox — auto-rewrites body if
+              the rep hasn't manually edited it yet. */}
+          <label className="flex items-start gap-2 py-1 cursor-pointer select-none" data-testid="email-include-invoice-label">
+            <input
+              type="checkbox"
+              checked={includeInvoice}
+              onChange={(e) => toggleInvoice(e.target.checked)}
+              className="mt-0.5"
+              data-testid="email-include-invoice"
+            />
+            <div className="text-xs">
+              <div className="font-bold text-zinc-900">Attach this year&apos;s maintenance invoice PDF</div>
+              <div className="text-zinc-500 mt-0.5">Requires a draft invoice on this visit. The email body will automatically mention the invoice when checked.</div>
+            </div>
+          </label>
           <Field label="Message">
-            <textarea rows={6} data-testid="email-message" value={message} onChange={(e) => setMessage(e.target.value)} className="w-full px-2 py-2 border border-zinc-300 rounded-sm text-sm leading-relaxed" />
+            <textarea rows={6} data-testid="email-message" value={message} onChange={(e) => { setMessage(e.target.value); setMessageEdited(true); }} className="w-full px-2 py-2 border border-zinc-300 rounded-sm text-sm leading-relaxed" />
           </Field>
           <div className="text-[10px] text-zinc-500">
             The freshly-generated PDF will be attached automatically as <span className="font-mono">{`${(deal?.title || "Project").slice(0, 50)} - Annual Maintenance ${(visit?.visit_date || "").slice(0, 4)}.pdf`}</span>

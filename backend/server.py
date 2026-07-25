@@ -1923,6 +1923,10 @@ async def email_annual_maintenance_report(deal_id: str, visit_id: str, body: dic
     from_email = (body.get("from_email") or "").strip() or None
     subject_override = (body.get("subject") or "").strip()
     custom_message = (body.get("message") or "").strip()
+    # Whether to attach the draft maintenance invoice PDF alongside the
+    # report. Opt-in via checkbox because plenty of visits are billed
+    # through other channels.
+    include_invoice = bool(body.get("include_invoice"))
 
     if not to_email:
         raise HTTPException(status_code=400, detail="No recipient email — provide one or set a Building Contact Email on the visit.")
@@ -1955,15 +1959,42 @@ async def email_annual_maintenance_report(deal_id: str, visit_id: str, body: dic
     year = (visit.get("visit_date") or "")[:4] or datetime.now(timezone.utc).strftime("%Y")
     safe_title = (deal.get("title") or "Project").replace("/", "-").replace("\\", "-")[:60]
     filename = f"{safe_title} - Annual Maintenance {year}.pdf"
+
+    # Optionally locate + generate the draft invoice PDF for the same visit.
+    # The invoice is linked back via `source_type="maintenance_visit"` +
+    # `source_id=visit_id` (see POST /invoices/from-maintenance-visit).
+    invoice_doc = None
+    invoice_filename = None
+    if include_invoice:
+        invoice_doc = await db.invoices.find_one(
+            {"deal_id": deal_id, "source_type": "maintenance_visit", "source_id": visit_id, "is_deleted": {"$ne": True}},
+            {"_id": 0},
+        )
+        if not invoice_doc:
+            raise HTTPException(status_code=400, detail="No invoice exists for this visit yet — create one via the Draft Invoice button first.")
+
     contact_name = (visit.get("building_contact_name") or "there").strip() or "there"
+    invoice_intro = ""
+    if invoice_doc:
+        invoice_intro = (
+            f" Your invoice for this year's maintenance service is also attached "
+            f"({invoice_doc.get('invoice_number', 'draft')}, amount ${float(invoice_doc.get('amount') or 0):,.2f})."
+        )
     default_intro = (
         f"Attached is your Annual Maintenance Report for {deal.get('title') or 'your property'}, "
         f"documenting the site visit on {visit.get('visit_date') or year}. "
         f"The report walks through the before/after condition of the roof, includes our observations and notes for each "
-        f"area serviced, and closes with our estimated service life for the current system."
+        f"area serviced, and closes with our estimated service life for the current system.{invoice_intro}"
     )
     intro = custom_message or default_intro
     subject = subject_override or f"Annual Maintenance Report — {deal.get('title') or 'your property'} — {year}"
+
+    attached_line_txt = f"  Attached: {filename}"
+    attached_line_html = f"<b>Attached:</b> {filename}"
+    if invoice_doc:
+        invoice_filename = f"{invoice_doc.get('invoice_number', 'Invoice')}.pdf"
+        attached_line_txt += f"\n  Attached: {invoice_filename}"
+        attached_line_html += f"<br/><b>Attached:</b> {invoice_filename}"
 
     body_text = (
         f"Hello {contact_name},\n\n"
