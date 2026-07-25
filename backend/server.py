@@ -3204,7 +3204,22 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
     # Resolve per-invoice late-fee rate (customer override → entity default → 1.5%)
     inv_rate, inv_rate_pct = await _resolve_invoice_late_fee_rate(inv)
     inv_rate_pct_str = (f"{inv_rate_pct:.2f}").rstrip("0").rstrip(".")
-    pdf_bytes = build_invoice_pdf(inv, late_fee_rate_pct=inv_rate_pct)
+    # Sanitize the invoice snapshot BEFORE rendering so the customer never
+    # sees the "Draft" badge or internal auto-gen notes. We flip status to
+    # Sent in memory and strip the internal boilerplate from `notes`. The
+    # DB record is updated post-send below so this is idempotent.
+    _pdf_inv = dict(inv)
+    if _pdf_inv.get("status") in ("Draft", "Overdue"):
+        _pdf_inv["status"] = "Sent"
+    _notes = (_pdf_inv.get("notes") or "").strip()
+    _INTERNAL_NOTE_MARKERS = (
+        "Auto-generated on proposal acceptance",
+        "Auto-generated on project completion",
+        "Edit any field before sending",
+    )
+    if any(m in _notes for m in _INTERNAL_NOTE_MARKERS):
+        _pdf_inv["notes"] = ""
+    pdf_bytes = build_invoice_pdf(_pdf_inv, late_fee_rate_pct=inv_rate_pct)
 
     # Compose email
     inv_num = inv.get("invoice_number", "")
@@ -3281,7 +3296,9 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Email send failed: {type(e).__name__}: {e}")
 
-    # Mark invoice as Sent (preserves Paid/Partial)
+    # Mark invoice as Sent (preserves Paid/Partial). Also persist the
+    # sanitized notes so subsequent /invoices/{id}/pdf downloads render
+    # the same clean version the customer received.
     patch = {
         "bill_to_email": to_email,
         "cc_email": cc_email,
@@ -3289,6 +3306,8 @@ async def email_invoice(invoice_id: str, body: dict = Body(...), current=Depends
     }
     if inv.get("status") in ("Draft", "Overdue"):
         patch["status"] = "Sent"
+    if _pdf_inv.get("notes") != inv.get("notes"):
+        patch["notes"] = _pdf_inv.get("notes", "")
     await db.invoices.update_one({"id": invoice_id}, {"$set": patch})
 
     return {
