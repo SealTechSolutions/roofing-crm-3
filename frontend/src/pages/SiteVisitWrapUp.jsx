@@ -64,7 +64,7 @@ export default function SiteVisitWrapUp() {
             <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-700 mb-0.5 flex items-center gap-1.5">
               <ClipboardCheck className="w-3.5 h-3.5" /> Wrap-Up
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-zinc-900">Finish Site Visit</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-zinc-900">Daily Site Wrap-Up</h1>
             <div className="text-xs text-zinc-500 mt-0.5">
               {loading ? "Loading…" : `${visits.length} deal${visits.length === 1 ? "" : "s"} · ${pending} needs attention · ${clean} ready`}
             </div>

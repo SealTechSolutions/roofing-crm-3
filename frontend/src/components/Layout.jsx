@@ -51,7 +51,7 @@ const NAV_GROUPS = [
     label: "Field",
     icon: Camera,
     items: [
-      { to: "/wrap-up", label: "Finish Site Visit",  icon: ClipboardCheck,  testId: "nav-wrap-up" },
+      { to: "/wrap-up", label: "Daily Site Wrap-Up",  icon: ClipboardCheck,  testId: "nav-wrap-up" },
     ],
   },
   {
