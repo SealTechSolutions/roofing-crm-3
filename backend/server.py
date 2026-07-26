@@ -671,6 +671,15 @@ class DealIn(BaseModel):
     # Empty / missing values fall back to the spec_sheet.py template default.
     scope_overrides: dict = Field(default_factory=dict)
 
+    # Work Order lifecycle stamps — populated by the WO send + sign flows in
+    # `work_orders.py`. Drive the "WO Sent" and "WO Signed" pills on the
+    # Deal Detail pipeline. `subcontractor_accepted` mirrors `last_work_order_signed_at`
+    # (kept for backwards compatibility with older deal docs).
+    last_work_order_sent_at: str = ""
+    last_work_order_signed_at: str = ""
+    subcontractor_accepted: bool = False
+    subcontractor_accepted_at: str = ""
+
 
 class Deal(DealIn):
     id: str

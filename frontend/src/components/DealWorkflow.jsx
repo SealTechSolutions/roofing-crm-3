@@ -30,7 +30,8 @@ const STAGES = [
   { key: "won",             label: "Won / Signed",     Icon: ShieldCheck,    tab: "overview" },
   { key: "deposit",         label: "Deposit Paid",     Icon: DollarSign,     tab: "milestones" },
   // Production Kickoff (mirrors the GoToProductionChecklist order)
-  { key: "wo_sent",         label: "WO Sent",          Icon: HardHat,        tab: "schedule" },
+  { key: "wo_sent",         label: "WO Sent",          Icon: HardHat,        tab: "work_orders" },
+  { key: "wo_signed",       label: "WO Signed",        Icon: CheckCircle2,   tab: "work_orders" },
   { key: "scheduled",       label: "Scheduled",        Icon: CalIcon,        tab: "schedule" },
   { key: "materials",       label: "Materials Ordered",Icon: Truck,          tab: "schedule" },
   { key: "equipment",       label: "Equipment Ordered",Icon: Package,        tab: "schedule" },
@@ -50,8 +51,12 @@ function detectStageStates(deal, invoices = [], assessments = []) {
   // Deposit paid = first milestone Paid OR at least one paid invoice
   const firstMs = milestones[0];
   stages.deposit = (firstMs && firstMs.status === "Paid") || invoices.some((i) => (i.status || "").toLowerCase() === "paid");
-  // WO Sent — stamped by WorkOrderModal when the sub is emailed
+  // WO Sent — stamped by the WO send endpoint when the sub is emailed
   stages.wo_sent = !!deal?.last_work_order_sent_at;
+  // WO Signed — stamped by `_flip_to_sub_engaged` when the sub e-signs
+  // the public link (also implied when `subcontractor_accepted` is true
+  // on legacy pre-Feb-26-2026 deals that don't have the timestamp yet).
+  stages.wo_signed = !!deal?.last_work_order_signed_at || !!deal?.subcontractor_accepted;
   stages.materials = !!deal?.material_order_date;
   stages.scheduled = !!deal?.scheduled_start_date;
   // Equipment ordered — deal.equipment_ordered is an array of ordered

@@ -470,14 +470,20 @@ SUB_ENGAGED_STAGE = "Sub Engaged"
 
 
 async def _flip_to_sub_engaged(db, deal_id: str):
-    """Move the deal into the "Sub Engaged" Kanban stage on signature."""
+    """Move the deal into the "Sub Engaged" Kanban stage on signature.
+
+    Also stamps `last_work_order_signed_at` (mirrors `last_work_order_sent_at`)
+    so the Deal Detail pipeline's "WO Signed" pill can flip green without
+    needing to poll the `work_orders` collection separately."""
+    stamp = _now_iso()
     await db.deals.update_one(
         {"id": deal_id},
         {"$set": {
             "subcontractor_accepted": True,
-            "subcontractor_accepted_at": _now_iso(),
+            "subcontractor_accepted_at": stamp,
+            "last_work_order_signed_at": stamp,
             "stage": SUB_ENGAGED_STAGE,
-            "updated_at": _now_iso(),
+            "updated_at": stamp,
         }},
     )
 
@@ -597,6 +603,17 @@ def _send_email(to: str, subject: str, html: str,
 # ------------------ Router ------------------
 def create_router(db, get_current_user, app_url_for_public_links: str):
     router = APIRouter(prefix="/deals", tags=["work-orders"])
+
+    @router.get("/{deal_id}/work-orders")
+    async def list_work_orders(deal_id: str, _user=Depends(get_current_user)):
+        """Return every Work Order + Change Order for the deal so the deal
+        page can render a card listing them with their sent/signed status.
+        Sorted newest-first by sent_at."""
+        rows = await db.work_orders.find(
+            {"deal_id": deal_id, "is_deleted": {"$ne": True}},
+            {"_id": 0, "signed_signature": 0, "library_file_ids": 0},
+        ).sort("sent_at", -1).to_list(200)
+        return rows
 
     @router.get("/{deal_id}/work-order/draft")
     async def get_draft(deal_id: str, kind: str = "work-order", _user=Depends(get_current_user)):
@@ -730,6 +747,17 @@ def create_router(db, get_current_user, app_url_for_public_links: str):
         else:
             doc["created_at"] = _now_iso()
             await db.work_orders.insert_one(doc)
+
+        # Stamp `last_work_order_sent_at` on the deal so the pipeline's
+        # "WO Sent" pill flips green immediately and DealWorkflow's stage
+        # detection lights up the correct spot in the workflow. Change
+        # orders don't reset this — the original WO's sent stamp is what
+        # marks the sub as engaged for the pipeline.
+        if not is_co:
+            await db.deals.update_one(
+                {"id": deal_id},
+                {"$set": {"last_work_order_sent_at": doc["sent_at"]}},
+            )
 
         # Render the WO/CO PDF. When the rep has explicitly attached one or
         # more manufacturer-spec PDFs from the Library, we use THOSE as the

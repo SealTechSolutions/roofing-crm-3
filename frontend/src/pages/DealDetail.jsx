@@ -59,6 +59,16 @@ export default function DealDetail() {
   const [closeOutModalOpen, setCloseOutModalOpen] = useState(false);
   const [draftingDeposit, setDraftingDeposit] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [workOrders, setWorkOrders] = useState([]);
+
+  const loadWorkOrders = async () => {
+    try {
+      const r = await api.get(`/deals/${id}/work-orders`);
+      setWorkOrders(Array.isArray(r.data) ? r.data : []);
+    } catch {
+      setWorkOrders([]);
+    }
+  };
 
   // Auto-open the scope editor when arriving from the Calculator's
   // "Open Scope →" button (`/deals/<id>?openScope=1`).
@@ -90,6 +100,7 @@ export default function DealDetail() {
     api.get(`/invoices?deal_id=${id}`).then((r) => setDealInvoices(r.data || [])).catch(() => setDealInvoices([]));
     api.get(`/assessments?deal_id=${id}`).then((r) => setDealAssessments(r.data || [])).catch(() => setDealAssessments([]));
     api.get(`/integrations/google/status`).then((r) => setGoogleConnected(!!r.data?.connected)).catch(() => setGoogleConnected(false));
+    loadWorkOrders();
   }, [id]);
 
   // Refresh the Final-invoice preview whenever this deal's status flips, so
@@ -789,6 +800,7 @@ export default function DealDetail() {
             documents:   '[data-section="documents"]',
             milestones:  '[data-section="milestones"]',
             schedule:    '[data-testid="deal-schedule-panel"]',
+            work_orders: '[data-section="work_orders"]',
             photos:      '[data-section="photos"]',
             maintenance: '[data-section="maintenance"]',
           };
@@ -1399,6 +1411,122 @@ export default function DealDetail() {
       {/* Schedule / Events panel — ad-hoc appointments tied to this deal */}
       <DealSchedulePanel dealId={id} googleConnected={googleConnected} />
 
+      {/* Work Orders — every WO + Change Order sent from this deal, with
+          sent/signed status and one-tap PDF download. Anchors the pipeline
+          "WO Sent" and "WO Signed" pills. */}
+      <Card
+        data-section="work_orders"
+        title={
+          <span className="inline-flex items-center gap-2">
+            <FileText className="w-3.5 h-3.5 text-blue-700" /> Work Orders & Change Orders
+            {workOrders.some((w) => w.status === "signed") && (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-sm">
+                {workOrders.filter((w) => w.status === "signed").length} signed
+              </span>
+            )}
+          </span>
+        }
+        right={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setWorkOrderKind("work-order"); setWorkOrderOpen(true); }}
+              className="inline-flex items-center gap-1 h-8 px-3 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-blue-700 hover:text-blue-700 rounded-sm"
+              data-testid="deal-send-wo-btn"
+            >
+              <Plus className="w-3 h-3" /> Send WO
+            </button>
+            <button
+              onClick={() => { setWorkOrderKind("change-order"); setWorkOrderOpen(true); }}
+              className="inline-flex items-center gap-1 h-8 px-3 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-blue-700 hover:text-blue-700 rounded-sm"
+              data-testid="deal-send-co-btn"
+            >
+              <FilePlus className="w-3 h-3" /> Send CO
+            </button>
+          </div>
+        }
+      >
+        {workOrders.length === 0 ? (
+          <div className="text-sm text-zinc-500 py-3 text-center italic">
+            No Work Orders sent yet. Click <b>Send WO</b> above to email a signable Work Order to your subcontractor.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="deal-work-orders-table">
+              <thead>
+                <tr className="border-b-2 border-zinc-950 text-left text-[10px] uppercase tracking-wider">
+                  <th className="py-2 pr-3 w-24">Type</th>
+                  <th className="py-2 pr-3">Sub / Contact</th>
+                  <th className="py-2 pr-3 w-32">Sent</th>
+                  <th className="py-2 pr-3 w-40">Signed</th>
+                  <th className="py-2 pr-3 w-24 text-right">Amount</th>
+                  <th className="py-2 pr-3 w-28">Status</th>
+                  <th className="py-2 w-16"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {workOrders.map((w) => {
+                  const isCO = w.kind === "change-order";
+                  const isSigned = w.status === "signed";
+                  const pdfHref = `${process.env.REACT_APP_BACKEND_URL}/api/deals/${id}/work-order/pdf?kind=${w.kind || "work-order"}`;
+                  return (
+                    <tr key={w.id} className="border-b border-zinc-100" data-testid={`wo-row-${w.id}`}>
+                      <td className="py-2 pr-3">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${isCO ? "bg-purple-50 text-purple-700 border border-purple-200" : "bg-blue-50 text-blue-700 border border-blue-200"}`}>
+                          {isCO ? "Change Order" : "Work Order"}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3 text-zinc-700">
+                        <div className="font-semibold">{w.sub_company || w.contractor || "—"}</div>
+                        {w.sub_contact && <div className="text-[11px] text-zinc-500">{w.sub_contact} · {w.sub_email}</div>}
+                      </td>
+                      <td className="py-2 pr-3 font-mono text-[11px] text-zinc-600">
+                        {w.sent_at ? new Date(w.sent_at).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {isSigned ? (
+                          <div className="text-[11px]">
+                            <div className="font-semibold text-emerald-700 flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> {w.signed_by_name || "Signed"}
+                            </div>
+                            <div className="font-mono text-[10px] text-zinc-500">
+                              {w.signed_at ? new Date(w.signed_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : ""}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-amber-700 italic">Awaiting signature</span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 text-right font-mono font-bold">{formatCurrency(w.total)}</td>
+                      <td className="py-2 pr-3">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm ${
+                          isSigned ? "bg-emerald-50 text-emerald-700 border border-emerald-300" :
+                          w.status === "sent" ? "bg-amber-50 text-amber-800 border border-amber-300" :
+                          "bg-zinc-50 text-zinc-600 border border-zinc-300"
+                        }`}>
+                          {w.status || "draft"}
+                        </span>
+                      </td>
+                      <td className="py-2 text-right">
+                        <a
+                          href={pdfHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 h-7 text-[10px] font-bold uppercase tracking-wider border border-zinc-300 hover:border-blue-700 hover:text-blue-700 rounded-sm"
+                          data-testid={`wo-pdf-${w.id}`}
+                          title="Open the PDF"
+                        >
+                          <Download className="w-3 h-3" /> PDF
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
       {/* Change Orders */}
       <Card
         title={
@@ -1775,6 +1903,7 @@ export default function DealDetail() {
               : `${label} saved (email could not be sent — check SMTP)`);
             setWorkOrderOpen(false);
             reload();
+            loadWorkOrders();
           }}
         />
       )}
