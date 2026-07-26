@@ -22,6 +22,41 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
 
+    # Auto-trigger every push to `main`, but skip pushes that only touched
+    # documentation / memory files (PRD notes, README changes, roadmap edits)
+    # so the free-tier 500-min/month budget goes to real code shipments.
+    # Docs-only pushes still keep the git history clean without wasting a
+    # 15-minute build slot.
+    #
+    # Rapid double-pushes are auto-cancelled — if you push A then push B
+    # 30 seconds later, Codemagic kills the in-flight A build and starts
+    # a fresh one against B.
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+      cancel_previous_builds: true
+
+    # Skip commits that are docs-only. `when.changeset` runs after the code
+    # is checked out — if EVERY changed file matches one of the excludes,
+    # Codemagic bails before spending Mac minutes on the build.
+    when:
+      changeset:
+        includes:
+          - '**/*'
+        excludes:
+          - '**/*.md'
+          - 'memory/**'
+          - 'docs/**'
+          - '.emergent/**'
+          - '.gitignore'
+          - 'backups/**'
+          - 'backend/tests/**'
+          - 'test_reports/**'
+
     # `integrations` block is intentionally omitted. We authenticate to
     # App Store Connect using the API key env vars declared in the
     # `app_store_credentials` group below (APP_STORE_CONNECT_ISSUER_ID,
