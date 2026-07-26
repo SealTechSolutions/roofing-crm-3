@@ -468,6 +468,98 @@ class Vendor(VendorIn):
     created_at: str
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Employees (W2) — separate from Vendors/Subcontractors. Full onboarding
+# tracker with 12 required + 4 optional documents grouped into three sections
+# to match the standard HR intake flow.
+# ═══════════════════════════════════════════════════════════════════════════
+EMPLOYEE_STATUSES = ["Active", "On Leave", "Terminated"]
+EMPLOYEE_PAY_TYPES = ["Hourly", "Salary"]
+
+
+class EmployeeIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    # Personal
+    name: str
+    email: str = ""
+    phone: str = ""
+    mobile_phone: str = ""
+    date_of_birth: str = ""     # YYYY-MM-DD
+    ssn_last4: str = ""         # Only last 4 stored — full SSN never persisted
+    address: str = ""
+    address_line2: str = ""
+    city: str = ""
+    state: str = ""
+    zip_code: str = ""
+    emergency_contact_name: str = ""
+    emergency_contact_phone: str = ""
+    emergency_contact_relation: str = ""
+    # Job
+    title: str = ""
+    department: str = ""
+    hire_date: str = ""
+    termination_date: str = ""
+    status: str = "Active"      # Active | On Leave | Terminated
+    manager_user_id: Optional[str] = None
+    pay_rate: float = 0.0
+    pay_type: str = "Hourly"    # Hourly | Salary
+    notes: str = ""
+    # 1️⃣ Federal + State Paperwork (all required)
+    i9_on_file: bool = False
+    i9_signed_date: str = ""
+    w4_on_file: bool = False
+    w4_signed_date: str = ""
+    state_wh_on_file: bool = False
+    state_wh_signed_date: str = ""
+    # 2️⃣ Company Onboarding Documents
+    offer_letter_on_file: bool = False        # required
+    offer_letter_signed_date: str = ""
+    direct_deposit_on_file: bool = False      # required
+    direct_deposit_signed_date: str = ""
+    employment_agreement_on_file: bool = False # required
+    employment_agreement_signed_date: str = ""
+    benefits_declaration_on_file: bool = False # required
+    benefits_declaration_signed_date: str = ""
+    handbook_on_file: bool = False            # required
+    handbook_signed_date: str = ""
+    nda_on_file: bool = False                 # required
+    nda_signed_date: str = ""
+    noncompete_on_file: bool = False          # optional (state-dependent)
+    noncompete_signed_date: str = ""
+    new_hire_questionnaire_on_file: bool = False  # optional
+    new_hire_questionnaire_signed_date: str = ""
+    union_agreement_on_file: bool = False     # optional
+    union_agreement_signed_date: str = ""
+    # 3️⃣ Employee Documents (identity)
+    birth_certificate_on_file: bool = False   # required
+    state_id_on_file: bool = False            # required
+    ssn_card_on_file: bool = False            # required
+    visa_or_green_card_on_file: bool = False  # optional (only if non-citizen)
+    visa_or_green_card_type: str = ""         # e.g. "Green Card", "H-1B", "OPT"
+    visa_or_green_card_expiry_date: str = ""
+    # Onboarding stamp
+    onboarding_completed_at: str = ""
+
+
+class Employee(EmployeeIn):
+    id: str
+    created_at: str
+    is_deleted: bool = False
+
+
+# Fields whose `_on_file` flag must all be TRUE for the employee to be
+# considered "fully onboarded". Every doc named here shows a red required
+# asterisk on the frontend form.
+EMPLOYEE_REQUIRED_DOC_FLAGS = [
+    "i9_on_file", "w4_on_file", "state_wh_on_file",
+    "offer_letter_on_file", "direct_deposit_on_file",
+    "employment_agreement_on_file", "benefits_declaration_on_file",
+    "handbook_on_file", "nda_on_file",
+    "birth_certificate_on_file", "state_id_on_file", "ssn_card_on_file",
+]
+
+
+
 class DealIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     title: str
@@ -4566,6 +4658,94 @@ async def delete_vendor(vendor_id: str, current=Depends(get_current_user)):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Vendor not found")
     return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Employees CRUD — admin-only. Onboarding-complete stamp mirrors the sub
+# workflow: first moment all 12 required docs go on-file, `onboarding_completed_at`
+# freezes at that timestamp and stays put unless a required doc is un-checked.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _is_employee_fully_onboarded(e: dict) -> bool:
+    return all(bool(e.get(f)) for f in EMPLOYEE_REQUIRED_DOC_FLAGS)
+
+
+def _stamp_employee_onboarding(data: dict, previous: dict | None) -> None:
+    is_complete = _is_employee_fully_onboarded(data)
+    incoming_stamp = (data.get("onboarding_completed_at") or "").strip()
+    if incoming_stamp:
+        return
+    was_stamped = bool((previous or {}).get("onboarding_completed_at"))
+    if is_complete:
+        data["onboarding_completed_at"] = previous["onboarding_completed_at"] if was_stamped else now_iso()
+    else:
+        data["onboarding_completed_at"] = ""
+
+
+@api_router.get("/employees")
+async def list_employees(
+    include_deleted: bool = False,
+    status: str | None = None,
+    current=Depends(get_current_user),
+):
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    q: dict = {} if include_deleted else {"is_deleted": {"$ne": True}}
+    if status and status in EMPLOYEE_STATUSES:
+        q["status"] = status
+    cursor = db.employees.find(q, {"_id": 0}).sort("name", 1)
+    return await cursor.to_list(2000)
+
+
+@api_router.post("/employees", response_model=Employee)
+async def create_employee(body: EmployeeIn, current=Depends(get_current_user)):
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    data = body.model_dump()
+    data["id"] = str(uuid.uuid4())
+    data["created_at"] = now_iso()
+    data["is_deleted"] = False
+    _stamp_employee_onboarding(data, previous=None)
+    await db.employees.insert_one(data.copy())
+    return strip_id(data)
+
+
+@api_router.get("/employees/{employee_id}", response_model=Employee)
+async def get_employee(employee_id: str, current=Depends(get_current_user)):
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    doc = await db.employees.find_one({"id": employee_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return doc
+
+
+@api_router.put("/employees/{employee_id}", response_model=Employee)
+async def update_employee(employee_id: str, body: EmployeeIn, current=Depends(get_current_user)):
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    data = body.model_dump()
+    prev = await db.employees.find_one({"id": employee_id}, {"_id": 0})
+    _stamp_employee_onboarding(data, previous=prev)
+    result = await db.employees.update_one({"id": employee_id}, {"$set": data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    doc = await db.employees.find_one({"id": employee_id}, {"_id": 0})
+    return doc
+
+
+@api_router.delete("/employees/{employee_id}")
+async def delete_employee(employee_id: str, current=Depends(get_current_user)):
+    if current.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    result = await db.employees.update_one(
+        {"id": employee_id},
+        {"$set": {"is_deleted": True, "deleted_at": now_iso(), "deleted_by": current.get("id")}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return {"ok": True}
+
 
 
 @api_router.get("/email-aliases")

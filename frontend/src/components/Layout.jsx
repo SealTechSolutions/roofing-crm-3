@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise, Camera, Package, Calculator as CalcIcon, FolderKanban, TrendingUp, Wallet as FinanceIcon, Settings, Search, ClipboardList } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise, Camera, Package, Calculator as CalcIcon, FolderKanban, TrendingUp, Wallet as FinanceIcon, Settings, Search, ClipboardList, UserRoundCog } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 import GlobalSearch from "@/components/GlobalSearch";
@@ -87,6 +87,13 @@ const NAV_GROUPS = [
       { to: "/books",    label: "Books",    icon: BookMarked, testId: "nav-books" },
       { to: "/invoices", label: "Invoices", icon: Receipt,    testId: "nav-invoices" },
       { to: "/payables", label: "Payables", icon: Wallet,     testId: "nav-payables" },
+    ],
+  },
+  {
+    label: "Team",
+    icon: UserRoundCog,
+    items: [
+      { to: "/employees", label: "Employees", icon: UserRoundCog, testId: "nav-employees", adminOnly: true },
     ],
   },
   {
