@@ -32,9 +32,10 @@ const NAV_GROUPS = [
     label: "Contacts",
     icon: Users,
     items: [
-      { to: "/contacts",       label: "People & Companies", icon: Users,   testId: "nav-contacts" },
-      { to: "/vendors",        label: "Vendors",            icon: Truck,   testId: "nav-vendors" },
-      { to: "/subcontractors", label: "Subcontractors",     icon: HardHat, testId: "nav-subcontractors" },
+      { to: "/contacts",       label: "People & Companies", icon: Users,        testId: "nav-contacts" },
+      { to: "/vendors",        label: "Vendors",            icon: Truck,        testId: "nav-vendors" },
+      { to: "/subcontractors", label: "Subcontractors",     icon: HardHat,      testId: "nav-subcontractors" },
+      { to: "/employees",      label: "Employees",          icon: UserRoundCog, testId: "nav-employees", adminOnly: true },
     ],
   },
   {
@@ -87,13 +88,6 @@ const NAV_GROUPS = [
       { to: "/books",    label: "Books",    icon: BookMarked, testId: "nav-books" },
       { to: "/invoices", label: "Invoices", icon: Receipt,    testId: "nav-invoices" },
       { to: "/payables", label: "Payables", icon: Wallet,     testId: "nav-payables" },
-    ],
-  },
-  {
-    label: "Team",
-    icon: UserRoundCog,
-    items: [
-      { to: "/employees", label: "Employees", icon: UserRoundCog, testId: "nav-employees", adminOnly: true },
     ],
   },
   {
