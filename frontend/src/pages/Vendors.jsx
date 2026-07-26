@@ -17,6 +17,19 @@ export default function Vendors({ kind = "Vendor" }) {
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
+
+  // Split the shared VENDOR_CATEGORIES list into the two we actually want
+  // exposed per role:
+  //   - Vendors:        every "supplier" category, minus "Subcontractor"
+  //   - Subcontractors: only "Subcontractor" and "Other"
+  // Keeps the underlying schema constant on the backend while giving each
+  // page a role-appropriate picker.
+  const filteredCategories = React.useMemo(() => {
+    if (isSub) {
+      return ["Subcontractor", "Other"];
+    }
+    return (categories || []).filter((c) => c !== "Subcontractor");
+  }, [categories, isSub]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
@@ -200,7 +213,7 @@ export default function Vendors({ kind = "Vendor" }) {
                 <Input data-testid={`${kind.toLowerCase()}-name`} required value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
               </Field>
               <Field label="Category">
-                <Select data-testid={`${kind.toLowerCase()}-category`} value={form.category} onChange={(v) => setForm({ ...form, category: v })} options={categories.length ? categories : ["Other"]} />
+                <Select data-testid={`${kind.toLowerCase()}-category`} value={form.category} onChange={(v) => setForm({ ...form, category: v })} options={filteredCategories.length ? filteredCategories : ["Other"]} />
               </Field>
               <Field label="Contact Name">
                 <Input data-testid={`${kind.toLowerCase()}-contact-name`} value={form.contact_name} onChange={(v) => setForm({ ...form, contact_name: v })} placeholder="Primary contact person" />
