@@ -25,18 +25,18 @@ import {
  * --------------------------------------------------------------------------- */
 
 const STAGES = [
-  { key: "assessment",      label: "Assessment",       Icon: ClipboardCheck, tab: "assessments" },
+  { key: "assessment",      label: "Assessment",       Icon: ClipboardCheck, tab: "documents" },
   { key: "scope",           label: "Scope Sent",       Icon: FileText,       tab: "scope" },
   { key: "won",             label: "Won / Signed",     Icon: ShieldCheck,    tab: "overview" },
   { key: "deposit",         label: "Deposit Paid",     Icon: DollarSign,     tab: "milestones" },
   // Production Kickoff (mirrors the GoToProductionChecklist order)
-  { key: "wo_sent",         label: "WO Sent",          Icon: HardHat,        tab: "overview" },
+  { key: "wo_sent",         label: "WO Sent",          Icon: HardHat,        tab: "schedule" },
   { key: "scheduled",       label: "Scheduled",        Icon: CalIcon,        tab: "schedule" },
   { key: "materials",       label: "Materials Ordered",Icon: Truck,          tab: "schedule" },
-  { key: "equipment",       label: "Equipment Ordered",Icon: Package,        tab: "overview" },
+  { key: "equipment",       label: "Equipment Ordered",Icon: Package,        tab: "schedule" },
   { key: "in_progress",     label: "In Progress",      Icon: Hammer,         tab: "photos" },
   { key: "final_inspection",label: "Final Inspection", Icon: Camera,         tab: "photos" },
-  { key: "closed",          label: "Closed",           Icon: Lock,           tab: "overview" },
+  { key: "closed",          label: "Closed",           Icon: Lock,           tab: "milestones" },
 ];
 
 function detectStageStates(deal, invoices = [], assessments = []) {

@@ -721,7 +721,7 @@ export default function DealDetail() {
         );
       })()}
 
-      <div className="flex items-start justify-between mb-8 pb-6 border-b border-zinc-200 gap-4 flex-wrap">
+      <div className="flex items-start justify-between mb-8 pb-6 border-b border-zinc-200 gap-4 flex-wrap" data-section="overview">
         <div>
           <div className="flex items-center gap-3 mb-2 flex-wrap">
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700">{deal.deal_type || "Scope"}</div>
@@ -777,10 +777,34 @@ export default function DealDetail() {
           await markInvoicePaid(invoice);
         }}
         onTabChange={(tab) => {
-          // Scroll to the area associated with that tab
-          const sel = `[data-section="${tab}"]`;
+          // Explicit map: each pipeline stage's `tab` value → the stable DOM
+          // anchor that already lives on this page. Keeps clicking on the
+          // pipeline pills as a smooth "jump to the section that lets me DO
+          // this stage" gesture. Falls back to `[data-section="{tab}"]` if
+          // the tab isn't in the map (legacy behavior).
+          const map = {
+            overview:    '[data-section="overview"]',
+            scope:       '[data-section="scope"]',
+            assessments: '[data-section="documents"]',
+            documents:   '[data-section="documents"]',
+            milestones:  '[data-section="milestones"]',
+            schedule:    '[data-testid="deal-schedule-panel"]',
+            photos:      '[data-section="photos"]',
+            maintenance: '[data-section="maintenance"]',
+          };
+          const sel = map[tab] || `[data-section="${tab}"]`;
           const el = document.querySelector(sel);
-          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+          if (!el) {
+            toast.info("That section isn't on this page yet.");
+            return;
+          }
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          // Flash a blue outline for ~1.4s so the target is unmistakable,
+          // then strip the classes so the outline doesn't linger.
+          el.classList.add("ring-2", "ring-blue-500", "ring-offset-2");
+          setTimeout(() => {
+            el.classList.remove("ring-2", "ring-blue-500", "ring-offset-2");
+          }, 1400);
         }}
         onAdvance={async (stageKey, becomingDone) => {
           // Manual mark-as-done — limited to status-driven stages
@@ -929,7 +953,7 @@ export default function DealDetail() {
           <Row label="Chosen" value={formatCurrency(totals.revenue)} bold />
         </Card>
 
-        <Card title="Roof Spec & Measurements">
+        <Card title="Roof Spec & Measurements" data-section="scope">
           <Row label="Current Roof / Project" value={deal.current_roof_type} />
           <Row label="Proposed Roof / Project" value={deal.proposed_roof_type} bold />
           <div className="pl-1 pb-2">
@@ -986,6 +1010,7 @@ export default function DealDetail() {
       </div>
 
       {/* Documents */}
+      <div data-section="documents">
       <Documents
         parentType="project"
         parentId={id}
@@ -993,7 +1018,7 @@ export default function DealDetail() {
         coverPhotoId={deal.cover_photo_file_id}
         onSetCover={(fileId) => persist({ cover_photo_file_id: deal.cover_photo_file_id === fileId ? null : fileId })}
       />
-
+      </div>
       {/* Material Take-Off */}
       <MaterialTakeoff deal={deal} reload={reload} />
 
@@ -1492,12 +1517,13 @@ export default function DealDetail() {
       </Card>
 
       {/* Project Photos — upload, organize by album + tag, share with customer */}
-      <div className="mt-6">
+      <div className="mt-6" data-section="photos">
         <ProjectPhotos dealId={id} dealTitle={deal.title} />
       </div>
 
       {/* Maintenance Plan */}
       <Card
+        data-section="maintenance"
         title={
           <span className="inline-flex items-center gap-2">
             <Wrench className="w-3.5 h-3.5 text-blue-700" /> Maintenance Plan
