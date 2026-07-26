@@ -70,10 +70,11 @@ function detectStageStates(deal, invoices = [], assessments = [], events = []) {
   stages.scheduled = !!deal?.scheduled_start_date || hasKickoffEvent;
   // Equipment ordered — deal.equipment_ordered is an array of ordered
   // pieces (see /deals model). Non-empty list ⇒ stage complete. Also fires
-  // when there's an "Equipment Delivery" event on the schedule.
+  // when there's an "Order Equipment" or "Equipment Delivery" event on the
+  // schedule (either the order was placed or the delivery is scheduled).
   stages.equipment =
     (Array.isArray(deal?.equipment_ordered) && deal.equipment_ordered.length > 0)
-    || (events || []).some((e) => e?.event_type === "Equipment Delivery");
+    || (events || []).some((e) => e?.event_type === "Order Equipment" || e?.event_type === "Equipment Delivery");
   // In Progress when status says so OR start date is in the past
   const today = new Date().toISOString().slice(0, 10);
   const inPastKickoff = (events || []).some((e) => KICKOFF_EVENT_TYPES.has(e?.event_type) && e?.date && e.date <= today);

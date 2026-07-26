@@ -44,6 +44,48 @@ async function queueDelete(id) {
   });
 }
 
+/**
+ * Extract a still frame ~0.1 s into a video Blob and return it as a JPEG Blob.
+ * Used as the poster/thumbnail for uploaded field videos — the browser has
+ * the raw bytes anyway, so we compute a poster client-side instead of asking
+ * the server to spin up ffmpeg. Best-effort: resolves to null on any failure.
+ */
+async function extractVideoPoster(videoBlob) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(videoBlob);
+    const v = document.createElement("video");
+    v.preload = "auto";
+    v.muted = true;
+    v.playsInline = true;
+    v.src = url;
+    const cleanup = () => { try { URL.revokeObjectURL(url); } catch { /* noop */ } };
+    let settled = false;
+    const finish = (blob) => { if (settled) return; settled = true; cleanup(); resolve(blob); };
+    v.onerror = () => finish(null);
+    v.onloadedmetadata = () => {
+      // Seek slightly past 0 so we don't grab a black frame that iOS
+      // Safari occasionally hands back for t=0.
+      v.currentTime = Math.min(0.1, (v.duration || 1) * 0.05);
+    };
+    v.onseeked = () => {
+      try {
+        const w = v.videoWidth || 640;
+        const h = v.videoHeight || 480;
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(v, 0, 0, w, h);
+        canvas.toBlob((b) => finish(b), "image/jpeg", 0.82);
+      } catch {
+        finish(null);
+      }
+    };
+    // Hard timeout so a bad codec never hangs the upload.
+    setTimeout(() => finish(null), 4000);
+  });
+}
+
 // ---------- The page ----------
 export default function FieldCapture() {
   const nav = useNavigate();
@@ -726,11 +768,21 @@ export default function FieldCapture() {
       if (!blob.size) return;
       const ext = (rec.mimeType && rec.mimeType.includes("mp4")) ? "mp4" : "webm";
       const filename = `clip_${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.${ext}`;
+      // Extract a poster frame (~0.1 s in) so the gallery can render a
+      // still-image thumbnail instead of a black rectangle. Best-effort —
+      // failure just means the gallery falls back to a placeholder.
+      let posterBlob = null;
+      try {
+        posterBlob = await extractVideoPoster(blob);
+      } catch (e) {
+        // Poster is optional — silently continue without one.
+      }
       setUploadingShot(true);
       try {
         if (online) {
           const fd = new FormData();
           fd.append("file", blob, filename);
+          if (posterBlob) fd.append("poster", posterBlob, filename.replace(/\.(mp4|webm)$/, "-poster.jpg"));
           if (position?.lat != null) fd.append("gps_lat", String(position.lat));
           if (position?.lng != null) fd.append("gps_lng", String(position.lng));
           if (position?.acc != null) fd.append("gps_accuracy", String(position.acc));

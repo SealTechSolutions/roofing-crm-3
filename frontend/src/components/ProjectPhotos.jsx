@@ -790,11 +790,24 @@ function PhotoCard({ photo, onView, onEdit, onDelete, onToggleCover, selected, s
       className={"group relative bg-zinc-50 border rounded-sm overflow-hidden " + (selected ? "border-blue-700 ring-2 ring-blue-300" : "border-zinc-200")}
       data-testid={`photo-card-${photo.id}`}
     >
-      <div className="aspect-[4/3] bg-zinc-200 cursor-pointer" onClick={handleClick}>
+      <div className="aspect-[4/3] bg-zinc-200 cursor-pointer relative" onClick={handleClick}>
         {src ? (
           <img src={src} alt={photo.display_name} className={"w-full h-full object-cover " + (selectMode && !selected ? "opacity-70" : "")} />
         ) : (
           <div className="w-full h-full animate-pulse bg-zinc-200" />
+        )}
+        {/* Video play-icon overlay — gallery hint that this tile plays a
+            clip instead of being a still image. Poster comes from the
+            client-extracted frame stashed at upload time. */}
+        {photo.is_video && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="bg-black/60 backdrop-blur-sm rounded-full w-11 h-11 flex items-center justify-center border border-white/40 shadow-lg" data-testid={`photo-video-play-${photo.id}`}>
+              <svg viewBox="0 0 24 24" className="w-5 h-5 text-white ml-0.5 fill-current" aria-hidden><path d="M8 5v14l11-7z" /></svg>
+            </div>
+          </div>
+        )}
+        {photo.is_video && (
+          <span className="absolute bottom-1 right-1 text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-red-700 text-white rounded-sm">VIDEO</span>
         )}
         {selectMode && (
           <div className={"absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-colors " + (selected ? "bg-blue-700 border-white text-white" : "bg-white/80 border-zinc-400 text-transparent")} aria-hidden>
@@ -1163,7 +1176,20 @@ function Lightbox({ dealId, photo, onClose, onAnnotate }) {
         )}
       </div>
       <div className="max-w-6xl max-h-full" onClick={(e) => e.stopPropagation()}>
-        {src ? <img src={src} alt={photo.display_name} className="max-h-[85vh] max-w-full" /> : <div className="text-white">Loading...</div>}
+        {src ? (
+          photo.is_video ? (
+            <video
+              src={src}
+              controls
+              autoPlay
+              playsInline
+              className="max-h-[85vh] max-w-full bg-black"
+              data-testid="lightbox-video"
+            />
+          ) : (
+            <img src={src} alt={photo.display_name} className="max-h-[85vh] max-w-full" />
+          )
+        ) : <div className="text-white">Loading...</div>}
         <div className="mt-3 text-center text-white text-sm">
           <strong>{photo.display_name}</strong>
           {photo.annotated_storage_path && (

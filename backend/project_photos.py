@@ -204,6 +204,10 @@ def create_router(db, get_current_user) -> APIRouter:
     async def upload_photo(
         deal_id: str,
         file: UploadFile = File(...),
+        # For video uploads only — a JPEG frame captured client-side that we
+        # serve as the ?thumb=1 poster so gallery grids show a still frame
+        # instead of a black rectangle. Ignored for image uploads.
+        poster: Optional[UploadFile] = File(None),
         album_name: str = Form("Default"),
         tag: str = Form(""),
         display_name: str = Form(""),
@@ -259,6 +263,22 @@ def create_router(db, get_current_user) -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
 
+        # If a video came with a client-extracted poster frame, stash it in
+        # storage alongside the clip so `?thumb=1` can serve a still image
+        # instead of the raw video bytes. Silent failure — a missing poster
+        # just means the gallery shows a black rectangle with a play icon.
+        poster_storage_path = None
+        if is_video and poster is not None:
+            try:
+                poster_bytes = await poster.read()
+                if poster_bytes and len(poster_bytes) <= 5 * 1024 * 1024:
+                    poster_path = f"{APP_NAME}/project_photos/{deal_id}/{photo_id}-poster.jpg"
+                    poster_result = put_object(poster_path, poster_bytes, poster.content_type or "image/jpeg")
+                    poster_storage_path = poster_result.get("path") or poster_path
+            except Exception as e:
+                logger = __import__("logging").getLogger(__name__)
+                logger.warning(f"Video poster upload failed for photo={photo_id}: {e}")
+
         doc = {
             "id": photo_id,
             "deal_id": deal_id,
@@ -273,6 +293,7 @@ def create_router(db, get_current_user) -> APIRouter:
             "is_deleted": False,
             "is_cover": False,
             "is_video": bool(is_video),
+            "poster_storage_path": poster_storage_path,
             "uploaded_by": current["id"],
             "uploader_name": current.get("name", ""),
             "created_at": _now_iso(),
@@ -603,6 +624,26 @@ def create_router(db, get_current_user) -> APIRouter:
         )
         if not rec:
             raise HTTPException(status_code=404, detail="Photo not found")
+        # Video short-circuit: when the caller asked for a thumbnail, serve
+        # the client-extracted poster frame if we have one. Falls through to
+        # streaming the raw video bytes if no poster exists (e.g. very old
+        # video uploads from before this feature shipped).
+        if thumb and rec.get("is_video") and rec.get("poster_storage_path"):
+            try:
+                poster_bytes, poster_ct = get_object(rec["poster_storage_path"])
+                return StreamingResponse(
+                    io.BytesIO(poster_bytes),
+                    media_type=poster_ct or "image/jpeg",
+                    headers={
+                        "Content-Disposition": f'inline; filename="{photo_id}-poster.jpg"',
+                        "Cache-Control": "private, max-age=604800, immutable",
+                        "ETag": f'W/"{photo_id}-poster"',
+                    },
+                )
+            except Exception as e:
+                logger = __import__("logging").getLogger(__name__)
+                logger.warning(f"Video poster fetch failed for photo={photo_id}: {e}")
+
         annotated_path = rec.get("annotated_storage_path")
         use_annotated = bool(annotated_path) and not original
         path = annotated_path if use_annotated else rec["storage_path"]
@@ -619,7 +660,7 @@ def create_router(db, get_current_user) -> APIRouter:
         # here — good enough for a 600px preview and 5-10x smaller). Result is
         # cached by the browser for 7 days via Cache-Control so scrolling back
         # over the same photos is instant.
-        if thumb:
+        if thumb and not rec.get("is_video"):
             try:
                 from PIL import Image as PILImage
                 target = max_size if max_size and max_size > 0 else 600

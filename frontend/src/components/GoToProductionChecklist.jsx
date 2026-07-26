@@ -88,9 +88,9 @@ export default function GoToProductionChecklist({ deal, events = [], onScrollToS
 
   const materials_done = !!(deal.material_order_date || (deal.material_takeoff || []).length > 0);
   const wo_done = !!(deal.last_work_order_sent_at); // stamped by WorkOrderModal
-  // Equipment — either the deal has ordered items OR an "Equipment Delivery"
-  // event is on the calendar.
-  const hasEquipmentEvent = (events || []).some((e) => e?.event_type === "Equipment Delivery");
+  // Equipment — either the deal has ordered items OR an "Order Equipment"
+  // / "Equipment Delivery" event is on the calendar.
+  const hasEquipmentEvent = (events || []).some((e) => e?.event_type === "Order Equipment" || e?.event_type === "Equipment Delivery");
   const equipment_done = equipment.length > 0 || hasEquipmentEvent;
 
   const totalDone = [schedule_done, materials_done, wo_done, equipment_done].filter(Boolean).length;

@@ -34,6 +34,7 @@ EVENT_TYPES = (
     "Schedule Crew",
     "Job Start",
     "Order Materials",
+    "Order Equipment",
     "Material Delivery",
     "Equipment Delivery",
     "Punch List Walk",
