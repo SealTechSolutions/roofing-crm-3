@@ -27,7 +27,23 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 
-EVENT_TYPES = ("Roof Walk", "Presentation", "Meeting", "Job Start", "Other")
+EVENT_TYPES = (
+    "Roof Walk",
+    "Presentation",
+    "Meeting",
+    "Schedule Crew",
+    "Job Start",
+    "Order Materials",
+    "Material Delivery",
+    "Equipment Delivery",
+    "Punch List Walk",
+    "Final Inspection",
+    # Field-app notes — a text-only entry posted by a subcontractor or rep
+    # from the phone. No date/time semantics (rendered as a timeline entry
+    # instead of a calendar block).
+    "Note",
+    "Other",
+)
 EVENT_TYPE_EMOJI = {
     "Roof Walk": "🪜",
     "Presentation": "📊",

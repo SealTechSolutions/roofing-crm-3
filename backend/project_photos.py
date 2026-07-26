@@ -80,12 +80,19 @@ def _exif_captured_at(image_bytes: bytes) -> Optional[str]:
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg", "image/jpg", "image/png", "image/webp",
     "image/heic", "image/heif", "image/gif",
+    # Field-capture video clips (30-second cap, iPhone-default quality).
+    # MediaRecorder on iOS/Android tends to emit webm+opus on Chrome-based
+    # WebViews and mp4/mov on Safari; accept all common browser outputs.
+    "video/mp4", "video/quicktime", "video/webm",
 }
 PRESET_TAGS = [
     "Before", "During", "After", "Drone",
     "Detail Shots", "Damage Documentation",
 ]
-MAX_BYTES = 25 * 1024 * 1024  # 25 MB per photo
+# 25 MB for stills, 30 MB for videos — a 30-second iPhone clip is ~15 MB at
+# default quality, so 30 MB gives comfortable headroom for chatter/pans.
+MAX_BYTES = 25 * 1024 * 1024
+MAX_VIDEO_BYTES = 30 * 1024 * 1024
 
 
 # ---------- Pydantic ----------
@@ -216,16 +223,20 @@ def create_router(db, get_current_user) -> APIRouter:
     ):
         await _ensure_deal(deal_id)
         ct = (file.content_type or "").lower()
-        if ct not in ALLOWED_CONTENT_TYPES and not ct.startswith("image/"):
-            raise HTTPException(status_code=400, detail=f"Only image files allowed. Got: {ct}")
+        is_video = ct.startswith("video/")
+        if not is_video and ct not in ALLOWED_CONTENT_TYPES and not ct.startswith("image/"):
+            raise HTTPException(status_code=400, detail=f"Only image or video files allowed. Got: {ct}")
+        if is_video and ct not in ALLOWED_CONTENT_TYPES:
+            raise HTTPException(status_code=400, detail=f"Unsupported video format: {ct}")
         if tag and tag not in PRESET_TAGS:
             raise HTTPException(status_code=400, detail=f"Invalid tag. Allowed: {', '.join(PRESET_TAGS)}")
         if maint_role and maint_role not in ("before", "after"):
             raise HTTPException(status_code=400, detail="maint_role must be 'before' or 'after'")
 
         data = await file.read()
-        if len(data) > MAX_BYTES:
-            raise HTTPException(status_code=413, detail=f"Image too large (max {MAX_BYTES // (1024 * 1024)} MB)")
+        limit = MAX_VIDEO_BYTES if is_video else MAX_BYTES
+        if len(data) > limit:
+            raise HTTPException(status_code=413, detail=f"{'Video' if is_video else 'Image'} too large (max {limit // (1024 * 1024)} MB)")
 
         # If the client didn't pass an explicit capture timestamp, try to pull
         # it from the JPEG's EXIF metadata. This makes the timeline correct
@@ -240,11 +251,11 @@ def create_router(db, get_current_user) -> APIRouter:
             resolved_captured_at = _now_iso()
 
         photo_id = str(uuid.uuid4())
-        ext = _ext_for(file.filename or "photo.jpg")
+        ext = _ext_for(file.filename or ("clip.webm" if is_video else "photo.jpg"))
         storage_path = f"{APP_NAME}/project_photos/{deal_id}/{photo_id}.{ext}"
 
         try:
-            result = put_object(storage_path, data, ct or "image/jpeg")
+            result = put_object(storage_path, data, ct or ("video/webm" if is_video else "image/jpeg"))
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
 
@@ -253,14 +264,15 @@ def create_router(db, get_current_user) -> APIRouter:
             "deal_id": deal_id,
             "album_name": (album_name or "Default").strip() or "Default",
             "tag": tag.strip(),
-            "display_name": (display_name.strip() or file.filename or "Photo"),
+            "display_name": (display_name.strip() or file.filename or ("Video" if is_video else "Photo")),
             "description": description.strip(),
             "storage_path": result["path"],
             "original_filename": file.filename,
-            "content_type": ct or "image/jpeg",
+            "content_type": ct or ("video/webm" if is_video else "image/jpeg"),
             "size": len(data),
             "is_deleted": False,
             "is_cover": False,
+            "is_video": bool(is_video),
             "uploaded_by": current["id"],
             "uploader_name": current.get("name", ""),
             "created_at": _now_iso(),

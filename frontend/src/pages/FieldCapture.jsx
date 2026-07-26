@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
-import { Camera, Upload, CloudOff, CheckCircle2, AlertCircle, LogOut, Loader2, ChevronLeft, Search, RefreshCcw, ClipboardCheck } from "lucide-react";
+import { Camera, Upload, CloudOff, CheckCircle2, AlertCircle, LogOut, Loader2, ChevronLeft, Search, RefreshCcw, Video, StopCircle, MessageSquare } from "lucide-react";
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL;
 const QUEUE_DB = "field-photo-queue";
@@ -84,6 +84,28 @@ export default function FieldCapture() {
   const [uploadedCount, setUploadedCount] = useState(0);
   const [queuedCount, setQueuedCount] = useState(0);
   const [online, setOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+
+  // ---------- Video recording (30-second cap) ----------
+  // Reps and subs can flip to Video mode with the top-of-shutter toggle. We
+  // reuse the same live camera stream (video-only) plus a fresh audio track,
+  // hand both to MediaRecorder, and stop automatically at 30 s. Recorded
+  // clips upload through the same /projects/{id}/photos endpoint (backend
+  // detects `content_type` starting with `video/` and stores as a video).
+  const [captureMode, setCaptureMode] = useState("photo"); // "photo" | "video"
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const recordTimerRef = useRef(null);
+  const recordStartRef = useRef(0);
+  const MAX_VIDEO_SECONDS = 30;
+
+  // ---------- Field notes ----------
+  // Small text box in the camera view — POSTs to /api/deals/{id}/events with
+  // event_type = "Note" so the entry shows up on the deal's timeline just
+  // like a scheduled event.
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
 
   // ---------- Zoom + lens selection ----------
   // `zoom` is digital zoom (>=1, applied as CSS transform on the video and
@@ -647,6 +669,128 @@ export default function FieldCapture() {
     }
   }, [dealId, cameraReady, uploadingShot, token, refreshQueueCount, zoom, paintStamp, position, stampEnabled, activeVisitId, activeVisitRole]);
 
+  // ---------- Video recording ----------
+  const stopRecording = useCallback(() => {
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== "inactive") {
+      try { rec.stop(); } catch { /* ignore double-stop */ }
+    }
+  }, []);
+
+  const startRecording = useCallback(async () => {
+    if (!dealId || recording) return;
+    const videoStream = videoRef.current?.srcObject;
+    if (!videoStream) {
+      toast.error("Camera not ready");
+      return;
+    }
+    // Ask for a separate audio track and merge into a video+audio stream so
+    // narration is captured. Some browsers won't grant mic after granting
+    // camera without a second prompt — that's expected and desirable.
+    let audioTrack = null;
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      audioTrack = audioStream.getAudioTracks()[0];
+    } catch {
+      // Continue silent-video if the user rejects the mic prompt.
+      audioTrack = null;
+    }
+    const merged = new MediaStream();
+    videoStream.getVideoTracks().forEach((t) => merged.addTrack(t));
+    if (audioTrack) merged.addTrack(audioTrack);
+    // MediaRecorder picks the best mimeType supported by the browser.
+    // Safari on iOS defaults to video/mp4; Chrome/Firefox default to
+    // video/webm — the backend accepts both.
+    const preferMp4 = MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/mp4");
+    const opts = preferMp4 ? { mimeType: "video/mp4" } : {};
+    let rec;
+    try {
+      rec = new MediaRecorder(merged, opts);
+    } catch {
+      rec = new MediaRecorder(merged); // let the browser pick a default
+    }
+    const chunks = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      // Release the mic track the moment recording ends (video track stays
+      // live since the preview keeps running).
+      if (audioTrack) { try { audioTrack.stop(); } catch { /* ignore */ } }
+      setRecording(false);
+      setRecordSeconds(0);
+      recordStartRef.current = 0;
+      const blob = new Blob(chunks, { type: rec.mimeType || (preferMp4 ? "video/mp4" : "video/webm") });
+      if (!blob.size) return;
+      const ext = (rec.mimeType && rec.mimeType.includes("mp4")) ? "mp4" : "webm";
+      const filename = `clip_${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.${ext}`;
+      setUploadingShot(true);
+      try {
+        if (online) {
+          const fd = new FormData();
+          fd.append("file", blob, filename);
+          if (position?.lat != null) fd.append("gps_lat", String(position.lat));
+          if (position?.lng != null) fd.append("gps_lng", String(position.lng));
+          if (position?.acc != null) fd.append("gps_accuracy", String(position.acc));
+          fd.append("captured_at", new Date().toISOString());
+          if (activeVisitId) {
+            fd.append("maintenance_visit_id", activeVisitId);
+            fd.append("maint_role", activeVisitRole || "before");
+          }
+          await axios.post(
+            `${API_BASE}/api/projects/${dealId}/photos`,
+            fd,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          setUploadedCount((n) => n + 1);
+          toast.success("Video uploaded");
+        } else {
+          await queueAdd({ deal_id: dealId, blob, filename, created_at: Date.now(), maintenance_visit_id: activeVisitId || null, maint_role: activeVisitId ? (activeVisitRole || "before") : null });
+          await refreshQueueCount();
+          toast.info("Offline — video queued");
+        }
+      } catch (err) {
+        toast.error(err?.response?.data?.detail || "Video upload failed");
+      } finally {
+        setUploadingShot(false);
+      }
+    };
+    mediaRecorderRef.current = rec;
+    rec.start(1000); // 1-sec dataavailable chunks
+    setRecording(true);
+    setRecordSeconds(0);
+    recordStartRef.current = Date.now();
+    recordTimerRef.current = setInterval(() => {
+      const secs = Math.floor((Date.now() - recordStartRef.current) / 1000);
+      setRecordSeconds(secs);
+      if (secs >= MAX_VIDEO_SECONDS) stopRecording();
+    }, 250);
+  }, [dealId, recording, online, token, refreshQueueCount, position, activeVisitId, activeVisitRole, stopRecording]);
+
+  // ---------- Note saving ----------
+  const saveNote = useCallback(async () => {
+    const txt = (noteText || "").trim();
+    if (!dealId || !txt) return;
+    setNoteSaving(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await axios.post(
+        `${API_BASE}/api/deals/${dealId}/events`,
+        { event_type: "Note", title: txt.slice(0, 80), date: today, notes: txt },
+        { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
+      );
+      toast.success("Note saved to timeline");
+      setNoteText("");
+      setNoteOpen(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Failed to save note");
+    } finally {
+      setNoteSaving(false);
+    }
+  }, [noteText, dealId, token]);
+
   // ---------- Pinch-to-zoom + tap-to-zoom ----------
   const onTouchStart = useCallback((e) => {
     if (e.touches.length === 2) {
@@ -704,13 +848,11 @@ export default function FieldCapture() {
           me={me}
           online={online}
           onLogout={() => { localStorage.removeItem("crm_token"); nav("/login", { replace: true }); }}
-          onOpenWrapUp={() => nav("/wrap-up")}
         />
         <ProjectList
           deals={deals}
           onPick={(id) => setDealId(id)}
           queuedCount={queuedCount}
-          onOpenWrapUp={() => nav("/wrap-up")}
         />
       </div>
     );
@@ -975,22 +1117,125 @@ export default function FieldCapture() {
         </div>
       </div>
 
-      {/* Big shutter */}
-      <div className="bg-zinc-900 px-4 py-6 flex items-center justify-center border-t border-zinc-800">
-        <button
-          onClick={captureAndUpload}
-          disabled={!cameraReady || !dealId || uploadingShot || !streamHealthy || restarting}
-          className="w-24 h-24 rounded-full bg-white hover:bg-zinc-200 active:scale-95 transition-all flex items-center justify-center shadow-2xl border-4 border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
-          data-testid="field-shutter"
-          aria-label="Capture photo"
-        >
-          {uploadingShot ? (
-            <Loader2 className="w-10 h-10 text-blue-700 animate-spin" />
+      {/* Big shutter — flips between Photo and Video mode. Video capture
+          maxes at 30 s and auto-stops so field storage doesn't balloon. */}
+      <div className="bg-zinc-900 px-4 pt-3 pb-6 flex flex-col items-center gap-2 border-t border-zinc-800">
+        {/* Mode toggle */}
+        <div className="inline-flex rounded-sm border border-zinc-700 overflow-hidden text-[10px] font-bold uppercase tracking-wider" data-testid="field-mode-toggle">
+          <button
+            type="button"
+            onClick={() => { if (!recording) setCaptureMode("photo"); }}
+            className={`h-8 px-3 flex items-center gap-1 ${captureMode === "photo" ? "bg-blue-700 text-white" : "bg-zinc-800 text-zinc-300 hover:text-white"}`}
+            data-testid="field-mode-photo"
+          >
+            <Camera className="w-3 h-3" /> Photo
+          </button>
+          <button
+            type="button"
+            onClick={() => { if (!recording) setCaptureMode("video"); }}
+            className={`h-8 px-3 flex items-center gap-1 ${captureMode === "video" ? "bg-red-700 text-white" : "bg-zinc-800 text-zinc-300 hover:text-white"}`}
+            data-testid="field-mode-video"
+          >
+            <Video className="w-3 h-3" /> Video 30s
+          </button>
+        </div>
+        {captureMode === "video" && recording && (
+          <div className="text-[11px] font-mono text-red-300" data-testid="field-record-timer">
+            ● REC · {String(recordSeconds).padStart(2, "0")} / {MAX_VIDEO_SECONDS}s
+          </div>
+        )}
+        <div className="flex items-center justify-center gap-4 mt-1 w-full max-w-xs">
+          {/* Left slot — Note button (subs' fastest way to leave a project note) */}
+          <button
+            onClick={() => setNoteOpen(true)}
+            disabled={!dealId || recording}
+            className="w-12 h-12 rounded-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 flex items-center justify-center text-white disabled:opacity-40"
+            data-testid="field-note-btn"
+            aria-label="Leave a note"
+            title="Leave a note on this project's timeline"
+          >
+            <MessageSquare className="w-5 h-5" />
+          </button>
+          {/* Primary shutter — photo OR record button */}
+          {captureMode === "photo" ? (
+            <button
+              onClick={captureAndUpload}
+              disabled={!cameraReady || !dealId || uploadingShot || !streamHealthy || restarting}
+              className="w-24 h-24 rounded-full bg-white hover:bg-zinc-200 active:scale-95 transition-all flex items-center justify-center shadow-2xl border-4 border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              data-testid="field-shutter"
+              aria-label="Capture photo"
+            >
+              {uploadingShot ? (
+                <Loader2 className="w-10 h-10 text-blue-700 animate-spin" />
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-zinc-100 border-2 border-zinc-300" />
+              )}
+            </button>
           ) : (
-            <div className="w-20 h-20 rounded-full bg-zinc-100 border-2 border-zinc-300" />
+            <button
+              onClick={recording ? stopRecording : startRecording}
+              disabled={!cameraReady || !dealId || uploadingShot || !streamHealthy || restarting}
+              className={`w-24 h-24 rounded-full flex items-center justify-center shadow-2xl border-4 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+                recording
+                  ? "bg-red-600 hover:bg-red-700 border-red-300 animate-pulse"
+                  : "bg-white hover:bg-zinc-200 border-red-700"
+              }`}
+              data-testid="field-record"
+              aria-label={recording ? "Stop recording" : "Start recording"}
+            >
+              {uploadingShot ? (
+                <Loader2 className="w-10 h-10 text-red-700 animate-spin" />
+              ) : recording ? (
+                <StopCircle className="w-10 h-10 text-white" />
+              ) : (
+                <div className="w-10 h-10 rounded-sm bg-red-700" />
+              )}
+            </button>
           )}
-        </button>
+          {/* Right slot — placeholder for symmetry (keeps shutter centered) */}
+          <div className="w-12 h-12" aria-hidden />
+        </div>
       </div>
+      {/* Leave-a-note modal */}
+      {noteOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-3" onClick={() => !noteSaving && setNoteOpen(false)}>
+          <div
+            className="bg-zinc-900 border border-zinc-700 rounded-sm w-full max-w-md p-4 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="field-note-modal"
+          >
+            <div className="flex items-center gap-2 text-white">
+              <MessageSquare className="w-4 h-4 text-blue-400" />
+              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-300">Leave a note</div>
+            </div>
+            <div className="text-xs text-zinc-400 truncate">Project: <b className="text-zinc-200">{activeDeal?.title}</b></div>
+            <textarea
+              autoFocus
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Something the office needs to know…"
+              className="w-full h-32 bg-zinc-950 border border-zinc-700 text-white text-sm p-3 rounded-sm focus:outline-none focus:border-blue-500 placeholder-zinc-500"
+              data-testid="field-note-textarea"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setNoteOpen(false)}
+                disabled={noteSaving}
+                className="h-10 px-4 text-[11px] font-bold uppercase tracking-wider text-zinc-300 hover:text-white"
+                data-testid="field-note-cancel"
+              >Cancel</button>
+              <button
+                type="button"
+                onClick={saveNote}
+                disabled={noteSaving || !noteText.trim()}
+                className="h-10 px-4 text-[11px] font-bold uppercase tracking-wider bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-sm"
+                data-testid="field-note-save"
+              >{noteSaving ? "Saving…" : "Post to timeline"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1022,9 +1267,9 @@ function ZoomChip({ label, active, onClick, testId }) {
 /**
  * Top bar shared between list view and camera view (the camera view renders
  * its own variant with a back arrow). Shows the signed-in user, online pill,
- * a Wrap-Up shortcut (end-of-day photo tagging screen), and logout.
+ * and logout.
  */
-function TopBar({ me, online, onLogout, onOpenWrapUp }) {
+function TopBar({ me, online, onLogout }) {
   return (
     <div className="px-4 py-3 bg-zinc-900 border-b border-zinc-800 flex items-center gap-3">
       <Camera className="w-5 h-5 text-blue-400" />
@@ -1041,16 +1286,6 @@ function TopBar({ me, online, onLogout, onOpenWrapUp }) {
           <CheckCircle2 className="w-3 h-3" /> Online
         </span>
       )}
-      {onOpenWrapUp && (
-        <button
-          onClick={onOpenWrapUp}
-          className="inline-flex items-center gap-1.5 px-2.5 h-8 bg-emerald-700 hover:bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-sm"
-          data-testid="field-open-wrap-up"
-          title="Daily Site Wrap-Up — tag & finalize today's photos"
-        >
-          <ClipboardCheck className="w-3.5 h-3.5" /> Wrap-Up
-        </button>
-      )}
       <button
         onClick={onLogout}
         className="p-2 text-zinc-400 hover:text-white"
@@ -1066,34 +1301,14 @@ function TopBar({ me, online, onLogout, onOpenWrapUp }) {
 /**
  * Full-screen project list: search box + a tappable row per open deal.
  * Tap a row → onPick(dealId) which flips the parent into camera mode.
- *
- * Also renders an end-of-day "Daily Site Wrap-Up" tile above the search so
- * reps in the field can jump straight into the tagging/cleanup screen from
- * their phone without ever seeing the desktop sidebar.
  */
-function ProjectList({ deals, onPick, queuedCount, onOpenWrapUp }) {
+function ProjectList({ deals, onPick, queuedCount }) {
   const [q, setQ] = useState("");
   const filtered = q.trim()
     ? deals.filter((d) => (d.title || "").toLowerCase().includes(q.toLowerCase()))
     : deals;
   return (
     <div className="flex-1 flex flex-col">
-      {/* End-of-day Wrap-Up shortcut */}
-      {onOpenWrapUp && (
-        <button
-          onClick={onOpenWrapUp}
-          className="mx-4 mt-4 mb-1 px-4 py-4 bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white rounded-sm flex items-center gap-3 transition-colors"
-          data-testid="field-wrap-up-tile"
-        >
-          <ClipboardCheck className="w-6 h-6 flex-shrink-0" />
-          <div className="flex-1 min-w-0 text-left">
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-200">End of Day</div>
-            <div className="text-base font-bold">Daily Site Wrap-Up</div>
-            <div className="text-[11px] text-emerald-100 mt-0.5">Tag today&apos;s photos, review pending actions, mark visits complete.</div>
-          </div>
-          <ChevronLeft className="w-5 h-5 rotate-180 flex-shrink-0" />
-        </button>
-      )}
       {/* Search */}
       <div className="px-4 py-3 bg-zinc-900 border-b border-zinc-800">
         <div className="relative">

@@ -41,7 +41,6 @@ import Employees from "@/pages/Employees";
 import Schedule from "@/pages/Schedule";
 import FieldCapture from "@/pages/FieldCapture";
 import Scopes from "@/pages/Scopes";
-import SiteVisitWrapUp from "@/pages/SiteVisitWrapUp";
 import PWAControls from "@/components/PWAControls";
 import "@/App.css";
 
@@ -64,18 +63,10 @@ const ProtectedRoute = ({ children }) => {
  * full CRM is desktop/tablet only. Adding `?desktop=1` to any URL on a phone
  * forces the full CRM through (preference is remembered for the tab session).
  *
- * A small whitelist of routes stay reachable on phone even without the
- * desktop override — these are pages purpose-built to be usable one-handed
- * from the truck (photo wrap-up, deal detail, close-out modal deep-link).
+ * Feb 2026 — Simplified to STRICT field-only mode: phones only see the
+ * photo/video capture UI + the (soon-to-arrive) leave-a-note input. Everything
+ * else (Dashboard, Deals, Wrap-Up, etc.) requires the `?desktop=1` override.
  */
-const MOBILE_ALLOWED_ROUTES = [
-  "/wrap-up",            // Daily Site Wrap-Up (photo tagging / end of day)
-  "/deals",              // Deal list + individual deal detail (`/deals/:id`)
-  "/projects",           // Same page, alternate URL
-  "/maintenance",        // Maintenance visit records
-  "/profile",            // Self-serve profile page
-];
-
 const MobileGate = ({ children }) => {
   if (typeof window === "undefined") return children;
   // Honour explicit user override first.
@@ -88,12 +79,6 @@ const MobileGate = ({ children }) => {
   const uaIsPhone = /iPhone|Android.+Mobile|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
   const isPhone = uaIsPhone || window.innerWidth < 768;
   if (!isPhone) return children;
-  // Allow explicitly whitelisted mobile-friendly routes through (prefix
-  // match so `/deals/:id` and `/wrap-up?days=…` also pass).
-  const path = window.location.pathname || "/";
-  if (MOBILE_ALLOWED_ROUTES.some((p) => path === p || path.startsWith(p + "/") || path.startsWith(p + "?"))) {
-    return children;
-  }
   return <Navigate to="/field" replace />;
 };
 
@@ -148,7 +133,6 @@ function App() {
               <Route path="/library" element={<Library />} />
               <Route path="/assessments" element={<Assessments />} />
               <Route path="/scopes" element={<Scopes />} />
-              <Route path="/wrap-up" element={<SiteVisitWrapUp />} />
               <Route path="/catalog" element={<ProductCatalog />} />
               <Route path="/calculator" element={<Calculator />} />
               <Route path="/assessments/new" element={<AssessmentEditor />} />

@@ -30,7 +30,7 @@ const ROUTES = [
   { path: "/deals/:id", label: "Deal Detail", cat: "Projects", purpose: "The command center for a single deal — Scope, PDFs, Money, Take-Off, WOs.", reads: ["deals", "invoices", "vendor_bills", "project_photos", "commissions"], writes: ["deals", "invoices", "cost_items", "payment_milestones"] },
   { path: "/calculator", label: "Calculator", cat: "Projects", purpose: "System pricer — computes BoM + labor + markup → Set Option / Push Materials.", reads: ["product_catalog", "deals"], writes: ["deals"] },
   // Field
-  { path: "/wrap-up", label: "Daily Site Wrap-Up", cat: "Field", purpose: "END-OF-DAY photo cleanup — bulk-tag untagged pics from today's site visits.", reads: ["project_photos", "deals"], writes: ["project_photos"] },
+  { path: "/field", label: "Field Capture", cat: "Field", purpose: "Native-quality photo & video capture for reps and subcontractors. Only mobile route.", reads: ["deals", "users"], writes: ["project_photos"] },
   // Reports
   { path: "/assessments", label: "Assessments", cat: "Reports", purpose: "List of all Roof Condition Reports drafted.", reads: ["assessments", "deals"], writes: [] },
   { path: "/scopes", label: "Scopes", cat: "Reports", purpose: "List of all Scope PDFs (technical spec sheets) drafted.", reads: ["deals"], writes: [] },

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise, Camera, Package, Calculator as CalcIcon, FolderKanban, TrendingUp, Wallet as FinanceIcon, Settings, Search, ClipboardList, UserRoundCog, Map as MapIcon } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise, Package, Calculator as CalcIcon, FolderKanban, TrendingUp, Wallet as FinanceIcon, Settings, Search, ClipboardList, UserRoundCog, Map as MapIcon } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 import GlobalSearch from "@/components/GlobalSearch";
@@ -45,13 +45,6 @@ const NAV_GROUPS = [
       { to: "/properties", label: "Properties", icon: Building2,       testId: "nav-properties" },
       { to: "/projects",   label: "Deals",      icon: FileSpreadsheet, testId: "nav-projects" },
       { to: "/calculator", label: "Calculator", icon: CalcIcon,        testId: "nav-calculator" },
-    ],
-  },
-  {
-    label: "Field",
-    icon: Camera,
-    items: [
-      { to: "/wrap-up", label: "Daily Site Wrap-Up",  icon: ClipboardCheck,  testId: "nav-wrap-up" },
     ],
   },
   {
@@ -132,10 +125,8 @@ export default function Layout() {
   }, [location.pathname]);
   return (
     <div className="min-h-screen flex bg-zinc-100">
-      {/* Sidebar — hidden on phone-sized viewports so whitelisted mobile
-          routes (Wrap-Up, Deal Detail) get the full width. Field reps
-          navigate via the FieldCapture top-bar shortcut and the in-page
-          "Back to Field" chevron. */}
+      {/* Sidebar — hidden on phone-sized viewports. The phone app is
+          strictly field-only (camera + video + note) via `/field`. */}
       <aside className="hidden md:flex w-64 bg-zinc-950 text-zinc-50 flex-col" data-testid="sidebar">
         <div className="p-4 bg-white border-b border-zinc-800">
           <img src="/sealtech-logo.png" alt="SealTech Building Solutions" className="w-full h-auto max-h-16 object-contain" />
