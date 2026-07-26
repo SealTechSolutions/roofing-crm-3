@@ -5,6 +5,7 @@ import { TrendingUp, FileSpreadsheet, Users, Building2, DollarSign, Trophy, Wren
 import { ExportButtons } from "@/components/ExportImport";
 import { toast } from "sonner";
 import { openScopePdf } from "@/components/ScopesModal";
+import DashboardCloseOutQueue from "@/components/DashboardCloseOutQueue";
 
 const KPI = ({ label, value, hint, icon: Icon, testId, clickable }) => (
   <div
@@ -80,6 +81,9 @@ export default function Dashboard() {
 
       {/* ═══ GROUP: ALERTS — WHAT NEEDS ATTENTION ═══ */}
       <div id="dash-group-alerts" data-testid="dash-group-alerts" className="scroll-mt-16">
+      {/* Close-Out Queue — daily reminder of deals awaiting close-out */}
+      <DashboardCloseOutQueue />
+
       {/* Today + Next 48h — ad-hoc deal events */}
       <TodayEvents />
 

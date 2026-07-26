@@ -1,0 +1,34 @@
+{
+  "summary": "Tested Close-Out Phase 2 backend + frontend. Backend: 6/6 core tests pass (NDL auto-check + reject un-toggle, PnL summary shape, attachment upload/download/delete, finalize missing-items 400, admin force-finalize with PDF+library file). Frontend: modal opens via /deals/{id}?closeout=1, shows AUTO pill on NDL row with 'Skipped — no NDL upgrade sold' note, NDL toggle is disabled, embedded PnL widget renders inline on pnl_variance_review with Revenue/Costs/Profit/Variance testids populated, all 7 ITEMS_EXPECTING_ATTACHMENTS show 'Attach file' button, attachment upload works and file chip renders, non-auto toggle updates progress pill (1/16 -> 2/16), Finalize button correctly disabled while incomplete, dashboard close-out-queue-card + queue-row-{id} render.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/deals/{id}", "issue": "Deal Pydantic model doesn't include close_out_pdf_id/close_out_pdf_path (nor ndl_upgrade_accepted_amount), so these fields are stripped on GET responses even though they exist in Mongo. Finalize response includes them so frontend works immediately, but a page reload can't render the archived deal's PDF link from GET data."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "CloseOutChecklistModal — PnL widget 'Est · Actual' cell", "issues": ["Values are stacked (est top, actual muted below) with no separator/label per line — reads as '$50,000 $0' when actual=0. Consider adding tiny 'est'/'act' labels."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_close_out_phase2.py", "/app/test_reports/pytest/close_out_phase2.xml"],
+  "action_items": [
+    "OPTIONAL: Extend the Deal Pydantic model with close_out_pdf_id, close_out_pdf_path, closed_out_at, close_out_started_at, ndl_upgrade_accepted_amount so GET /api/deals/{id} exposes them (currently stripped by response_model=Deal).",
+    "The two auto-check paths I couldn't curl-verify (Paid mark_complete invoice -> final_payment_received, commission_accruals row -> commission_accrued) rely on _apply_close_out_auto_checks which was code-reviewed and looks correct. Consider a separate seed script to verify end-to-end once."
+  ],
+  "critical_code_review_comments": [
+    "server.py::_compute_close_out_pnl uses cost_used = max(est_total, actual_total) for gross_profit — this is a deliberate 'worse-of' rule but is not consistent with what the widget labels as 'Gross Profit'. Widget could visually mislead if actual>est by showing an unchanged margin. Documented in code comment but consider surfacing this rule in the UI.",
+    "close_out_pdf.py builds the PDF entirely in-process during finalize; on slow storage this can exceed request budgets. Consider moving to a background task if latency becomes an issue.",
+    "Deal Pydantic model missing several close-out fields (see minor backend issue) — impacts frontend refresh scenarios."
+  ],
+  "updated_files": ["/app/backend/tests/test_close_out_phase2.py"],
+  "success_rate": {"backend": "100% (6/6 pass, 1 skipped by design)", "frontend": "100% (all Phase 2 UI elements verified)"},
+  "test_credentials": "darren@sealtechsolutions.co / admin123",
+  "seed_data_creation": "Created TEST_ deals during pytest (all cleaned up in teardown). Manually created 'TEST_ Close-Out UI Deal' for the Playwright run and DELETE'd it via API at the end.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "backend_test path is /app/backend/tests/test_close_out_phase2.py. Run with `export $(grep -v '^#' /app/frontend/.env | xargs)` first to inject REACT_APP_BACKEND_URL, then pytest. Frontend flow: after login, navigate to /deals/{id}?closeout=1 to open the modal directly; from Dashboard root /, the close-out-queue-card + close-out-queue-row-{id} links do the same. NDL auto-check will always fire for a plain POST /api/deals payload because ndl_upgrade_accepted_amount isn't in the Deal model and defaults to 0.",
+  "rca of the issue": "N/A — Phase 2 features working end-to-end."
+}

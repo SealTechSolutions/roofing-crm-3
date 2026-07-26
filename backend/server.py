@@ -27,7 +27,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
-from storage import init_storage, put_object, get_object, APP_NAME
+from storage import init_storage, put_object, get_object, delete_object, APP_NAME
 from exports import to_excel, to_pdf, CATEGORIES as EXPORT_CATEGORIES
 from spec_sheet import build_spec_sheet
 from books import make_router as make_books_router, seed_default_entities
@@ -4658,6 +4658,552 @@ async def delete_vendor(vendor_id: str, current=Depends(get_current_user)):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Vendor not found")
     return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Project Close-Out — replaces the one-click "Mark Complete" with a 20-item
+# checklist. Deals enter the close-out phase when a rep clicks Mark Complete;
+# they appear on the Dashboard "Close-Out Queue" card until all 16 REQUIRED
+# items are checked, at which point the Finalize action archives the deal.
+# The 4 OPTIONAL items surface for tracking but never block finalize.
+# ═══════════════════════════════════════════════════════════════════════════
+
+CLOSE_OUT_ITEMS = [
+    # (key, section, label, required)
+    ("punch_list_signed",        "Site & Quality",  "Final punch list completed & signed",              True),
+    ("site_cleanup_verified",    "Site & Quality",  "Site cleanup verified (debris removed)",           True),
+    ("final_walkthrough",        "Site & Quality",  "Final walkthrough completed with customer",        True),
+    ("customer_signoff",         "Site & Quality",  "Customer satisfaction sign-off collected",         True),
+    ("after_photos_uploaded",    "Documentation",   "Final \"After\" photos uploaded (min 10)",           True),
+    ("mfg_warranty_delivered",   "Documentation",   "Manufacturer Warranty Certificate delivered",      True),
+    ("contractor_warranty_del",  "Documentation",   "SealTech Contractor Warranty delivered",           True),
+    ("ndl_registered",           "Documentation",   "NDL warranty registered with manufacturer",        True),
+    ("om_manual_delivered",      "Documentation",   "O&M Manual + Maintenance Schedule delivered",      True),
+    ("lien_waivers_signed",      "Documentation",   "Lien waivers signed by all 1099 subs",             True),
+    ("final_invoice_sent",       "Financial",       "Final invoice sent",                               True),
+    ("final_payment_received",   "Financial",       "Final payment received",                           True),
+    ("sub_invoices_reconciled",  "Financial",       "All subcontractor invoices reconciled + paid",     True),
+    ("change_orders_reconciled", "Financial",       "All change orders reconciled",                     True),
+    ("pnl_variance_review",      "Financial",       "Final P&L variance review (within 5%)",            True),
+    ("commission_accrued",       "Follow-up",       "Commission accrued to assigned rep(s)",            True),
+    ("review_requested",         "Follow-up",       "Google / Yelp review requested",                   False),
+    ("gallery_added",            "Follow-up",       "Photos added to Public Gallery",                   False),
+    ("maintenance_enrolled",     "Follow-up",       "Maintenance Plan enrolled",                        False),
+    ("referral_offered",         "Follow-up",       "Referral discount offered",                        False),
+]
+
+
+def _empty_close_out_checklist() -> dict:
+    """Fresh checklist state — one entry per item with done/date/note/attachments."""
+    return {key: {"done": False, "date": "", "note": "", "attachments": [], "auto": False}
+            for key, _s, _l, _r in CLOSE_OUT_ITEMS}
+
+
+async def _apply_close_out_auto_checks(deal: dict, checklist: dict) -> tuple[dict, bool]:
+    """Runs the three promised auto-check rules against live data. Mutates
+    the checklist in-place. Returns (checklist, changed_flag).
+
+    Rules (per the PRD):
+      • `ndl_registered`      — auto-marks N/A when this deal has no NDL upgrade
+                                 sold (customer didn't opt in). Note reads
+                                 "Skipped — no NDL upgrade on this deal".
+      • `final_payment_received` — auto-checks when a linked invoice with
+                                 `source_type == "mark_complete"` is Paid.
+      • `commission_accrued`  — auto-checks when at least one commission_accruals
+                                 row exists for this deal.
+
+    Only auto-flips items that are still unchecked, and only sets `auto=True`
+    so the UI can render the "auto" pill and prevent manual un-checking of
+    machine-verified items."""
+    changed = False
+    deal_id = deal.get("id")
+
+    def _flip(key: str, note: str) -> None:
+        nonlocal changed
+        st = checklist.get(key) or {"done": False, "date": "", "note": "", "attachments": [], "auto": False}
+        if not st.get("done"):
+            checklist[key] = {
+                "done": True,
+                "date": now_iso(),
+                "note": note,
+                "attachments": st.get("attachments") or [],
+                "auto": True,
+            }
+            changed = True
+
+    # 1) NDL Registered — skip if no NDL upgrade sold
+    ndl_amount = float(
+        deal.get("ndl_upgrade_accepted_amount")
+        or deal.get("hail_rider_accepted_amount")
+        or 0
+    )
+    if ndl_amount <= 0:
+        _flip("ndl_registered", "Skipped — no NDL upgrade sold on this deal.")
+
+    # 2) Final Payment Received — check if a Final invoice is Paid
+    if deal_id:
+        paid_final = await db.invoices.find_one({
+            "deal_id": deal_id,
+            "source_type": "mark_complete",
+            "status": "Paid",
+            "is_deleted": {"$ne": True},
+        }, {"_id": 0, "invoice_number": 1, "amount_paid": 1})
+        if paid_final:
+            inv_num = paid_final.get("invoice_number") or ""
+            _flip(
+                "final_payment_received",
+                f"Auto-verified — Final invoice {inv_num} marked Paid.",
+            )
+
+        # 3) Commission Accrued — at least one accrual row exists
+        try:
+            accrual = await db.commission_accruals.find_one(
+                {"deal_id": deal_id, "is_deleted": {"$ne": True}},
+                {"_id": 0, "commission_amount": 1},
+            )
+        except Exception:
+            accrual = None
+        if accrual:
+            _flip(
+                "commission_accrued",
+                "Auto-verified — commission accrual on file for assigned rep(s).",
+            )
+
+    return checklist, changed
+
+
+def _close_out_progress(checklist: dict) -> dict:
+    """Compute progress totals — required-only, since optional items don't
+    block finalization but are still tracked."""
+    if not isinstance(checklist, dict):
+        checklist = {}
+    req_total = sum(1 for _k, _s, _l, req in CLOSE_OUT_ITEMS if req)
+    req_done = sum(
+        1 for k, _s, _l, req in CLOSE_OUT_ITEMS
+        if req and (checklist.get(k) or {}).get("done")
+    )
+    opt_done = sum(
+        1 for k, _s, _l, req in CLOSE_OUT_ITEMS
+        if not req and (checklist.get(k) or {}).get("done")
+    )
+    return {
+        "required_total": req_total,
+        "required_done": req_done,
+        "optional_done": opt_done,
+        "complete": req_done == req_total,
+    }
+
+
+@api_router.post("/deals/{deal_id}/close-out/start")
+async def start_close_out(deal_id: str, current=Depends(get_current_user)):
+    """Kick off the close-out phase — stamps `close_out_started_at`,
+    initializes the checklist if not already present. Idempotent.
+
+    Also runs the auto-check pass so items like `ndl_registered` (skipped
+    when there's no NDL upgrade), `final_payment_received` (Paid Final
+    invoice), and `commission_accrued` (accrual row exists) flip on
+    without manual intervention."""
+    deal = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    if deal.get("closed_out_at"):
+        raise HTTPException(status_code=400, detail="Deal already fully closed")
+    update = {}
+    if not deal.get("close_out_started_at"):
+        update["close_out_started_at"] = now_iso()
+        update["close_out_started_by"] = current.get("id")
+    checklist = deal.get("close_out_checklist") or _empty_close_out_checklist()
+    # Backfill: legacy deals may have items without the attachments/auto keys
+    for key, _s, _l, _r in CLOSE_OUT_ITEMS:
+        st = checklist.get(key) or {}
+        if "attachments" not in st:
+            st["attachments"] = []
+        if "auto" not in st:
+            st["auto"] = False
+        checklist[key] = st
+    checklist, changed = await _apply_close_out_auto_checks(deal, checklist)
+    if changed or not deal.get("close_out_checklist"):
+        update["close_out_checklist"] = checklist
+    if update:
+        await db.deals.update_one({"id": deal_id}, {"$set": update})
+    doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    doc["close_out_progress"] = _close_out_progress(doc.get("close_out_checklist") or {})
+    return doc
+
+
+@api_router.put("/deals/{deal_id}/close-out/item")
+async def update_close_out_item(deal_id: str, body: dict = Body(...), current=Depends(get_current_user)):
+    """Toggle one checklist item. Body: `{key: str, done: bool, date?: str, note?: str}`.
+
+    Auto-checked items (NDL-skipped, Paid Final, Commission Accrued) cannot
+    be manually un-checked — the source-of-truth data has to change first."""
+    key = str(body.get("key") or "").strip()
+    valid_keys = {k for k, _s, _l, _r in CLOSE_OUT_ITEMS}
+    if key not in valid_keys:
+        raise HTTPException(status_code=400, detail=f"Unknown checklist key {key!r}")
+    deal = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    if deal.get("closed_out_at"):
+        raise HTTPException(status_code=400, detail="Deal already fully closed — cannot edit")
+    checklist = dict(deal.get("close_out_checklist") or _empty_close_out_checklist())
+    existing = checklist.get(key) or {}
+    done = bool(body.get("done"))
+    if existing.get("auto") and not done:
+        raise HTTPException(
+            status_code=400,
+            detail="This item was auto-verified from live project data and can't be manually un-checked.",
+        )
+    checklist[key] = {
+        "done": done,
+        "date": body.get("date") or (now_iso() if done else ""),
+        "note": body.get("note") or "",
+        "attachments": existing.get("attachments") or [],
+        "auto": False,  # a manual toggle clears the auto flag
+    }
+    await db.deals.update_one(
+        {"id": deal_id},
+        {"$set": {
+            "close_out_checklist": checklist,
+            "close_out_started_at": deal.get("close_out_started_at") or now_iso(),
+        }},
+    )
+    return {"ok": True, "close_out_progress": _close_out_progress(checklist)}
+
+
+@api_router.post("/deals/{deal_id}/close-out/finalize")
+async def finalize_close_out(deal_id: str, body: dict = Body(default={}), current=Depends(get_current_user)):
+    """Archive a fully-closed-out deal. Refuses to run unless every required
+    item is checked (admins can `force=true` to override for lost-customer
+    edge cases). Sets status=Archived-Won and stamps `closed_out_at`.
+
+    On finalize we also:
+      1. Re-run auto-checks in case the rep forgot to reopen the modal after
+         collecting the Final payment or approving a commission accrual.
+      2. Auto-release any commission accruals still in `pending_job_start`
+         (a closed job by definition means the job started).
+      3. Build the Close-Out Summary PDF, upload it to Object Storage, and
+         drop a Library file record under Documentation/Warranty Certificates
+         so the artifact lives with the project forever.
+    """
+    deal = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    if deal.get("closed_out_at"):
+        raise HTTPException(status_code=400, detail="Already closed")
+    checklist = deal.get("close_out_checklist") or {}
+    # Re-run auto-checks so we don't fail finalize on stale state.
+    checklist, changed = await _apply_close_out_auto_checks(deal, checklist)
+    if changed:
+        await db.deals.update_one({"id": deal_id}, {"$set": {"close_out_checklist": checklist}})
+    progress = _close_out_progress(checklist)
+    force = bool(body.get("force"))
+    if not progress["complete"] and not force:
+        missing = [l for k, _s, l, r in CLOSE_OUT_ITEMS if r and not (checklist.get(k) or {}).get("done")]
+        raise HTTPException(status_code=400, detail=f"Not all required items checked. Missing: {', '.join(missing)}")
+    if force and current.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only for force-close")
+
+    closed_stamp = now_iso()
+    finalize_update = {
+        "closed_out_at": closed_stamp,
+        "closed_out_by": current.get("id"),
+        "close_out_force": force,
+        "status": "Archived — Won",
+        "close_out_checklist": checklist,
+    }
+
+    # Auto-release any accruals still gated on job_started_at — a closed
+    # job by definition means the job started.
+    try:
+        if not deal.get("job_started_at"):
+            finalize_update["job_started_at"] = closed_stamp
+            finalize_update["job_started_by"] = current.get("id")
+        await db.commission_accruals.update_many(
+            {"deal_id": deal_id, "status": "pending_job_start"},
+            {"$set": {"status": "open", "released_at": closed_stamp, "released_by_close_out": True}},
+        )
+    except Exception as e:
+        logger.warning(f"Close-out: releasing pending commissions failed: {type(e).__name__}: {e}")
+
+    # Build & upload the Summary PDF, then create a library file record.
+    close_out_pdf_id = None
+    close_out_pdf_path = None
+    try:
+        from close_out_pdf import build_close_out_pdf
+        # Recompute a snapshot P&L to bake into the PDF
+        pnl = await _compute_close_out_pnl(deal_id, deal, checklist)
+        contact_name = ""
+        if deal.get("contact_id"):
+            c = await db.contacts.find_one({"id": deal["contact_id"]}, {"_id": 0, "name": 1, "first_name": 1, "last_name": 1})
+            if c:
+                contact_name = c.get("name") or f'{c.get("first_name","")} {c.get("last_name","")}'.strip()
+        items_config = [{"key": k, "section": s, "label": l, "required": r} for k, s, l, r in CLOSE_OUT_ITEMS]
+        # Merge finalize_update into a shallow deal copy for the PDF renderer
+        deal_for_pdf = dict(deal)
+        deal_for_pdf.update(finalize_update)
+        pdf_bytes = build_close_out_pdf(
+            deal_for_pdf, items_config, pnl,
+            closed_by_name=current.get("name") or current.get("email") or "",
+            contact_name=contact_name,
+        )
+        file_id = str(uuid.uuid4())
+        storage_path = f"{APP_NAME}/deal-closeout/{deal_id}/summary_{file_id}.pdf"
+        result = put_object(storage_path, pdf_bytes, "application/pdf")
+        close_out_pdf_id = file_id
+        close_out_pdf_path = result.get("path") or storage_path
+        # Library file record so the artifact appears in the customer's document library
+        lib_doc = {
+            "id": file_id,
+            "category": "Documentation",
+            "subcategory": "Warranty Certificates",
+            "display_name": f"Close-Out Summary — {deal.get('title') or deal_id}",
+            "description": "Auto-generated at project close-out. Includes 20-pt checklist, final P&L, and closure timestamps.",
+            "storage_path": close_out_pdf_path,
+            "original_filename": f"close-out-summary-{(deal.get('title') or deal_id).replace(' ', '_')}.pdf",
+            "content_type": "application/pdf",
+            "size": len(pdf_bytes),
+            "is_deleted": False,
+            "uploaded_by": current["id"],
+            "uploader_name": current.get("name", ""),
+            "created_at": closed_stamp,
+            "deal_id": deal_id,
+        }
+        try:
+            await db.library_files.insert_one(lib_doc.copy())
+        except Exception:
+            pass  # library record is best-effort
+        finalize_update["close_out_pdf_id"] = close_out_pdf_id
+        finalize_update["close_out_pdf_path"] = close_out_pdf_path
+    except Exception as e:
+        logger.warning(f"Close-out PDF build failed: {type(e).__name__}: {e}")
+
+    await db.deals.update_one({"id": deal_id}, {"$set": finalize_update})
+    doc = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    doc["close_out_progress"] = _close_out_progress(doc.get("close_out_checklist") or {})
+    return doc
+
+
+async def _compute_close_out_pnl(deal_id: str, deal: dict, checklist: dict) -> dict:
+    """Snapshot the deal's P&L at the moment of close for the summary PDF and
+    the modal's embedded widget. Mirrors the math in `ProjectLivePnL.jsx` but
+    server-side so a rep and the PDF agree to the penny."""
+    contract_total = float(deal.get("chosen_amount") or 0)
+    # Estimated cost — the rolled-up per-category deal fields (Materials,
+    # Labor, Subcontractor, Other) + cost_items sums.
+    est_total = 0.0
+    for f in ("materials_cost", "labor_cost", "subcontractor_cost", "other_expenses"):
+        est_total += float(deal.get(f) or 0)
+    for ci in (deal.get("cost_items") or []):
+        est_total += float(ci.get("amount") or 0)
+    # Actual cost — sum of vendor bill line-items whose project_id matches.
+    bills = db.vendor_bills.find({"is_deleted": {"$ne": True}}, {"_id": 0, "line_items": 1})
+    actual_total = 0.0
+    async for b in bills:
+        for li in (b.get("line_items") or []):
+            if li.get("project_id") == deal_id:
+                actual_total += float(li.get("amount") or 0)
+    cost_used = max(est_total, actual_total)
+    gross_profit = contract_total - cost_used
+    margin_pct = (gross_profit / contract_total * 100.0) if contract_total > 0 else 0.0
+    variance_pct = ((actual_total - est_total) / est_total * 100.0) if est_total > 0 else 0.0
+    return {
+        "revenue": contract_total,
+        "estimated_cost": est_total,
+        "actual_cost": actual_total,
+        "gross_profit": gross_profit,
+        "gross_margin_pct": margin_pct,
+        "variance_pct": variance_pct,
+    }
+
+
+@api_router.get("/deals/{deal_id}/close-out/pnl-summary")
+async def close_out_pnl_summary(deal_id: str, _=Depends(get_current_user)):
+    """Compact server-side P&L snapshot used by the embedded widget on the
+    checklist's `pnl_variance_review` row. Same math as finalize's snapshot,
+    but always live (never persisted)."""
+    deal = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    return await _compute_close_out_pnl(deal_id, deal, deal.get("close_out_checklist") or {})
+
+
+@api_router.get("/close-out/queue")
+async def list_close_out_queue(current=Depends(get_current_user)):
+    """Deals in the close-out phase — started but not yet finalized. Powers
+    the Dashboard reminder card. Sorted oldest-first."""
+    from datetime import datetime as _dt
+    cursor = db.deals.find(
+        {
+            "close_out_started_at": {"$exists": True, "$ne": ""},
+            "closed_out_at": {"$in": [None, ""]},
+            "is_deleted": {"$ne": True},
+        },
+        {"_id": 0}
+    ).sort("close_out_started_at", 1)
+    docs = await cursor.to_list(200)
+    out = []
+    now = _dt.now(timezone.utc)
+    for d in docs:
+        cl = d.get("close_out_checklist") or {}
+        prog = _close_out_progress(cl)
+        started = d.get("close_out_started_at")
+        days = 0
+        if started:
+            try:
+                started_dt = _dt.fromisoformat(started.replace("Z", "+00:00"))
+                days = max(0, (now - started_dt).days)
+            except Exception:
+                days = 0
+        out.append({
+            "id": d["id"],
+            "title": d.get("title", ""),
+            "property_address": d.get("property_address", ""),
+            "property_city": d.get("property_city", ""),
+            "required_done": prog["required_done"],
+            "required_total": prog["required_total"],
+            "optional_done": prog["optional_done"],
+            "days_since_start": days,
+            "close_out_started_at": started,
+        })
+    return out
+
+
+@api_router.get("/close-out/items")
+async def get_close_out_items_config(current=Depends(get_current_user)):
+    """Return the checklist item definitions so the frontend renders labels
+    from the canonical source."""
+    return [
+        {"key": k, "section": s, "label": l, "required": r}
+        for k, s, l, r in CLOSE_OUT_ITEMS
+    ]
+
+
+# ---- Close-Out item file attachments (warranty certs, lien waivers, etc.) ----
+# Attachments hang off `close_out_checklist[item_key].attachments = [{...}]`
+# and live in Object Storage under sealtech-crm/deal-closeout/{deal_id}/{key}/.
+# Any authenticated user can upload/list; deletes are self-authored or admin.
+
+CLOSE_OUT_ATTACHMENT_MAX_MB = 25
+
+
+@api_router.post("/deals/{deal_id}/close-out/item/{item_key}/attachments")
+async def upload_close_out_attachment(
+    deal_id: str,
+    item_key: str,
+    file: UploadFile = File(...),
+    current=Depends(get_current_user),
+):
+    """Upload a doc against one checklist item (Warranty PDF, lien waiver
+    photo, etc.). Persists metadata on the deal doc so the modal can render
+    the file chips without extra queries."""
+    valid_keys = {k for k, _s, _l, _r in CLOSE_OUT_ITEMS}
+    if item_key not in valid_keys:
+        raise HTTPException(status_code=400, detail=f"Unknown checklist key {item_key!r}")
+    deal = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    if deal.get("closed_out_at"):
+        raise HTTPException(status_code=400, detail="Deal already fully closed — cannot attach")
+    data = await file.read()
+    if len(data) > CLOSE_OUT_ATTACHMENT_MAX_MB * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"File too large (max {CLOSE_OUT_ATTACHMENT_MAX_MB}MB)")
+    ext = (file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "bin").lower()
+    file_id = str(uuid.uuid4())
+    storage_path = f"{APP_NAME}/deal-closeout/{deal_id}/{item_key}/{file_id}.{ext}"
+    try:
+        result = put_object(storage_path, data, file.content_type or "application/octet-stream")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+    attachment = {
+        "id": file_id,
+        "storage_path": result.get("path") or storage_path,
+        "original_filename": file.filename or f"file.{ext}",
+        "content_type": file.content_type or "application/octet-stream",
+        "size": len(data),
+        "uploaded_by": current["id"],
+        "uploader_name": current.get("name", ""),
+        "uploaded_at": now_iso(),
+    }
+    checklist = dict(deal.get("close_out_checklist") or _empty_close_out_checklist())
+    state = dict(checklist.get(item_key) or {"done": False, "date": "", "note": "", "attachments": [], "auto": False})
+    atts = list(state.get("attachments") or [])
+    atts.append(attachment)
+    state["attachments"] = atts
+    checklist[item_key] = state
+    await db.deals.update_one({"id": deal_id}, {"$set": {"close_out_checklist": checklist}})
+    return attachment
+
+
+@api_router.delete("/deals/{deal_id}/close-out/item/{item_key}/attachments/{file_id}")
+async def delete_close_out_attachment(
+    deal_id: str,
+    item_key: str,
+    file_id: str,
+    current=Depends(get_current_user),
+):
+    """Remove a single attachment. Non-uploader users need admin role."""
+    deal = await db.deals.find_one({"id": deal_id}, {"_id": 0})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    if deal.get("closed_out_at"):
+        raise HTTPException(status_code=400, detail="Deal already fully closed — cannot edit")
+    checklist = dict(deal.get("close_out_checklist") or {})
+    state = dict(checklist.get(item_key) or {})
+    atts = list(state.get("attachments") or [])
+    target = next((a for a in atts if a.get("id") == file_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    if target.get("uploaded_by") != current.get("id") and current.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="You can only delete your own uploads (or ask an admin).")
+    try:
+        delete_object(target.get("storage_path") or "")
+    except Exception as e:
+        logger.warning(f"Close-out attachment storage delete failed (ignored): {type(e).__name__}: {e}")
+    state["attachments"] = [a for a in atts if a.get("id") != file_id]
+    checklist[item_key] = state
+    await db.deals.update_one({"id": deal_id}, {"$set": {"close_out_checklist": checklist}})
+    return {"ok": True}
+
+
+@api_router.get("/deals/{deal_id}/close-out/item/{item_key}/attachments/{file_id}/download")
+async def download_close_out_attachment(
+    deal_id: str,
+    item_key: str,
+    file_id: str,
+    token: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    """Stream an attachment. Auth via Bearer header or `?token=…` query
+    (matches the library-file download pattern so <a> tags Just Work)."""
+    raw = None
+    if authorization and authorization.startswith("Bearer "):
+        raw = authorization[7:]
+    elif token:
+        raw = token
+    if not raw:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(raw, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["sub"]})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    deal = await db.deals.find_one({"id": deal_id}, {"_id": 0, "close_out_checklist": 1})
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    state = (deal.get("close_out_checklist") or {}).get(item_key) or {}
+    target = next((a for a in (state.get("attachments") or []) if a.get("id") == file_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    data, ct = get_object(target["storage_path"])
+    return Response(
+        content=data,
+        media_type=target.get("content_type") or ct or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{target.get("original_filename") or "file"}"'},
+    )
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════

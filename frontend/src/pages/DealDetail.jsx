@@ -18,6 +18,7 @@ import DealSchedulePanel from "@/components/DealSchedulePanel";
 import GoToProductionChecklist from "@/components/GoToProductionChecklist";
 import ProjectLivePnL from "@/components/ProjectLivePnL";
 import DealActionBar from "@/components/DealActionBar";
+import CloseOutChecklistModal from "@/components/CloseOutChecklistModal";
 
 // Resolve a deal's assigned_to_user_id to a human-readable name. Falls back
 // to the raw id (handy during dev) and then to "—" when nothing matches.
@@ -55,6 +56,7 @@ export default function DealDetail() {
   const [closedBannerDismissed, setClosedBannerDismissed] = useState(false);
   const [depositBannerDismissed, setDepositBannerDismissed] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
+  const [closeOutModalOpen, setCloseOutModalOpen] = useState(false);
   const [draftingDeposit, setDraftingDeposit] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
 
@@ -63,6 +65,9 @@ export default function DealDetail() {
   useEffect(() => {
     if (sp.get("openScope") === "1") {
       setScopeEditorOpen(true);
+    }
+    if (sp.get("closeout") === "1") {
+      setCloseOutModalOpen(true);
     }
   }, [sp]);
 
@@ -111,25 +116,34 @@ export default function DealDetail() {
    * inline InvoiceEditor so the user can review/edit before sending.
    */
   const markCompleteAndInvoice = async () => {
-    if (markingComplete) return;
-    setMarkingComplete(true);
+    // Open the Close-Out Checklist modal — the actual finalization happens
+    // there once all 16 required items are ticked. The final invoice will be
+    // drafted by the modal's onFinalized handler below.
+    setCloseOutModalOpen(true);
+  };
+
+  const draftFinalInvoiceAfterClose = async () => {
+    // Called after the Close-Out modal has archived the deal — drafts the
+    // Final invoice using the existing endpoint so the workflow stays
+    // consistent with historical behavior. Refreshes the deal so the new
+    // "Archived — Won" status + closed_out_at banner appear.
     try {
       const r = await api.post(`/deals/${id}/final-invoice`);
       const newInv = r.data;
-      // Refresh the local deal-invoices list so the banner updates.
       api.get(`/invoices?deal_id=${id}`)
         .then((rr) => setDealInvoices(rr.data || []))
-        .catch(() => { /* refresh failure is not fatal */ });
-      api.get(`/deals/${id}/final-invoice/preview`)
-        .then((rp) => setFinalInvoicePreview(rp.data))
-        .catch(() => { /* preview refresh failure is not fatal */ });
+        .catch(() => {});
       toast.success(`Final invoice ${newInv.invoice_number} drafted ($${Number(newInv.total || newInv.total_amount || newInv.subtotal || 0).toLocaleString()})`);
       setInvoiceEditor(newInv);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || e.message || "Could not draft Final invoice");
-    } finally {
-      setMarkingComplete(false);
+      // Final invoice may already exist — that's fine.
+      const msg = e?.response?.data?.detail || "";
+      if (!/already/i.test(msg)) {
+        toast.error(msg || "Could not draft Final invoice");
+      }
     }
+    // Reload deal to reflect Archived status
+    api.get(`/deals/${id}`).then((rr) => setDeal(rr.data)).catch(() => {});
   };
 
   /**
@@ -1653,6 +1667,17 @@ export default function DealDetail() {
             // After a successful send the backend stamps `last_scope_sent_at`
             // on the deal — refresh so the pipeline dot turns green immediately.
             if (sent) reload().catch(() => {});
+          }}
+        />
+      )}
+
+      {closeOutModalOpen && deal && (
+        <CloseOutChecklistModal
+          deal={deal}
+          onClose={() => setCloseOutModalOpen(false)}
+          onFinalized={() => {
+            setCloseOutModalOpen(false);
+            draftFinalInvoiceAfterClose();
           }}
         />
       )}
