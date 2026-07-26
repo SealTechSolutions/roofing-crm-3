@@ -27,7 +27,7 @@
  * are PUT back to that deal as `cost_items` with category="Materials".
  */
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { api, formatCurrency, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { Calculator as CalcIcon, Plus, X, Save, ChevronLeft, Layers, AlertCircle, Loader2, FileText, Download, PenLine, Package } from "lucide-react";
@@ -174,6 +174,7 @@ function bandWarrantyLabel(years) {
 
 export default function Calculator() {
   const [params, setParams] = useSearchParams();
+  const nav = useNavigate();
   const initialDealId = params.get("deal");
 
   const [products, setProducts] = useState([]);
@@ -1413,6 +1414,17 @@ export default function Calculator() {
                     <FileText className="w-3.5 h-3.5" /> {generatingPo ? "Generating…" : `PO PDF — ${selectedVendor}`}
                   </button>
                 )}
+                {/* Return to Deal — one-tap jump back to the deal page. Keeps
+                    the rep in a single-place workflow (matches the pipeline
+                    jump-to-section pattern on DealDetail). */}
+                <button
+                  onClick={() => nav(`/projects/${deal.id}`)}
+                  className="inline-flex items-center gap-1.5 px-4 h-9 text-[11px] font-bold uppercase tracking-wider border border-zinc-950 bg-zinc-950 text-white hover:bg-zinc-800 rounded-sm"
+                  data-testid="return-to-deal-btn"
+                  title={`Back to ${deal.title || "the deal page"}`}
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Return to Deal
+                </button>
               </div>
             )}
             </>
