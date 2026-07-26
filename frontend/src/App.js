@@ -36,6 +36,7 @@ import Tasks from "@/pages/Tasks";
 import Integrations from "@/pages/Integrations";
 import EquipmentRates from "@/pages/EquipmentRates";
 import ScopeBullets from "@/pages/ScopeBullets";
+import SystemMap from "@/pages/SystemMap";
 import Employees from "@/pages/Employees";
 import Schedule from "@/pages/Schedule";
 import FieldCapture from "@/pages/FieldCapture";
@@ -140,6 +141,7 @@ function App() {
               <Route path="/settings/equipment-rates" element={<EquipmentRates />} />
               <Route path="/settings/scope-bullets" element={<ScopeBullets />} />
               <Route path="/employees" element={<Employees />} />
+              <Route path="/admin/system-map" element={<SystemMap />} />
               <Route path="/settings/schedule" element={<Schedule />} />
               <Route path="/books" element={<BooksCOA />} />
               <Route path="/users" element={<UsersPage />} />

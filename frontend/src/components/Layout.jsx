@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise, Camera, Package, Calculator as CalcIcon, FolderKanban, TrendingUp, Wallet as FinanceIcon, Settings, Search, ClipboardList, UserRoundCog } from "lucide-react";
+import { LayoutDashboard, Users, Building2, FileSpreadsheet, LogOut, Truck, HardHat, UserCog, Wrench, Receipt, Wallet, Boxes, BookOpen, BookMarked, Trash2, ClipboardCheck, Calendar as CalIcon, CheckSquare, Plug, CalendarClock, Smartphone, HelpCircle, FileText, Sunrise, Camera, Package, Calculator as CalcIcon, FolderKanban, TrendingUp, Wallet as FinanceIcon, Settings, Search, ClipboardList, UserRoundCog, Map as MapIcon } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import GetAppOnPhoneModal from "@/components/GetAppOnPhoneModal";
 import GlobalSearch from "@/components/GlobalSearch";
@@ -98,6 +98,7 @@ const NAV_GROUPS = [
       { to: "/settings/integrations",label: "Integrations",    icon: Plug,    testId: "nav-integrations",      adminOnly: true },
       { to: "/settings/equipment-rates", label: "Equipment Rates", icon: Truck, testId: "nav-equipment-rates", adminOnly: true },
       { to: "/settings/scope-bullets", label: "Scope Bullets",    icon: ClipboardList, testId: "nav-scope-bullets",      adminOnly: true },
+      { to: "/admin/system-map",     label: "System Map",         icon: MapIcon,      testId: "nav-system-map",         adminOnly: true },
       { to: "/trash",                label: "Trash",           icon: Trash2,  testId: "nav-trash",             adminOnly: true },
     ],
   },
