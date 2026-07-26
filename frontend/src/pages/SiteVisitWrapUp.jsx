@@ -4,7 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import {
   Camera, MapPin, ArrowRight, CheckCircle2, AlertCircle,
-  Tag, ChevronDown, ChevronUp, Loader2, ClipboardCheck,
+  Tag, ChevronDown, ChevronUp, Loader2, ClipboardCheck, ChevronLeft,
 } from "lucide-react";
 
 /**
@@ -59,18 +59,30 @@ export default function SiteVisitWrapUp() {
     <div className="min-h-screen bg-zinc-50" data-testid="site-visit-wrap-up">
       {/* Header */}
       <div className="bg-white border-b border-zinc-200 px-4 sm:px-6 py-4 sticky top-0 z-10">
-        <div className="flex items-center justify-between max-w-4xl mx-auto">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-700 mb-0.5 flex items-center gap-1.5">
-              <ClipboardCheck className="w-3.5 h-3.5" /> Wrap-Up
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-zinc-900">Daily Site Wrap-Up</h1>
-            <div className="text-xs text-zinc-500 mt-0.5">
-              {loading ? "Loading…" : `${visits.length} deal${visits.length === 1 ? "" : "s"} · ${pending} needs attention · ${clean} ready`}
+        <div className="flex items-center justify-between max-w-4xl mx-auto gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            {/* Back to Field Capture — mobile-first tap target so reps can
+                bounce between camera and wrap-up without a sidebar. */}
+            <Link
+              to="/field"
+              className="sm:hidden -ml-1 p-2 text-zinc-500 hover:text-zinc-900 rounded-sm"
+              data-testid="wrap-back-to-field"
+              aria-label="Back to Field Capture"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </Link>
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-emerald-700 mb-0.5 flex items-center gap-1.5">
+                <ClipboardCheck className="w-3.5 h-3.5" /> Wrap-Up
+              </div>
+              <h1 className="text-xl sm:text-2xl font-bold text-zinc-900">Daily Site Wrap-Up</h1>
+              <div className="text-xs text-zinc-500 mt-0.5">
+                {loading ? "Loading…" : `${visits.length} deal${visits.length === 1 ? "" : "s"} · ${pending} needs attention · ${clean} ready`}
+              </div>
             </div>
           </div>
           {/* Range selector */}
-          <div className="inline-flex rounded-sm border border-zinc-300 overflow-hidden text-[10px] font-bold uppercase tracking-wider">
+          <div className="inline-flex rounded-sm border border-zinc-300 overflow-hidden text-[10px] font-bold uppercase tracking-wider flex-shrink-0">
             {[1, 3, 7].map((d) => (
               <button
                 key={d}
@@ -115,7 +127,7 @@ function EmptyState() {
         add missing tags, send condition reports, and close out projects in one place.
       </div>
       <Link
-        to="/field-capture"
+        to="/field"
         className="inline-flex items-center gap-1.5 mt-6 px-4 h-10 text-[11px] font-bold uppercase tracking-wider bg-emerald-700 text-white hover:bg-emerald-800 rounded-sm"
       >
         Start capturing <ArrowRight className="w-4 h-4" />

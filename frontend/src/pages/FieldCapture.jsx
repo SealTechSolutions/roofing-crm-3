@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
-import { Camera, Upload, CloudOff, CheckCircle2, AlertCircle, LogOut, Loader2, ChevronLeft, Search, RefreshCcw } from "lucide-react";
+import { Camera, Upload, CloudOff, CheckCircle2, AlertCircle, LogOut, Loader2, ChevronLeft, Search, RefreshCcw, ClipboardCheck } from "lucide-react";
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL;
 const QUEUE_DB = "field-photo-queue";
@@ -700,11 +700,17 @@ export default function FieldCapture() {
   if (!dealId) {
     return (
       <div className="min-h-screen bg-zinc-950 text-white flex flex-col" data-testid="field-capture">
-        <TopBar me={me} online={online} onLogout={() => { localStorage.removeItem("crm_token"); nav("/login", { replace: true }); }} />
+        <TopBar
+          me={me}
+          online={online}
+          onLogout={() => { localStorage.removeItem("crm_token"); nav("/login", { replace: true }); }}
+          onOpenWrapUp={() => nav("/wrap-up")}
+        />
         <ProjectList
           deals={deals}
           onPick={(id) => setDealId(id)}
           queuedCount={queuedCount}
+          onOpenWrapUp={() => nav("/wrap-up")}
         />
       </div>
     );
@@ -1016,9 +1022,9 @@ function ZoomChip({ label, active, onClick, testId }) {
 /**
  * Top bar shared between list view and camera view (the camera view renders
  * its own variant with a back arrow). Shows the signed-in user, online pill,
- * and logout button.
+ * a Wrap-Up shortcut (end-of-day photo tagging screen), and logout.
  */
-function TopBar({ me, online, onLogout }) {
+function TopBar({ me, online, onLogout, onOpenWrapUp }) {
   return (
     <div className="px-4 py-3 bg-zinc-900 border-b border-zinc-800 flex items-center gap-3">
       <Camera className="w-5 h-5 text-blue-400" />
@@ -1035,6 +1041,16 @@ function TopBar({ me, online, onLogout }) {
           <CheckCircle2 className="w-3 h-3" /> Online
         </span>
       )}
+      {onOpenWrapUp && (
+        <button
+          onClick={onOpenWrapUp}
+          className="inline-flex items-center gap-1.5 px-2.5 h-8 bg-emerald-700 hover:bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-sm"
+          data-testid="field-open-wrap-up"
+          title="Daily Site Wrap-Up — tag & finalize today's photos"
+        >
+          <ClipboardCheck className="w-3.5 h-3.5" /> Wrap-Up
+        </button>
+      )}
       <button
         onClick={onLogout}
         className="p-2 text-zinc-400 hover:text-white"
@@ -1050,14 +1066,34 @@ function TopBar({ me, online, onLogout }) {
 /**
  * Full-screen project list: search box + a tappable row per open deal.
  * Tap a row → onPick(dealId) which flips the parent into camera mode.
+ *
+ * Also renders an end-of-day "Daily Site Wrap-Up" tile above the search so
+ * reps in the field can jump straight into the tagging/cleanup screen from
+ * their phone without ever seeing the desktop sidebar.
  */
-function ProjectList({ deals, onPick, queuedCount }) {
+function ProjectList({ deals, onPick, queuedCount, onOpenWrapUp }) {
   const [q, setQ] = useState("");
   const filtered = q.trim()
     ? deals.filter((d) => (d.title || "").toLowerCase().includes(q.toLowerCase()))
     : deals;
   return (
     <div className="flex-1 flex flex-col">
+      {/* End-of-day Wrap-Up shortcut */}
+      {onOpenWrapUp && (
+        <button
+          onClick={onOpenWrapUp}
+          className="mx-4 mt-4 mb-1 px-4 py-4 bg-emerald-700 hover:bg-emerald-600 active:bg-emerald-800 text-white rounded-sm flex items-center gap-3 transition-colors"
+          data-testid="field-wrap-up-tile"
+        >
+          <ClipboardCheck className="w-6 h-6 flex-shrink-0" />
+          <div className="flex-1 min-w-0 text-left">
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-200">End of Day</div>
+            <div className="text-base font-bold">Daily Site Wrap-Up</div>
+            <div className="text-[11px] text-emerald-100 mt-0.5">Tag today&apos;s photos, review pending actions, mark visits complete.</div>
+          </div>
+          <ChevronLeft className="w-5 h-5 rotate-180 flex-shrink-0" />
+        </button>
+      )}
       {/* Search */}
       <div className="px-4 py-3 bg-zinc-900 border-b border-zinc-800">
         <div className="relative">

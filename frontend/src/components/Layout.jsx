@@ -132,8 +132,11 @@ export default function Layout() {
   }, [location.pathname]);
   return (
     <div className="min-h-screen flex bg-zinc-100">
-      {/* Sidebar */}
-      <aside className="w-64 bg-zinc-950 text-zinc-50 flex flex-col" data-testid="sidebar">
+      {/* Sidebar — hidden on phone-sized viewports so whitelisted mobile
+          routes (Wrap-Up, Deal Detail) get the full width. Field reps
+          navigate via the FieldCapture top-bar shortcut and the in-page
+          "Back to Field" chevron. */}
+      <aside className="hidden md:flex w-64 bg-zinc-950 text-zinc-50 flex-col" data-testid="sidebar">
         <div className="p-4 bg-white border-b border-zinc-800">
           <img src="/sealtech-logo.png" alt="SealTech Building Solutions" className="w-full h-auto max-h-16 object-contain" />
         </div>
