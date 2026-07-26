@@ -28,7 +28,10 @@ export default function Vendors({ kind = "Vendor" }) {
     if (isSub) {
       return ["Subcontractor", "Other"];
     }
-    return (categories || []).filter((c) => c !== "Subcontractor");
+    // "Labor" is reserved for W2 Employees (managed on the /employees tab)
+    // and "Subcontractor" belongs on the Subcontractors tab — both are hidden
+    // from the Vendors picker so the classifications never overlap.
+    return (categories || []).filter((c) => c !== "Subcontractor" && c !== "Labor");
   }, [categories, isSub]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
