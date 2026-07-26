@@ -450,6 +450,17 @@ class VendorIn(BaseModel):
     wc_coi_on_file: bool = False
     wc_coi_issued_date: str = ""
     wc_coi_expiry_date: str = ""
+    # --- Subcontractor Onboarding Documents ---
+    # Required: W-9, Master Subcontractor Agreement, GL COI (above), WC COI (above)
+    # Optional: OSHA certification (10/30-hour or CIT)
+    w9_on_file: bool = False
+    w9_signed_date: str = ""
+    msa_on_file: bool = False       # Master Subcontractor Agreement
+    msa_signed_date: str = ""
+    osha_on_file: bool = False      # OSHA cert is optional per user's rule
+    osha_certification_type: str = "" # e.g. "OSHA 10", "OSHA 30", "CIT"
+    osha_expiry_date: str = ""
+    onboarding_completed_at: str = ""  # Auto-set to today the moment all 4 required docs first flip on-file
 
 
 class Vendor(VendorIn):
@@ -4486,6 +4497,7 @@ async def create_vendor(body: VendorIn, current=Depends(get_current_user)):
     data = body.model_dump()
     data["id"] = str(uuid.uuid4())
     data["created_at"] = now_iso()
+    _stamp_onboarding_completed(data, previous=None)
     await db.vendors.insert_one(data.copy())
     return strip_id(data)
 
@@ -4501,11 +4513,51 @@ async def get_vendor(vendor_id: str, current=Depends(get_current_user)):
 @api_router.put("/vendors/{vendor_id}", response_model=Vendor)
 async def update_vendor(vendor_id: str, body: VendorIn, current=Depends(get_current_user)):
     data = body.model_dump()
+    prev = await db.vendors.find_one({"id": vendor_id}, {"_id": 0})
+    _stamp_onboarding_completed(data, previous=prev)
     result = await db.vendors.update_one({"id": vendor_id}, {"$set": data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Vendor not found")
     doc = await db.vendors.find_one({"id": vendor_id}, {"_id": 0})
     return doc
+
+
+def _is_sub_fully_onboarded(v: dict) -> bool:
+    """A subcontractor is 'fully onboarded' when all four REQUIRED docs
+    (W-9, MSA, GL COI, WC COI) have their `_on_file` flag set. OSHA cert is
+    optional per user rules and does NOT block onboarding-complete."""
+    return bool(
+        v.get("w9_on_file")
+        and v.get("msa_on_file")
+        and v.get("gl_coi_on_file")
+        and v.get("wc_coi_on_file")
+    )
+
+
+def _stamp_onboarding_completed(data: dict, previous: dict | None) -> None:
+    """Auto-stamp `onboarding_completed_at` the first time all four required
+    docs are on file. Only applies to Subcontractor kind. Never overwrites an
+    existing stamp (so we preserve the original onboarding date even if a doc
+    is temporarily un-checked and re-checked later). Clears the stamp when a
+    required doc gets flipped back off, then re-stamps when it flips on again.
+    """
+    if (data.get("kind") or "").lower() != "subcontractor":
+        return
+    is_complete_now = _is_sub_fully_onboarded(data)
+    was_stamped = bool((previous or {}).get("onboarding_completed_at"))
+    # Only carry the existing stamp forward when the incoming payload doesn't
+    # explicitly set one AND the sub is still complete.
+    incoming_stamp = (data.get("onboarding_completed_at") or "").strip()
+    if incoming_stamp:
+        return  # caller explicitly set — honor it
+    if is_complete_now:
+        if was_stamped:
+            data["onboarding_completed_at"] = previous["onboarding_completed_at"]
+        else:
+            data["onboarding_completed_at"] = now_iso()
+    else:
+        # Doc got un-checked → clear the stamp so the UI reflects reality.
+        data["onboarding_completed_at"] = ""
 
 
 @api_router.delete("/vendors/{vendor_id}")

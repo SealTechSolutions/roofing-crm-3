@@ -13,7 +13,7 @@ import CameraCaptureButton from "@/components/CameraCaptureButton";
 
 export default function Vendors({ kind = "Vendor" }) {
   const isSub = kind === "Subcontractor";
-  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", contact_name: "", contact_title: "", website: "", phone: "", work_phone: "", mobile_phone: "", fax: "", email: "", tin_ein: "", address: "", address_line2: "", city: "", state: DEFAULT_STATE, zip_code: "", notes: "", gl_coi_on_file: false, gl_coi_issued_date: "", gl_coi_expiry_date: "", wc_coi_on_file: false, wc_coi_issued_date: "", wc_coi_expiry_date: "" };
+  const empty = { name: "", kind, category: isSub ? "Subcontractor" : "Material Supplier", contact_name: "", contact_title: "", website: "", phone: "", work_phone: "", mobile_phone: "", fax: "", email: "", tin_ein: "", address: "", address_line2: "", city: "", state: DEFAULT_STATE, zip_code: "", notes: "", gl_coi_on_file: false, gl_coi_issued_date: "", gl_coi_expiry_date: "", wc_coi_on_file: false, wc_coi_issued_date: "", wc_coi_expiry_date: "", w9_on_file: false, w9_signed_date: "", msa_on_file: false, msa_signed_date: "", osha_on_file: false, osha_certification_type: "", osha_expiry_date: "", onboarding_completed_at: "" };
 
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -151,7 +151,7 @@ export default function Vendors({ kind = "Vendor" }) {
           <table className="w-full text-sm" data-testid={`${kind.toLowerCase()}s-table`}>
             <thead>
               <tr className="border-b-2 border-zinc-950 text-left">
-                <Th>Name</Th><Th>Category</Th><Th>Contact</Th><Th>Phone</Th><Th>Email</Th>{isSub && <Th>COI</Th>}<Th>Actions</Th>
+                <Th>Name</Th><Th>Category</Th><Th>Contact</Th><Th>Phone</Th><Th>Email</Th>{isSub && <><Th>Onboarding</Th><Th>COI</Th></>}<Th>Actions</Th>
               </tr>
             </thead>
             <tbody>
@@ -173,7 +173,10 @@ export default function Vendors({ kind = "Vendor" }) {
                   <td className="px-6 py-3 text-zinc-600 font-mono text-xs">{formatPhoneDisplay(v.mobile_phone || v.work_phone || v.phone)}</td>
                   <td className="px-6 py-3 text-zinc-600 text-xs">{v.email}</td>
                   {isSub && (
-                    <td className="px-6 py-3"><CoiStatusPill form={v} /></td>
+                    <>
+                      <td className="px-6 py-3"><OnboardingProgressPill form={v} /></td>
+                      <td className="px-6 py-3"><CoiStatusPill form={v} /></td>
+                    </>
                   )}
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1">
@@ -282,16 +285,63 @@ export default function Vendors({ kind = "Vendor" }) {
             </div>
             <div className="rounded-sm border border-zinc-200 bg-zinc-50 p-4 space-y-3" data-testid={`${kind.toLowerCase()}-coi-section`}>
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-blue-700">Certificates of Insurance (COI)</h3>
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-blue-700">
+                    {isSub ? "Subcontractor Onboarding Documents" : "Certificates of Insurance (COI)"}
+                  </h3>
+                  {isSub && (
+                    <div className="text-[10px] text-zinc-500 mt-0.5">
+                      All 4 required docs must be on file before this sub can be assigned to a Work Order. OSHA cert is optional.
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <CameraCaptureButton
                     onFiles={(files) => uploadCoi(files, form.name || "Vendor")}
                     testId={`${kind.toLowerCase()}-camera-coi-btn`}
-                    label="Snap COI"
+                    label="Snap Doc"
                   />
-                  <CoiStatusPill form={form} />
+                  {isSub ? <OnboardingProgressPill form={form} /> : <CoiStatusPill form={form} />}
                 </div>
               </div>
+              {isSub && (
+                <>
+                  {/* W-9 (required) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-[max-content_1fr_1fr] gap-3 items-end">
+                    <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-700 select-none pb-2">
+                      <input
+                        type="checkbox"
+                        checked={!!form.w9_on_file}
+                        onChange={(e) => setForm({ ...form, w9_on_file: e.target.checked })}
+                        className="accent-blue-700"
+                        data-testid="sub-w9-on-file"
+                      />
+                      W-9 <span className="text-red-600 font-bold" title="Required">*</span>
+                    </label>
+                    <Field label="W-9 Signed">
+                      <Input type="date" disabled={!form.w9_on_file} value={form.w9_signed_date} onChange={(v) => setForm({ ...form, w9_signed_date: v })} data-testid="sub-w9-signed" />
+                    </Field>
+                    <div />
+                  </div>
+                  {/* MSA (required) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-[max-content_1fr_1fr] gap-3 items-end">
+                    <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-700 select-none pb-2">
+                      <input
+                        type="checkbox"
+                        checked={!!form.msa_on_file}
+                        onChange={(e) => setForm({ ...form, msa_on_file: e.target.checked })}
+                        className="accent-blue-700"
+                        data-testid="sub-msa-on-file"
+                      />
+                      Master Sub Agreement <span className="text-red-600 font-bold" title="Required">*</span>
+                    </label>
+                    <Field label="MSA Signed">
+                      <Input type="date" disabled={!form.msa_on_file} value={form.msa_signed_date} onChange={(v) => setForm({ ...form, msa_signed_date: v })} data-testid="sub-msa-signed" />
+                    </Field>
+                    <div />
+                  </div>
+                </>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-[max-content_1fr_1fr] gap-3 items-end">
                 <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-700 select-none pb-2">
                   <input
@@ -301,7 +351,7 @@ export default function Vendors({ kind = "Vendor" }) {
                     className="accent-blue-700"
                     data-testid={`${kind.toLowerCase()}-gl-coi-on-file`}
                   />
-                  General Liability COI
+                  General Liability COI {isSub && <span className="text-red-600 font-bold" title="Required">*</span>}
                 </label>
                 <Field label="GL Issued">
                   <Input type="date" disabled={!form.gl_coi_on_file} value={form.gl_coi_issued_date} onChange={(v) => setForm({ ...form, gl_coi_issued_date: v })} data-testid={`${kind.toLowerCase()}-gl-coi-issued`} />
@@ -319,7 +369,7 @@ export default function Vendors({ kind = "Vendor" }) {
                     className="accent-blue-700"
                     data-testid={`${kind.toLowerCase()}-wc-coi-on-file`}
                   />
-                  Workers&apos; Comp COI
+                  Workers&apos; Comp COI {isSub && <span className="text-red-600 font-bold" title="Required">*</span>}
                 </label>
                 <Field label="WC Issued">
                   <Input type="date" disabled={!form.wc_coi_on_file} value={form.wc_coi_issued_date} onChange={(v) => setForm({ ...form, wc_coi_issued_date: v })} data-testid={`${kind.toLowerCase()}-wc-coi-issued`} />
@@ -328,6 +378,41 @@ export default function Vendors({ kind = "Vendor" }) {
                   <Input type="date" disabled={!form.wc_coi_on_file} value={form.wc_coi_expiry_date} onChange={(v) => setForm({ ...form, wc_coi_expiry_date: v })} data-testid={`${kind.toLowerCase()}-wc-coi-expiry`} />
                 </Field>
               </div>
+              {isSub && (
+                <>
+                  {/* OSHA — optional */}
+                  <div className="grid grid-cols-1 sm:grid-cols-[max-content_1fr_1fr] gap-3 items-end">
+                    <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-700 select-none pb-2">
+                      <input
+                        type="checkbox"
+                        checked={!!form.osha_on_file}
+                        onChange={(e) => setForm({ ...form, osha_on_file: e.target.checked })}
+                        className="accent-blue-700"
+                        data-testid="sub-osha-on-file"
+                      />
+                      OSHA Cert <span className="text-zinc-400 text-[10px]" title="Optional">(optional)</span>
+                    </label>
+                    <Field label="Cert Type">
+                      <Input
+                        type="text"
+                        placeholder="OSHA 10 / OSHA 30 / CIT"
+                        disabled={!form.osha_on_file}
+                        value={form.osha_certification_type}
+                        onChange={(v) => setForm({ ...form, osha_certification_type: v })}
+                        data-testid="sub-osha-type"
+                      />
+                    </Field>
+                    <Field label="OSHA Expires">
+                      <Input type="date" disabled={!form.osha_on_file} value={form.osha_expiry_date} onChange={(v) => setForm({ ...form, osha_expiry_date: v })} data-testid="sub-osha-expiry" />
+                    </Field>
+                  </div>
+                  {form.onboarding_completed_at && (
+                    <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-sm px-3 py-2" data-testid="sub-onboarded-banner">
+                      ✅ <b>Onboarding complete</b> — {new Date(form.onboarding_completed_at).toLocaleDateString()}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
             <Field label="Notes">
               <textarea
@@ -398,6 +483,38 @@ function CoiStatusPill({ form }) {
     </span>
   );
 }
+
+// ---------- Onboarding Progress helper (Subcontractors only) ----------
+// Required: W-9, Master Sub Agreement, GL COI, WC COI. OSHA is optional
+// and never counted towards the required tally.
+function subOnboardingCount(form) {
+  const required = [
+    !!form.w9_on_file,
+    !!form.msa_on_file,
+    !!form.gl_coi_on_file,
+    !!form.wc_coi_on_file,
+  ];
+  const done = required.filter(Boolean).length;
+  return { done, total: required.length, complete: done === required.length };
+}
+
+function OnboardingProgressPill({ form }) {
+  const { done, total, complete } = subOnboardingCount(form);
+  const cls = complete
+    ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+    : done === 0
+      ? "bg-red-50 text-red-800 border-red-300"
+      : "bg-amber-50 text-amber-800 border-amber-300";
+  return (
+    <span
+      className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest border rounded-sm ${cls}`}
+      data-testid="onboarding-progress-pill"
+    >
+      {complete ? "Fully Onboarded" : `Onboarding ${done}/${total}`}
+    </span>
+  );
+}
+
 
 
 
