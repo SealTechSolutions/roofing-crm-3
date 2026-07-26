@@ -60,6 +60,7 @@ export default function DealDetail() {
   const [draftingDeposit, setDraftingDeposit] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
   const [workOrders, setWorkOrders] = useState([]);
+  const [dealEvents, setDealEvents] = useState([]);
 
   const loadWorkOrders = async () => {
     try {
@@ -101,6 +102,7 @@ export default function DealDetail() {
     api.get(`/assessments?deal_id=${id}`).then((r) => setDealAssessments(r.data || [])).catch(() => setDealAssessments([]));
     api.get(`/integrations/google/status`).then((r) => setGoogleConnected(!!r.data?.connected)).catch(() => setGoogleConnected(false));
     loadWorkOrders();
+    api.get(`/deals/${id}/events`).then((r) => setDealEvents(Array.isArray(r.data) ? r.data : [])).catch(() => setDealEvents([]));
   }, [id]);
 
   // Refresh the Final-invoice preview whenever this deal's status flips, so
@@ -781,6 +783,7 @@ export default function DealDetail() {
         deal={deal}
         invoices={dealInvoices}
         assessments={dealAssessments}
+        events={dealEvents}
         onDepositMarkPaid={async (invoice) => {
           // One-click flow from the pipeline pill: mark the deposit invoice
           // Paid (posts journal + fires commission accrual) then refresh
@@ -844,6 +847,7 @@ export default function DealDetail() {
         deal={deal}
         invoices={dealInvoices}
         assessments={dealAssessments}
+        events={dealEvents}
         onAction={async (step) => {
           if (step.target?.route) {
             nav(step.target.route);

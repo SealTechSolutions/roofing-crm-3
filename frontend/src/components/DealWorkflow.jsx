@@ -40,7 +40,7 @@ const STAGES = [
   { key: "closed",          label: "Closed",           Icon: Lock,           tab: "milestones" },
 ];
 
-function detectStageStates(deal, invoices = [], assessments = []) {
+function detectStageStates(deal, invoices = [], assessments = [], events = []) {
   const status = (deal?.status || "").toLowerCase();
   const milestones = deal?.payment_milestones || [];
   const stages = {};
@@ -58,13 +58,22 @@ function detectStageStates(deal, invoices = [], assessments = []) {
   // on legacy pre-Feb-26-2026 deals that don't have the timestamp yet).
   stages.wo_signed = !!deal?.last_work_order_signed_at || !!deal?.subcontractor_accepted;
   stages.materials = !!deal?.material_order_date;
-  stages.scheduled = !!deal?.scheduled_start_date;
+  // Scheduled — turn on when EITHER (a) the deal has `scheduled_start_date`
+  // set directly, OR (b) any DealSchedulePanel event exists that represents
+  // a project kickoff ("Job Start", "Roof Walk" — meeting types where the
+  // crew or a rep will actually be on-site). Users typically fill this in
+  // via the "Schedule Event" button on the Schedule panel rather than the
+  // legacy `scheduled_start_date` field on the edit modal.
+  const KICKOFF_EVENT_TYPES = new Set(["Job Start", "Roof Walk", "Presentation"]);
+  const hasKickoffEvent = (events || []).some((e) => KICKOFF_EVENT_TYPES.has(e?.event_type));
+  stages.scheduled = !!deal?.scheduled_start_date || hasKickoffEvent;
   // Equipment ordered — deal.equipment_ordered is an array of ordered
   // pieces (see /deals model). Non-empty list ⇒ stage complete.
   stages.equipment = Array.isArray(deal?.equipment_ordered) && deal.equipment_ordered.length > 0;
   // In Progress when status says so OR start date is in the past
   const today = new Date().toISOString().slice(0, 10);
-  stages.in_progress = status === "in progress" || (!!deal?.scheduled_start_date && deal.scheduled_start_date <= today);
+  const inPastKickoff = (events || []).some((e) => KICKOFF_EVENT_TYPES.has(e?.event_type) && e?.date && e.date <= today);
+  stages.in_progress = status === "in progress" || (!!deal?.scheduled_start_date && deal.scheduled_start_date <= today) || inPastKickoff;
   // Final inspection = scheduled_end_date is in the past OR status close to complete
   stages.final_inspection = (!!deal?.scheduled_end_date && deal.scheduled_end_date <= today) || ["complete", "closed"].includes(status);
   // Closed = all milestones Paid OR explicit status
@@ -82,8 +91,8 @@ function deriveCurrentStage(stageStates) {
   return { lastTrue, currentIdx };
 }
 
-export function DealStagePipeline({ deal, invoices = [], assessments = [], onTabChange, onAdvance, onDepositMarkPaid }) {
-  const stageStates = useMemo(() => detectStageStates(deal, invoices, assessments), [deal, invoices, assessments]);
+export function DealStagePipeline({ deal, invoices = [], assessments = [], events = [], onTabChange, onAdvance, onDepositMarkPaid }) {
+  const stageStates = useMemo(() => detectStageStates(deal, invoices, assessments, events), [deal, invoices, assessments, events]);
   const { lastTrue, currentIdx } = deriveCurrentStage(stageStates);
 
   // Deposit shortcut — if the pill is clicked while the deposit invoice is
@@ -208,8 +217,8 @@ function pickNextStep(deal, invoices, assessments, stageStates) {
   return { title: "All wrapped up — nice work", desc: "Everything's closed. Add a maintenance plan or revisit in 12 months.", actionLabel: "View Maintenance", target: { tab: "maintenance" }, kind: "success" };
 }
 
-export function NextStepCard({ deal, invoices, assessments, onAction }) {
-  const stageStates = useMemo(() => detectStageStates(deal, invoices, assessments), [deal, invoices, assessments]);
+export function NextStepCard({ deal, invoices, assessments, events = [], onAction }) {
+  const stageStates = useMemo(() => detectStageStates(deal, invoices, assessments, events), [deal, invoices, assessments, events]);
   const step = useMemo(() => pickNextStep(deal, invoices, assessments, stageStates), [deal, invoices, assessments, stageStates]);
 
   const accent = step.kind === "primary"
