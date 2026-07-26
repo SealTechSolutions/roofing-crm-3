@@ -1400,6 +1400,7 @@ export default function DealDetail() {
       {/* Go to Production — one-card checklist of the 4 things to do when a deal is Won */}
       <GoToProductionChecklist
         deal={deal}
+        events={dealEvents}
         onScrollToSchedule={() => {
           const el = document.querySelector('[data-testid="deal-schedule-panel"]') || document.getElementById("deal-group-execution");
           if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1413,7 +1414,11 @@ export default function DealDetail() {
       />
 
       {/* Schedule / Events panel — ad-hoc appointments tied to this deal */}
-      <DealSchedulePanel dealId={id} googleConnected={googleConnected} />
+      <DealSchedulePanel
+        dealId={id}
+        googleConnected={googleConnected}
+        onEventsChange={(next) => setDealEvents(next || [])}
+      />
 
       {/* Work Orders — every WO + Change Order sent from this deal, with
           sent/signed status and one-tap PDF download. Anchors the pipeline

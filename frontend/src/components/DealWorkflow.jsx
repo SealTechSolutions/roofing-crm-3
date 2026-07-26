@@ -57,19 +57,23 @@ function detectStageStates(deal, invoices = [], assessments = [], events = []) {
   // the public link (also implied when `subcontractor_accepted` is true
   // on legacy pre-Feb-26-2026 deals that don't have the timestamp yet).
   stages.wo_signed = !!deal?.last_work_order_signed_at || !!deal?.subcontractor_accepted;
-  stages.materials = !!deal?.material_order_date;
+  stages.materials = !!deal?.material_order_date || (deal?.material_takeoff || []).length > 0;
   // Scheduled — turn on when EITHER (a) the deal has `scheduled_start_date`
   // set directly, OR (b) any DealSchedulePanel event exists that represents
-  // a project kickoff ("Job Start", "Roof Walk" — meeting types where the
-  // crew or a rep will actually be on-site). Users typically fill this in
-  // via the "Schedule Event" button on the Schedule panel rather than the
-  // legacy `scheduled_start_date` field on the edit modal.
-  const KICKOFF_EVENT_TYPES = new Set(["Job Start", "Roof Walk", "Presentation"]);
+  // crew-scheduling or a kickoff site visit. "Schedule Crew" is the explicit
+  // production-kickoff type; "Job Start" / "Roof Walk" / "Presentation" all
+  // count because they put boots on the roof (customer or crew).
+  const KICKOFF_EVENT_TYPES = new Set([
+    "Schedule Crew", "Job Start", "Roof Walk", "Presentation",
+  ]);
   const hasKickoffEvent = (events || []).some((e) => KICKOFF_EVENT_TYPES.has(e?.event_type));
   stages.scheduled = !!deal?.scheduled_start_date || hasKickoffEvent;
   // Equipment ordered — deal.equipment_ordered is an array of ordered
-  // pieces (see /deals model). Non-empty list ⇒ stage complete.
-  stages.equipment = Array.isArray(deal?.equipment_ordered) && deal.equipment_ordered.length > 0;
+  // pieces (see /deals model). Non-empty list ⇒ stage complete. Also fires
+  // when there's an "Equipment Delivery" event on the schedule.
+  stages.equipment =
+    (Array.isArray(deal?.equipment_ordered) && deal.equipment_ordered.length > 0)
+    || (events || []).some((e) => e?.event_type === "Equipment Delivery");
   // In Progress when status says so OR start date is in the past
   const today = new Date().toISOString().slice(0, 10);
   const inPastKickoff = (events || []).some((e) => KICKOFF_EVENT_TYPES.has(e?.event_type) && e?.date && e.date <= today);

@@ -66,7 +66,7 @@ const Row = ({ done, icon: Icon, label, summary, action, actionLabel, testId, ex
   );
 };
 
-export default function GoToProductionChecklist({ deal, onScrollToSchedule, onScrollToMaterials, onSendWorkOrder, onEquipmentChange }) {
+export default function GoToProductionChecklist({ deal, events = [], onScrollToSchedule, onScrollToMaterials, onSendWorkOrder, onEquipmentChange }) {
   const [equipmentExpanded, setEquipmentExpanded] = useState(false);
   const [customEquipment, setCustomEquipment] = useState("");
   const [savingEquipment, setSavingEquipment] = useState(false);
@@ -75,10 +75,23 @@ export default function GoToProductionChecklist({ deal, onScrollToSchedule, onSc
   const equipment = deal.equipment_ordered || [];
   const orderedTypes = new Set(equipment.map((e) => e.type));
 
-  const schedule_done = !!(deal.scheduled_start_date || deal.scheduled_end_date);
+  // Crew scheduling — done when the deal has an explicit scheduled_start_date
+  // OR when any DealSchedulePanel event exists that represents putting the
+  // crew or a rep on-site (Schedule Crew is the explicit prod type; Job Start
+  // / Roof Walk / Presentation also count). Mirrors the pipeline detection in
+  // DealWorkflow.jsx so the card and the pipeline never disagree.
+  const CREW_EVENT_TYPES = new Set([
+    "Schedule Crew", "Job Start", "Roof Walk", "Presentation",
+  ]);
+  const crewEvents = (events || []).filter((e) => CREW_EVENT_TYPES.has(e?.event_type));
+  const schedule_done = !!(deal.scheduled_start_date || deal.scheduled_end_date) || crewEvents.length > 0;
+
   const materials_done = !!(deal.material_order_date || (deal.material_takeoff || []).length > 0);
   const wo_done = !!(deal.last_work_order_sent_at); // stamped by WorkOrderModal
-  const equipment_done = equipment.length > 0;
+  // Equipment — either the deal has ordered items OR an "Equipment Delivery"
+  // event is on the calendar.
+  const hasEquipmentEvent = (events || []).some((e) => e?.event_type === "Equipment Delivery");
+  const equipment_done = equipment.length > 0 || hasEquipmentEvent;
 
   const totalDone = [schedule_done, materials_done, wo_done, equipment_done].filter(Boolean).length;
 
@@ -122,7 +135,12 @@ export default function GoToProductionChecklist({ deal, onScrollToSchedule, onSc
   };
 
   const scheduleSummary = schedule_done
-    ? [deal.scheduled_start_date, deal.scheduled_end_date].filter(Boolean).join(" → ") || "Scheduled"
+    ? (
+        [deal.scheduled_start_date, deal.scheduled_end_date].filter(Boolean).join(" → ")
+        || (crewEvents[0]
+             ? `${crewEvents[0].event_type} · ${crewEvents[0].date}${crewEvents[0].start_time ? ` @ ${crewEvents[0].start_time}` : ""}`
+             : "Scheduled")
+      )
     : "Not scheduled yet";
   const materialsSummary = materials_done
     ? `${(deal.material_takeoff || []).length} take-off line${(deal.material_takeoff || []).length === 1 ? "" : "s"}${deal.material_order_date ? ` · delivery ${deal.material_order_date}` : ""}`

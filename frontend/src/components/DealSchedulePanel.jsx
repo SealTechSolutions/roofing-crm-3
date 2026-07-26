@@ -3,12 +3,30 @@ import { api, formatApiError } from "@/lib/api";
 import { CalendarDays, Plus, Trash2, Clock, MapPin, X, Bell, Repeat } from "lucide-react";
 import { toast } from "sonner";
 
-const EVENT_TYPES = ["Roof Walk", "Presentation", "Meeting", "Job Start", "Other"];
+const EVENT_TYPES = [
+  "Roof Walk",
+  "Presentation",
+  "Meeting",
+  "Schedule Crew",
+  "Job Start",
+  "Order Materials",
+  "Material Delivery",
+  "Equipment Delivery",
+  "Punch List Walk",
+  "Final Inspection",
+  "Other",
+];
 const EMOJI = {
   "Roof Walk": "🪜",
   Presentation: "📊",
   Meeting: "🤝",
+  "Schedule Crew": "👷",
   "Job Start": "🚧",
+  "Order Materials": "📝",
+  "Material Delivery": "📦",
+  "Equipment Delivery": "🚚",
+  "Punch List Walk": "📋",
+  "Final Inspection": "🔍",
   Other: "📅",
 };
 
@@ -31,7 +49,7 @@ const formatTime = (hhmm) => {
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 };
 
-export default function DealSchedulePanel({ dealId, googleConnected = false }) {
+export default function DealSchedulePanel({ dealId, googleConnected = false, onEventsChange }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -54,6 +72,7 @@ export default function DealSchedulePanel({ dealId, googleConnected = false }) {
     try {
       const r = await api.get(`/deals/${dealId}/events`);
       setEvents(r.data || []);
+      onEventsChange && onEventsChange(r.data || []);
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || e.message);
     } finally {
